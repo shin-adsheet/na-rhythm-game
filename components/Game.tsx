@@ -120,11 +120,18 @@ const Game: React.FC = () => {
   const endingDoneRef = useRef(false);
   const rareLabelTimerRef = useRef<number | null>(null);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
+  const [inputMode, setInputMode] = useState<'mic' | 'tap'>(process.env.TAP_ONLY ? 'tap' : 'mic');
+  const inputModeRef = useRef<'mic' | 'tap'>(process.env.TAP_ONLY ? 'tap' : 'mic');
+  const lastTapRef = useRef(0);
+  const tapLoopRef = useRef<number | null>(null);
+  inputModeRef.current = inputMode;
   gameModeRef.current = gameMode;
 
   // Asset URLs - using GitHub Raw URLs for reliable hosting
-  const defaultBgmUrl = 'https://raw.githubusercontent.com/mshinyukari/-/main/bgm/bgm.mp3';
-  const menuBgmUrl = 'https://raw.githubusercontent.com/mshinyukari/-/main/bgm/top.mp3';
+  const assetBase = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
+  const defaultBgmUrl = assetBase + 'bgm/bgm.mp3';
+  const menuBgmUrl = assetBase + 'bgm/top.mp3';
+  const TAP_ONLY = !!process.env.TAP_ONLY; // ビルド時フラグ：マイクを使わない配布版
 
   // Settings State
   const [volume, setVolume] = useState(0.5);
@@ -601,6 +608,48 @@ const Game: React.FC = () => {
     }
   };
 
+  /** タップ / キー入力での「な」（マイクが使えない環境向け） */
+  const handleTap = () => {
+    if (!isGameActiveRef.current) return;
+    const now = Date.now();
+    if (now - lastTapRef.current < 60) return; // 連打のダブル判定防止
+    lastTapRef.current = now;
+    const timeSinceLastBeat = now - lastBeatTimeRef.current;
+    const phase = (timeSinceLastBeat % BEAT_INTERVAL_MS) / BEAT_INTERVAL_MS;
+    const distToQuarter = Math.min(phase, 1.0 - phase) * BEAT_INTERVAL_MS;
+    const distToEighth = Math.abs(phase - 0.5) * BEAT_INTERVAL_MS;
+    if (distToQuarter < HIT_WINDOW_MS * 1.3 || distToEighth < HIT_WINDOW_MS * 1.3) {
+      triggerHit();
+    } else {
+      addHitWord(phase < 0.25 || (phase > 0.5 && phase < 0.75) ? 'おそい' : 'はやい', 'text-slate-400');
+    }
+  };
+  const handleTapRef = useRef(handleTap);
+  handleTapRef.current = handleTap;
+
+  const startTapLoop = () => {
+    if (tapLoopRef.current) cancelAnimationFrame(tapLoopRef.current);
+    const loop = () => {
+      if (!isGameActiveRef.current) return;
+      if (comboRef.current > 0 && Date.now() - lastHitTimeRef.current > BEAT_INTERVAL_MS * COMBO_BREAK_BEATS) {
+        breakCombo();
+      }
+      tapLoopRef.current = requestAnimationFrame(loop);
+    };
+    loop();
+  };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return;
+      if (e.code === 'Space' || e.code === 'Enter' || e.key.toLowerCase() === 'n') {
+        if (inputModeRef.current === 'tap') { e.preventDefault(); handleTapRef.current(); }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const startGameAudioAnalysis = async () => {
     try {
         const stream = await getAudioStream();
@@ -663,7 +712,7 @@ const Game: React.FC = () => {
         loop();
     } catch (err) {
         console.error("Game Audio Init Error");
-        setError("マイクの開始に失敗しました。");
+        setError("マイクの開始に失敗しました。せっていで「タップ」入力にすると遊べます。");
     }
   };
 
@@ -890,7 +939,7 @@ const Game: React.FC = () => {
           bgmRef.current.volume = volume;
           bgmRef.current.play().catch(e => console.warn("BGM play failed", e));
       }
-      startGameAudioAnalysis();
+      if (inputModeRef.current === 'tap') startTapLoop(); else startGameAudioAnalysis();
       if (gameTimer.current) clearInterval(gameTimer.current);
       gameTimer.current = window.setInterval(() => {
         timeLeftRef.current = Math.max(0, timeLeftRef.current - 1);
@@ -978,7 +1027,7 @@ const Game: React.FC = () => {
     if (audioContextRef.current.state === 'suspended') {
         await audioContextRef.current.resume();
     }
-    connectToGemini();
+    if (process.env.API_KEY && inputModeRef.current === 'mic') connectToGemini();
     setGameState('COUNTDOWN');
   };
 
@@ -1070,12 +1119,20 @@ const Game: React.FC = () => {
     );
 
     const BeatIndicator = (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
-            <div className={`w-64 h-64 rounded-full border-8 border-white flex items-center justify-center backdrop-blur-sm transition-transform duration-75 ${fever ? 'bg-orange-200/40' : 'bg-pink-200/30'} ${isHitAnimating ? 'scale-110' : 'scale-100'}`}>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center gap-3">
+            <div
+                onPointerDown={inputMode === 'tap' ? (e) => { e.preventDefault(); handleTap(); } : undefined}
+                className={`w-64 h-64 rounded-full border-8 border-white flex items-center justify-center backdrop-blur-sm transition-transform duration-75 ${fever ? 'bg-orange-200/40' : 'bg-pink-200/30'} ${isHitAnimating ? 'scale-110' : 'scale-100'} ${inputMode === 'tap' ? 'cursor-pointer active:scale-95 touch-none select-none' : ''}`}
+            >
                 <div className={`w-48 h-48 bg-gradient-to-b ${fever ? 'from-orange-400 to-pink-500' : 'from-pink-400 to-pink-500'} rounded-full flex items-center justify-center shadow-[0_8px_0_rgba(219,39,119,0.2)] border-4 border-white transition-all duration-75 ${isHitAnimating ? 'brightness-110' : ''}`}>
                      <span className="text-6xl font-black text-white drop-shadow-md select-none">な！</span>
                 </div>
             </div>
+            {inputMode === 'tap' && (
+                <div className="bg-white/80 text-slate-500 text-xs font-bold px-3 py-1 rounded-full border-2 border-white shadow pointer-events-none">
+                    ビートに合わせてタップ（PC：スペースキー）
+                </div>
+            )}
         </div>
     );
 
@@ -1206,7 +1263,29 @@ const Game: React.FC = () => {
                              <div className="text-[10px] text-slate-400 mt-1 leading-tight">※Github等のURLを直接指定できます</div>
                          </div>
 
-                         <div className="bg-white/60 p-3 rounded-xl flex-1 flex flex-col justify-center border-2 border-white gap-2">
+                         {/* 入力モード */}
+                         {!TAP_ONLY && (
+                         <div className="bg-white/50 p-3 rounded-xl">
+                             <div className="font-bold text-sky-600 mb-2 text-sm">🎮 にゅうりょく</div>
+                             <div className="flex gap-2">
+                                 {([['mic', '🎤 声で「な」'], ['tap', '👆 タップ / スペース']] as const).map(([m, label]) => (
+                                     <button key={m} onClick={() => setInputMode(m)}
+                                         className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${inputMode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706]' : 'bg-white text-slate-400'}`}>
+                                         {label}
+                                     </button>
+                                 ))}
+                             </div>
+                         </div>
+                         )}
+                         {TAP_ONLY && (
+                         <div className="bg-white/50 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">
+                             👆 この公開版はタップ / スペースキーで「な」を伝えます。<br/>
+                             （声で遊ぶには GitHub のプロジェクトをローカルで起動）
+                         </div>
+                         )}
+
+                         {!TAP_ONLY && (
+                         <div className={`bg-white/60 p-3 rounded-xl flex-1 flex flex-col justify-center border-2 border-white gap-2 ${inputMode === 'tap' ? 'opacity-50' : ''}`}>
                              <div className="flex justify-between items-center">
                                  <span className="font-bold text-sky-600 text-sm">🎤 マイクテスト</span>
                                  <button onClick={toggleMicTest} className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${isMicTesting ? 'bg-green-400 text-white border-green-200' : 'bg-white text-gray-400 border-gray-200'}`}>
@@ -1230,6 +1309,7 @@ const Game: React.FC = () => {
                                 <input type="range" min="0" max="100" value={micThreshold} onChange={(e) => setMicThreshold(parseInt(e.target.value))} className="flex-1 h-2 opacity-80" />
                              </div>
                          </div>
+                         )}
                      </div>
                 </div>
             </div>
@@ -1349,7 +1429,7 @@ const Game: React.FC = () => {
   const bgClass = fever && gameState === 'PLAYING' ? 'bg-fever' : 'bg-polka';
 
   return (
-    <div className={`w-full h-screen flex items-center justify-center relative overflow-hidden ${bgClass} font-sans selection:bg-pink-200 selection:text-pink-900 ${shakeClass} ${worldInvert ? 'world-invert' : ''}`}>
+    <div className={`w-full h-full flex items-center justify-center relative overflow-hidden ${bgClass} font-sans selection:bg-pink-200 selection:text-pink-900 ${shakeClass} ${worldInvert ? 'world-invert' : ''}`}>
         <audio ref={bgmRef} loop preload="auto" src={bgmSource}
             onCanPlay={() => { setError(null); }}
             onError={() => { console.warn("BGM Load Error:", bgmSource); setError("BGMの読み込みに失敗しました: " + bgmSource); }}
