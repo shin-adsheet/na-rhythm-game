@@ -21,8 +21,8 @@ export const VARIANT_LABELS: Record<NaVariant, string> = {
 
 /** レア度の抽選確率（通常時 / フィーバー時） */
 const RATES: Record<'normal' | 'fever', Record<Rarity, number>> = {
-  normal: { normal: 0.80, uncommon: 0.14, rare: 0.05, ultra: 0.01 },
-  fever:  { normal: 0.55, uncommon: 0.28, rare: 0.13, ultra: 0.04 },
+  normal: { normal: 0.90, uncommon: 0.085, rare: 0.013, ultra: 0.002 },
+  fever:  { normal: 0.78, uncommon: 0.17, rare: 0.04, ultra: 0.01 },
 };
 
 export const RARITY_LABEL: Record<Rarity, string> = {
@@ -95,7 +95,7 @@ export function createParticles(variant: NaVariant, rarity: Rarity): NaParticle[
     case 'giant':
       return [{ ...base(), left: `${20 + Math.random() * 50}%`, size: `${14 + Math.random() * 10}rem`, duration: '4s' }];
     case 'swarm':
-      return Array.from({ length: 14 }).map((_, i) => ({
+      return Array.from({ length: 9 }).map((_, i) => ({
         ...base(),
         size: `${1.2 + Math.random() * 1.5}rem`,
         duration: `${1.5 + Math.random() * 1.5}s`,
@@ -154,7 +154,7 @@ export function createParticles(variant: NaVariant, rarity: Rarity): NaParticle[
     case 'invert':
       return [{ ...base(), left: '50%', top: '50%', size: '12rem', duration: '2.5s', life: 3000, text: '逆' }];
     case 'chaos':
-      return Array.from({ length: 30 }).map((_, i) => {
+      return Array.from({ length: 18 }).map((_, i) => {
         const all: NaVariant[] = ['spin', 'float', 'zigzag', 'rainbow', 'neon', 'flip', 'bounce', 'pop'];
         const v = all[i % all.length];
         return { ...base(), variant: v, left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`, size: `${2 + Math.random() * 7}rem`, duration: `${1 + Math.random() * 2}s`, delay: `${Math.random() * 0.6}s`, life: 4000 };

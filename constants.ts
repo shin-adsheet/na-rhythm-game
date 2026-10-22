@@ -32,6 +32,14 @@ export const HIT_WORDS = [
   '伝わった', 'もっと', 'ななな', 'わかる', 'えらい', 'ズバッ', '名！', 'バズれ',
 ];
 
+/** 判定（ビートからのズレ ms） */
+export const JUDGE_PERFECT_MS = 35;
+export const JUDGE_GREAT_MS = 70;
+/** 強い演出（レア以上・カットイン）を続けて出さない間隔 ms */
+export const STRONG_FX_COOLDOWN_MS = 7000;
+/** ノルマ達成後の次のノルマ（基準の何倍ずつ増えるか） */
+export const QUOTA_STEP = 0.5;
+
 /** ローカルストレージのキー */
 export const LS_KEYS = {
   achievements: 'rhythm_na_achievements',

@@ -5,6 +5,7 @@ import { GameState, GameMode, ScoreEntry, NaParticle, Rarity, NaVariant, Ending,
 import {
   MODE_DURATIONS, BEAT_INTERVAL_MS, COUNTDOWN_SECONDS, CLEAR_THRESHOLDS,
   FEVER_COMBO, COMBO_BREAK_BEATS, GOLD_BONUS, DIAMOND_BONUS, HIT_WORDS, LS_KEYS,
+  JUDGE_PERFECT_MS, JUDGE_GREAT_MS, STRONG_FX_COOLDOWN_MS, QUOTA_STEP,
 } from '../constants';
 import { encode } from '../utils/audioUtils';
 import { rollRarity, pickVariant, createParticles, nextId, VARIANT_LABELS } from '../utils/naEffects';
@@ -125,6 +126,15 @@ const Game: React.FC = () => {
   const [revealT, setRevealT] = useState(0);   // 結果画面の演出時間（ms）
   const isNewRecordRef = useRef(false);
   const prevBestRef = useRef(0);
+  // --- ゲーム性 ---
+  const judgeRef = useRef({ perfect: 0, great: 0, good: 0 });
+  const perfectStreakRef = useRef(0);
+  const [judge, setJudge] = useState<{ id: number; text: string; cls: string } | null>(null);
+  const [quotaStage, setQuotaStage] = useState(1);          // いま何段階目のノルマか
+  const quotaStageRef = useRef(1);
+  const [ghostHits, setGhostHits] = useState(0);             // 自己ベストの回数（ペース表示）
+  const strongFxRef = useRef(0);                              // 直近の強い演出の時刻
+  const beatRingRef = useRef<HTMLDivElement>(null);
   const rareLabelTimerRef = useRef<number | null>(null);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [inputMode, setInputMode] = useState<'mic' | 'tap'>(process.env.TAP_ONLY ? 'tap' : 'mic');
@@ -267,6 +277,18 @@ const Game: React.FC = () => {
     setSeenVariants(seenVariantsRef.current);
   };
 
+  /** 何段階目のノルマが何回か（1段階目は元のノルマ、以降は基準×QUOTA_STEPずつ増える） */
+  const quotaTarget = (stage: number, mode: GameMode = gameModeRef.current) =>
+    Math.round(CLEAR_THRESHOLDS[mode] * (1 + QUOTA_STEP * (stage - 1)));
+
+  /** 強い演出を出していいか（出すなら時刻を記録） */
+  const canStrongFx = (force = false) => {
+    const now = Date.now();
+    if (!force && now - strongFxRef.current < STRONG_FX_COOLDOWN_MS) return false;
+    strongFxRef.current = now;
+    return true;
+  };
+
   /** 元の登録者数カーブ：経過秒で段階が変わる */
   const GAIN_BY_STAGE = [100, 500, 50000, 500000, 1000000];
   const gainStage = (now: number) => {
@@ -284,7 +306,9 @@ const Game: React.FC = () => {
 
   /** 「な」を出す（レア度抽選込み） */
   const spawnNa = (forceRarity?: Rarity) => {
-    const rarity = forceRarity ?? rollRarity(feverRef.current);
+    let rarity = forceRarity ?? rollRarity(feverRef.current);
+    // 強い演出は間隔をあける（集中できるように）
+    if (!forceRarity && (rarity === 'rare' || rarity === 'ultra') && !canStrongFx()) rarity = 'uncommon';
     const variant = pickVariant(rarity);
     const ps = createParticles(variant, rarity);
     setParticles((prev) => [...prev, ...ps].slice(-160));
@@ -295,17 +319,16 @@ const Game: React.FC = () => {
       runRef.current.rareSeen++;
       bumpLife((l) => ({ rareSeen: l.rareSeen + 1 }));
       flashRareLabel(`レア：${VARIANT_LABELS[variant]}`);
-      if (Math.random() < 0.4) showCutIn('rare');
     }
     if (rarity === 'ultra') {
       runRef.current.ultraSeen++;
       bumpLife((l) => ({ ultraSeen: l.ultraSeen + 1 }));
       flashRareLabel(`ウルトラレア：${VARIANT_LABELS[variant]}`);
-      showCutIn('ultra', true, 2200);
+      showCutIn('ultra', true, 1800);
     }
 
     switch (variant) {
-      case 'giant': doShake('shake', 500); break;
+      case 'giant': doShake('shake', 350); break;
       case 'thunder':
         setFlash(true); setTimeout(() => setFlash(false), 500);
         doShake('shake', 500);
@@ -313,7 +336,7 @@ const Game: React.FC = () => {
       case 'tsunami': doShake('shake-hard', 2400); break;
       case 'chaos': doShake('shake-hard', 3500); break;
       case 'invert': setWorldInvert(true); setTimeout(() => setWorldInvert(false), 2500); break;
-      case 'blackhole': doShake('shake', 900); break;
+      case 'blackhole': break;
       default: break;
     }
     if (rarity !== 'normal') setTimeout(() => checkAchievements(), 30);
@@ -332,14 +355,13 @@ const Game: React.FC = () => {
     if (p.variant === 'diamond') {
       runRef.current.diamondClicks++;
       bumpLife((l) => ({ totalDiamond: l.totalDiamond + 1 }));
-      showCutIn('gold', true);
-      doShake('shake', 600);
+      doShake('shake', 400);
       // ダイヤはおまけで大群も出す
       spawnNa('uncommon');
     } else {
       runRef.current.goldClicks++;
       bumpLife((l) => ({ totalGold: l.totalGold + 1 }));
-      if (Math.random() < 0.5) showCutIn('gold');
+      // 金はカットインなし（ポップだけ）
     }
     checkAchievements();
   };
@@ -349,7 +371,7 @@ const Game: React.FC = () => {
     runRef.current.shiashiaPokes++;
     bumpLife((l) => ({ totalPokes: l.totalPokes + 1 }));
     addHitWord(['つんっ', 'ひゃっ', 'やめて', 'な！', 'くすぐったい'][Math.floor(Math.random() * 5)], 'text-emerald-500', false);
-    if (gameState === 'PLAYING' && Math.random() < 0.25) showCutIn('poke');
+    // プレイ中はつついてもカットインは出さない
     if (gameState === 'READY' && lifeRef.current.totalPokes % 5 === 0) showCutIn('poke', true, 1800);
     checkAchievements();
   };
@@ -548,9 +570,26 @@ const Game: React.FC = () => {
   };
 
   // ===================== ヒット！ =====================
-  const triggerHit = () => {
+  const showJudge = (text: string, cls: string) => {
+    setJudge({ id: nextId(), text, cls });
+  };
+
+  const triggerHit = (distMs = 0) => {
     if (!isGameActiveRef.current) return; // Strict check
     const now = Date.now();
+
+    // --- 判定 ---
+    const jd = distMs <= JUDGE_PERFECT_MS ? 'perfect' : distMs <= JUDGE_GREAT_MS ? 'great' : 'good';
+    judgeRef.current[jd]++;
+    if (jd === 'perfect') {
+      perfectStreakRef.current++;
+      const ps = perfectStreakRef.current;
+      showJudge(ps >= 5 ? `PERFECT ×${ps}` : 'PERFECT', 'text-amber-400');
+      if (ps === 10 || ps === 25 || ps === 50) showBanner(`PERFECT ${ps}連続`, 'ズレなし');
+    } else {
+      perfectStreakRef.current = 0;
+      showJudge(jd === 'great' ? 'GREAT' : 'GOOD', jd === 'great' ? 'text-pink-500' : 'text-sky-500');
+    }
 
     // Trigger Reactive Animation
     setIsHitAnimating(true);
@@ -567,9 +606,11 @@ const Game: React.FC = () => {
     const c = comboRef.current;
     setCombo(c);
     if (c > runRef.current.maxCombo) { runRef.current.maxCombo = c; setMaxCombo(c); }
-    if (c === 10 || c === 30 || c === 50 || c === 100 || (c > 100 && c % 50 === 0)) {
-      showCutIn('combo');
+    if (c === 30 || c === 60 || c === 100 || (c > 100 && c % 50 === 0)) {
+      if (canStrongFx(true)) showCutIn('combo', true, 1600);
       spawnNa('uncommon');
+    } else if (c === 10) {
+      showBanner('10コンボ', 'このまま続けると フィーバー');
     }
 
     // --- フィーバー ---
@@ -577,8 +618,8 @@ const Game: React.FC = () => {
       feverRef.current = true;
       setFever(true);
       runRef.current.feverCount++;
-      showCutIn('fever', true, 2200);
-      spawnNa('rare');
+      canStrongFx(true); showCutIn('fever', true, 1800);
+      spawnNa('uncommon');
     }
 
     // 登録者数の増え方は元のまま（経過時間で 100 → 500 → 5万 → 50万 → 100万）
@@ -594,30 +635,34 @@ const Game: React.FC = () => {
 
     // --- 演出 ---
     spawnNa();
-    if (feverRef.current && Math.random() < 0.5) spawnNa();
-    if (c % 5 === 0 || Math.random() < 0.3) {
-      addHitWord(HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)]);
-    }
+    if (feverRef.current && Math.random() < 0.3) spawnNa();
+    if (c % 10 === 0) addHitWord(HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)]);
     if (c % 10 === 0) addScorePop(`+${gain.toLocaleString()}`);
-
-    // たまに意味もなくカットイン
-    if (Math.random() < 0.012) showCutIn('random', false, 1800);
 
     // 観客（元からある 30% / 60% の節目）
     const ratio = scoreRef.current / CLEAR_THRESHOLDS[gameModeRef.current];
     if (crowdStageRef.current < 1 && ratio > 0.3) { crowdStageRef.current = 1; showBanner('観客が集まりはじめた', 'ノルマ 30%'); }
     else if (crowdStageRef.current < 2 && ratio > 0.6) { crowdStageRef.current = 2; showBanner('観客が増えてきた', 'ノルマ 60%'); }
 
-    // クリア（ノルマ達成）
-    if (!runRef.current.cleared && scoreRef.current >= CLEAR_THRESHOLDS[gameModeRef.current]) {
-      runRef.current.cleared = true;
-      setClearShown(true);
-      setClearStamp(true);
-      setTimeout(() => setClearStamp(false), 2600);
-      playJingle('clear');
-      setTimeout(() => showCutIn('clear', true, 2400), 900);
-      spawnNa('ultra');
-      doShake('shake', 600);
+    // ノルマ達成（1段階目は大きく、2段階目以降は次のノルマが出る）
+    if (scoreRef.current >= quotaTarget(quotaStageRef.current)) {
+      const st = quotaStageRef.current;
+      quotaStageRef.current = st + 1;
+      setQuotaStage(st + 1);
+      if (st === 1) {
+        runRef.current.cleared = true;
+        setClearShown(true);
+        setClearStamp(true);
+        setTimeout(() => setClearStamp(false), 2200);
+        playJingle('clear');
+        canStrongFx(true);
+        spawnNa('rare');
+        doShake('shake', 500);
+      } else {
+        playJingle('result');
+        showBanner(`ノルマ${st} 達成`, `次は ${quotaTarget(st + 1)}回`);
+        spawnNa('uncommon');
+      }
     }
 
     if (c % 10 === 0 || c === 1) checkAchievements();
@@ -625,7 +670,9 @@ const Game: React.FC = () => {
 
   const breakCombo = () => {
     if (comboRef.current === 0) return;
+    if (comboRef.current >= 5) showJudge('コンボ切れ', 'text-slate-400');
     comboRef.current = 0;
+    perfectStreakRef.current = 0;
     setCombo(0);
     if (feverRef.current) {
       feverRef.current = false;
@@ -671,7 +718,7 @@ const Game: React.FC = () => {
     const distToQuarter = Math.min(phase, 1.0 - phase) * BEAT_INTERVAL_MS;
     const distToEighth = Math.abs(phase - 0.5) * BEAT_INTERVAL_MS;
     if (distToQuarter < HIT_WINDOW_MS * 1.3 || distToEighth < HIT_WINDOW_MS * 1.3) {
-      triggerHit();
+      triggerHit(Math.min(distToQuarter, distToEighth));
     } else {
       addHitWord(phase < 0.25 || (phase > 0.5 && phase < 0.75) ? 'おそい' : 'はやい', 'text-slate-400');
     }
@@ -739,7 +786,7 @@ const Game: React.FC = () => {
                     const distToQuarter = Math.min(phase, 1.0 - phase) * BEAT_INTERVAL_MS;
                     const distToEighth = Math.abs(phase - 0.5) * BEAT_INTERVAL_MS;
                     if (distToQuarter < HIT_WINDOW_MS || distToEighth < HIT_WINDOW_MS) {
-                        triggerHit();
+                        triggerHit(Math.min(distToQuarter, distToEighth));
                         isArmedRef.current = false;
                         currentNotePeakRef.current = vol;
                     }
@@ -791,6 +838,15 @@ const Game: React.FC = () => {
     endingDoneRef.current = false;
     gainStageRef.current = 0;
     crowdStageRef.current = 0;
+    judgeRef.current = { perfect: 0, great: 0, good: 0 };
+    perfectStreakRef.current = 0;
+    setJudge(null);
+    quotaStageRef.current = 1; setQuotaStage(1);
+    strongFxRef.current = 0;
+    try {
+      const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(`rhythm_na_subs_${gameMode}`) || '[]');
+      setGhostHits(prev.length ? Math.max(...prev.map((e) => e.hitCount || 0)) : 0);
+    } catch { setGhostHits(0); }
     setBanner(null);
     setClearStamp(false);
     setRevealT(0);
@@ -1047,6 +1103,31 @@ const Game: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState]);
 
+  // 判定文字は短く消す
+  useEffect(() => {
+    if (!judge) return;
+    const t = setTimeout(() => setJudge((j) => (j && j.id === judge.id ? null : j)), 550);
+    return () => clearTimeout(t);
+  }, [judge]);
+
+  // ビートに合わせて縮むリング（8分ごと）
+  useEffect(() => {
+    if (gameState !== 'PLAYING') return;
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const el = beatRingRef.current; if (!el) return;
+      const half = BEAT_INTERVAL_MS / 2;
+      const since = Math.max(0, Date.now() - (lastBeatTimeRef.current || 0));
+      const u = (since % half) / half;              // 0 → 1 で円に重なる
+      const sc = 1.9 - 0.9 * u;
+      el.style.transform = `scale(${sc.toFixed(3)})`;
+      el.style.opacity = `${0.25 + 0.65 * u}`;
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+  }, [gameState]);
+
   // 結果画面の演出タイマー
   useEffect(() => {
     if (gameState !== 'FINISHED') return;
@@ -1150,17 +1231,29 @@ const Game: React.FC = () => {
                 </div>
                 <div className="flex-1 max-w-sm">
                     <div className={`bg-white/90 backdrop-blur rounded-full p-2 border-4 shadow-md flex items-center gap-3 ${isCleared ? 'border-yellow-400 animate-pulse ring-4 ring-yellow-200' : 'border-cyan-400'}`}>
-                        <div className={`${isCleared ? 'text-yellow-500' : 'text-cyan-500'} font-black text-lg px-2`}>
-                            {isCleared ? 'クリア！' : 'ノルマ'}
+                        <div className={`${isCleared ? 'text-yellow-500' : 'text-cyan-500'} font-black text-lg px-2 whitespace-nowrap`}>
+                            {quotaStage === 1 ? 'ノルマ' : `ノルマ${quotaStage}`}
                         </div>
                         <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden border-2 border-gray-200 relative">
-                            <div
-                                className={`h-full transition-all duration-200 ease-out ${isCleared ? 'bg-gradient-to-r from-yellow-300 via-orange-300 to-yellow-300 animate-[scroll-bg_1s_linear_infinite] bg-[length:200%_100%]' : 'bg-cyan-400'}`}
-                                style={{ width: `${Math.min(100, (score / threshold) * 100)}%` }}
-                            ></div>
+                            {(() => {
+                              const prevT = quotaStage === 1 ? 0 : quotaTarget(quotaStage - 1, gameMode);
+                              const curT = quotaTarget(quotaStage, gameMode);
+                              const pct = Math.min(100, Math.max(0, ((score - prevT) / (curT - prevT)) * 100));
+                              const elapsed = MODE_DURATIONS[gameMode] - timeLeft;
+                              const ghost = ghostHits > 0 ? (ghostHits * elapsed) / MODE_DURATIONS[gameMode] : 0;
+                              const gpct = ghost > prevT ? Math.min(100, ((ghost - prevT) / (curT - prevT)) * 100) : -1;
+                              return (<>
+                                <div className={`h-full transition-all duration-200 ease-out ${isCleared ? 'bg-gradient-to-r from-yellow-300 via-orange-300 to-yellow-300 animate-[scroll-bg_1s_linear_infinite] bg-[length:200%_100%]' : 'bg-cyan-400'}`} style={{ width: `${pct}%` }}></div>
+                                {gpct >= 0 && (
+                                  <div className="absolute top-0 bottom-0 w-[3px] bg-slate-700 transition-all duration-1000 linear" style={{ left: `${gpct}%` }} title="自己ベストのペース">
+                                    <span className="absolute -top-0.5 left-1 text-[9px] font-bold text-slate-600 whitespace-nowrap leading-none">ベスト</span>
+                                  </div>
+                                )}
+                              </>);
+                            })()}
                         </div>
                         <div className="text-2xl font-black text-slate-700 w-24 text-right">
-                            {score}<span className="text-sm text-gray-400">/{threshold}</span>
+                            {score}<span className="text-sm text-gray-400">/{quotaTarget(quotaStage, gameMode)}</span>
                         </div>
                     </div>
                 </div>
@@ -1198,11 +1291,19 @@ const Game: React.FC = () => {
 
     const BeatIndicator = (
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center gap-3">
+            {/* 判定 */}
+            <div className="h-10 flex items-end justify-center pointer-events-none">
+              {judge && (
+                <div key={judge.id} className={`font-black text-2xl md:text-3xl animate-impact ${judge.cls} drop-shadow-[2px_2px_0_#fff]`} style={{ WebkitTextStroke: '1px #fff' }}>{judge.text}</div>
+              )}
+            </div>
             <div
                 onPointerDown={inputMode === 'tap' ? (e) => { e.preventDefault(); handleTap(); } : undefined}
                 className={`w-64 h-64 rounded-full border-8 border-white flex items-center justify-center backdrop-blur-sm transition-transform duration-75 ${fever ? 'bg-orange-200/40' : 'bg-pink-200/30'} ${isHitAnimating ? 'scale-110' : 'scale-100'} ${inputMode === 'tap' ? 'cursor-pointer active:scale-95 touch-none select-none' : ''}`}
             >
-                <div className={`w-48 h-48 bg-gradient-to-b ${fever ? 'from-orange-400 to-pink-500' : 'from-pink-400 to-pink-500'} rounded-full flex items-center justify-center shadow-[0_8px_0_rgba(219,39,119,0.2)] border-4 border-white transition-all duration-75 ${isHitAnimating ? 'brightness-110' : ''}`}>
+                <div className={`relative w-48 h-48 bg-gradient-to-b ${fever ? 'from-orange-400 to-pink-500' : 'from-pink-400 to-pink-500'} rounded-full flex items-center justify-center shadow-[0_8px_0_rgba(219,39,119,0.2)] border-4 border-white transition-all duration-75 ${isHitAnimating ? 'brightness-110' : ''}`}>
+                     {/* 縮むリング：円に重なった瞬間が「な」のタイミング */}
+                     <div ref={beatRingRef} className="absolute inset-0 rounded-full border-4 border-white/90 pointer-events-none" style={{ transform: 'scale(1.9)' }} />
                      <span className="text-6xl font-black text-white drop-shadow-md select-none">な！</span>
                 </div>
             </div>
@@ -1431,7 +1532,10 @@ const Game: React.FC = () => {
         const eased = 1 - Math.pow(1 - countK, 3);
         const shownSubs = Math.round(subscribers * eased);
         const ratio = score / threshold;
-        const rank = ratio >= 1.3 ? 'S' : ratio >= 1 ? 'A' : ratio >= 0.7 ? 'B' : ratio >= 0.4 ? 'C' : 'D';
+        const stagesDone = quotaStage - 1;
+        const jc = judgeRef.current;
+        const acc = score > 0 ? jc.perfect / score : 0;
+        const rank = (stagesDone >= 3 || (stagesDone >= 2 && acc >= 0.5)) ? 'S' : stagesDone >= 1 ? 'A' : ratio >= 0.7 ? 'B' : ratio >= 0.4 ? 'C' : 'D';
         const rankColor = rank === 'S' ? 'text-amber-400' : rank === 'A' ? 'text-pink-500' : rank === 'B' ? 'text-sky-500' : 'text-slate-500';
         const isNewRecord = isNewRecordRef.current;
         return (
@@ -1495,6 +1599,14 @@ const Game: React.FC = () => {
                     <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
                          <span className="font-bold text-gray-500">最大コンボ</span>
                          <span className="font-black text-pink-500">{show(1500) ? maxCombo : 0}</span>
+                    </div>
+                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
+                         <span className="font-bold text-gray-500">ノルマ達成</span>
+                         <span className="font-black text-slate-700">{show(1700) ? (stagesDone > 0 ? `${stagesDone}段階` : 'なし') : '-'}</span>
+                    </div>
+                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-sm">
+                         <span className="font-bold text-gray-500">PERFECT率</span>
+                         <span className="font-black text-amber-500">{show(1900) ? `${Math.round(acc * 100)}%` : '-'} <span className="text-xs text-gray-400">P{jc.perfect} G{jc.great} 可{jc.good}</span></span>
                     </div>
                     <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-xs md:text-sm">
                          <span className="font-bold text-gray-500">金 {runRef.current.goldClicks} · ダイヤ {runRef.current.diamondClicks} · フィーバー {runRef.current.feverCount}</span>
