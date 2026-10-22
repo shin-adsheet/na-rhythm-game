@@ -12,13 +12,16 @@ import { rollRarity, pickVariant, createParticles, nextId, VARIANT_LABELS } from
 import { ACHIEVEMENTS, achievementById, evaluate, loadUnlocked, saveUnlocked, loadLifetime, saveLifetime, LifetimeStats } from '../utils/achievements';
 import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings } from '../utils/endings';
 import NaEffects from './NaEffects';
-import Shiashia3D from './Shiashia3D';
+import { kindAt, restEndAt, barAt, BAR_LABEL, BAR_LEN, EighthKind } from '../utils/pattern';
+import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import CutIn, { CutInData, CutInKind, CUTIN_LINES } from './CutIn';
 import AchievementToasts, { ToastItem } from './AchievementToast';
 import EndingScene from './EndingScene';
 import CollectionBook from './CollectionBook';
 
 const HIT_WINDOW_MS = 100; // Tightened window, but we check 8th notes now
+const LANE_CELL = 34;      // 譜面レーンの 1 マスの幅（px）
+const LANE_CELLS = 10;
 
 // SVG Component for the Crowd
 const Crowd: React.FC<{ progress: number; fever: boolean }> = ({ progress, fever }) => {
@@ -106,7 +109,7 @@ const Game: React.FC = () => {
   // --- 1プレイの統計 ---
   const runRef = useRef<RunStats & { finished?: boolean }>({
     mode: '30s', hits: 0, subscribers: 0, maxCombo: 0, goldClicks: 0, diamondClicks: 0, rareSeen: 0, ultraSeen: 0,
-    feverCount: 0, pauses: 0, cutIns: 0, shiashiaPokes: 0, cleared: false, perfect: false,
+    feverCount: 0, pauses: 0, cutIns: 0, shiashiaPokes: 0, cleared: false, perfect: false, badHits: 0, restsKept: 0, cutoff: false,
   });
   const comboRef = useRef(0);
   const feverRef = useRef(false);
@@ -135,6 +138,17 @@ const Game: React.FC = () => {
   const [ghostHits, setGhostHits] = useState(0);             // 自己ベストの回数（ペース表示）
   const strongFxRef = useRef(0);                              // 直近の強い演出の時刻
   const beatRingRef = useRef<HTMLDivElement>(null);
+  // --- リスク要素：譜面・視聴者 ---
+  const beatCountRef = useRef(-1);                            // メトロノームが鳴った回数（-1＝まだ）
+  const seedRef = useRef(1);
+  const viewersRef = useRef(50);
+  const [viewers, setViewers] = useState(50);
+  const buzzUntilRef = useRef(0);                             // 満員ボーナス中（レア率アップ）
+  const restBlockRef = useRef<{ end: number; violated: boolean } | null>(null);
+  const [laneIdx, setLaneIdx] = useState(0);
+  const laneRef = useRef<HTMLDivElement>(null);
+  const [stageMood, setStageMood] = useState<ShiashiaMood>('dance');
+  const stageMoodTimer = useRef<number | null>(null);
   const rareLabelTimerRef = useRef<number | null>(null);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [inputMode, setInputMode] = useState<'mic' | 'tap'>(process.env.TAP_ONLY ? 'tap' : 'mic');
@@ -306,7 +320,7 @@ const Game: React.FC = () => {
 
   /** 「な」を出す（レア度抽選込み） */
   const spawnNa = (forceRarity?: Rarity) => {
-    let rarity = forceRarity ?? rollRarity(feverRef.current);
+    let rarity = forceRarity ?? rollRarity(feverRef.current || Date.now() < buzzUntilRef.current);
     // 強い演出は間隔をあける（集中できるように）
     if (!forceRarity && (rarity === 'rare' || rarity === 'ultra') && !canStrongFx()) rarity = 'uncommon';
     const variant = pickVariant(rarity);
@@ -570,6 +584,48 @@ const Game: React.FC = () => {
   };
 
   // ===================== ヒット！ =====================
+  /** いま何マス目か（8分音符単位）。メトロノームの回数とビート内の位置から */
+  const eighthAt = (now: number) => {
+    if (beatCountRef.current < 0) return -1;
+    const phase = ((now - lastBeatTimeRef.current) % BEAT_INTERVAL_MS) / BEAT_INTERVAL_MS;
+    return beatCountRef.current * 2 + (phase < 0.25 ? 0 : phase < 0.75 ? 1 : 2);
+  };
+
+  const setViewersClamped = (v: number) => {
+    const nv = Math.max(0, Math.min(100, v));
+    if (Math.round(nv) !== Math.round(viewersRef.current)) setViewers(Math.round(nv));
+    viewersRef.current = nv;
+  };
+
+  const flashStageMood = (m: ShiashiaMood, ms: number) => {
+    setStageMood(m);
+    if (stageMoodTimer.current) clearTimeout(stageMoodTimer.current);
+    stageMoodTimer.current = window.setTimeout(() => setStageMood('dance'), ms);
+  };
+
+  /** 言ってはいけないところで言った */
+  const triggerBad = (kind: EighthKind) => {
+    if (!isGameActiveRef.current) return;
+    const now = Date.now();
+    hitRef.current = now;
+    runRef.current.badHits++;
+    const rest = kind === 'rest';
+    if (rest && restBlockRef.current) restBlockRef.current.violated = true;
+    showJudge(rest ? '黙れって言った' : 'うるさい', 'text-red-500');
+    setViewersClamped(viewersRef.current - (rest ? 25 : 12));
+    breakCombo();
+    flashStageMood('shock', 700);
+    playJingle('buzz');
+    doShake('shake', 250);
+    if (viewersRef.current <= 0) finishGame(true);
+  };
+
+  /** ヒットの申告：譜面を見て、OK なら得点、NG なら減点 */
+  const attemptHit = (distMs: number) => {
+    const kind = kindAt(eighthAt(Date.now()), seedRef.current);
+    if (kind === 'ok') triggerHit(distMs); else triggerBad(kind);
+  };
+
   const showJudge = (text: string, cls: string) => {
     setJudge({ id: nextId(), text, cls });
   };
@@ -581,6 +637,18 @@ const Game: React.FC = () => {
     // --- 判定 ---
     const jd = distMs <= JUDGE_PERFECT_MS ? 'perfect' : distMs <= JUDGE_GREAT_MS ? 'great' : 'good';
     judgeRef.current[jd]++;
+
+    // --- 視聴者：ヒットで増える。満員で一度だけボーナス ---
+    setViewersClamped(viewersRef.current + (jd === 'perfect' ? 3 : 2));
+    if (viewersRef.current >= 100) {
+      const bonus = currentGain() * 5;
+      subsRef.current += bonus;
+      addScorePop(`+${bonus.toLocaleString()}`);
+      showBanner('視聴者が満員', 'ボーナス ＋ しばらくレアが出やすい');
+      buzzUntilRef.current = now + BEAT_INTERVAL_MS * 16;
+      setViewersClamped(70);
+      spawnNa('uncommon');
+    }
     if (jd === 'perfect') {
       perfectStreakRef.current++;
       const ps = perfectStreakRef.current;
@@ -682,7 +750,7 @@ const Game: React.FC = () => {
   };
 
   /** 達成感用のジングル（WebAudio で生成。音源不要） */
-  const playJingle = (kind: 'clear' | 'result' | 'fail' | 'record') => {
+  const playJingle = (kind: 'clear' | 'result' | 'fail' | 'record' | 'buzz') => {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       const v = Math.max(0.05, volume) * 0.25;
@@ -692,10 +760,12 @@ const Game: React.FC = () => {
         ? [[784, 0, 0.1], [988, 0.1, 0.1], [1175, 0.2, 0.1], [1568, 0.3, 0.5], [1319, 0.45, 0.4]]
         : kind === 'result'
         ? [[392, 0, 0.14], [523, 0.14, 0.14], [659, 0.28, 0.3]]
+        : kind === 'buzz'
+        ? [[160, 0, 0.22]]
         : [[330, 0, 0.25], [262, 0.25, 0.45]];
       notes.forEach(([f, at, len]) => {
         const o = ctx.createOscillator(); const gn = ctx.createGain();
-        o.type = kind === 'fail' ? 'triangle' : 'square';
+        o.type = kind === 'fail' ? 'triangle' : kind === 'buzz' ? 'sawtooth' : 'square';
         o.frequency.value = f;
         gn.gain.setValueAtTime(0.0001, ctx.currentTime + at);
         gn.gain.exponentialRampToValueAtTime(v, ctx.currentTime + at + 0.01);
@@ -718,7 +788,7 @@ const Game: React.FC = () => {
     const distToQuarter = Math.min(phase, 1.0 - phase) * BEAT_INTERVAL_MS;
     const distToEighth = Math.abs(phase - 0.5) * BEAT_INTERVAL_MS;
     if (distToQuarter < HIT_WINDOW_MS * 1.3 || distToEighth < HIT_WINDOW_MS * 1.3) {
-      triggerHit(Math.min(distToQuarter, distToEighth));
+      attemptHit(Math.min(distToQuarter, distToEighth));
     } else {
       addHitWord(phase < 0.25 || (phase > 0.5 && phase < 0.75) ? 'おそい' : 'はやい', 'text-slate-400');
     }
@@ -786,7 +856,7 @@ const Game: React.FC = () => {
                     const distToQuarter = Math.min(phase, 1.0 - phase) * BEAT_INTERVAL_MS;
                     const distToEighth = Math.abs(phase - 0.5) * BEAT_INTERVAL_MS;
                     if (distToQuarter < HIT_WINDOW_MS || distToEighth < HIT_WINDOW_MS) {
-                        triggerHit(Math.min(distToQuarter, distToEighth));
+                        attemptHit(Math.min(distToQuarter, distToEighth));
                         isArmedRef.current = false;
                         currentNotePeakRef.current = vol;
                     }
@@ -843,6 +913,13 @@ const Game: React.FC = () => {
     setJudge(null);
     quotaStageRef.current = 1; setQuotaStage(1);
     strongFxRef.current = 0;
+    beatCountRef.current = -1;
+    seedRef.current = 1 + Math.floor(Math.random() * 100000);
+    viewersRef.current = 50; setViewers(50);
+    buzzUntilRef.current = 0;
+    restBlockRef.current = null;
+    setLaneIdx(0);
+    setStageMood('dance');
     try {
       const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(`rhythm_na_subs_${gameMode}`) || '[]');
       setGhostHits(prev.length ? Math.max(...prev.map((e) => e.hitCount || 0)) : 0);
@@ -853,7 +930,7 @@ const Game: React.FC = () => {
     isNewRecordRef.current = false;
     runRef.current = {
       mode: gameMode, hits: 0, subscribers: 0, maxCombo: 0, goldClicks: 0, diamondClicks: 0, rareSeen: 0, ultraSeen: 0,
-      feverCount: 0, pauses: 0, cutIns: 0, shiashiaPokes: 0, cleared: false, perfect: false,
+      feverCount: 0, pauses: 0, cutIns: 0, shiashiaPokes: 0, cleared: false, perfect: false, badHits: 0, restsKept: 0, cutoff: false,
     };
     setError(null);
     lastTranscription.current = '';
@@ -957,6 +1034,7 @@ const Game: React.FC = () => {
         oscillator.start(audioContextRef.current.currentTime);
         oscillator.stop(audioContextRef.current.currentTime + 0.1);
         lastBeatTimeRef.current = Date.now();
+        beatCountRef.current += 1;
     };
     playBeat();
     if (metronomeInterval.current) clearInterval(metronomeInterval.current);
@@ -975,10 +1053,12 @@ const Game: React.FC = () => {
   }, [gameState, countdown]);
 
   // ===================== ゲーム終了 → エンディング =====================
-  const finishGame = () => {
+  const finishGame = (cutoff = false) => {
     if (finishingRef.current) return;
     finishingRef.current = true;
     isGameActiveRef.current = false;
+    if (gameTimer.current) { clearInterval(gameTimer.current); gameTimer.current = null; }
+    runRef.current.cutoff = cutoff;
     const mode = gameModeRef.current;
     const hits = scoreRef.current;
     const beats = (MODE_DURATIONS[mode] * 1000) / BEAT_INTERVAL_MS;
@@ -1110,19 +1190,55 @@ const Game: React.FC = () => {
     return () => clearTimeout(t);
   }, [judge]);
 
-  // ビートに合わせて縮むリング（8分ごと）
+  // ビートに合わせて縮むリング（8分ごと）＋ 譜面・視聴者の更新
   useEffect(() => {
     if (gameState !== 'PLAYING') return;
     let raf = 0;
+    let last = Date.now();
+    let lastE = -2;
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      const el = beatRingRef.current; if (!el) return;
+      const now = Date.now();
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      const el = beatRingRef.current;
       const half = BEAT_INTERVAL_MS / 2;
-      const since = Math.max(0, Date.now() - (lastBeatTimeRef.current || 0));
+      const since = Math.max(0, now - (lastBeatTimeRef.current || 0));
       const u = (since % half) / half;              // 0 → 1 で円に重なる
-      const sc = 1.9 - 0.9 * u;
-      el.style.transform = `scale(${sc.toFixed(3)})`;
-      el.style.opacity = `${0.25 + 0.65 * u}`;
+      if (el) {
+        const sc = 1.9 - 0.9 * u;
+        el.style.transform = `scale(${sc.toFixed(3)})`;
+        el.style.opacity = `${0.25 + 0.65 * u}`;
+      }
+      if (!isGameActiveRef.current) return;
+
+      // --- 譜面の位置 ---
+      const e = eighthAt(now);
+      if (e !== lastE) { lastE = e; setLaneIdx(Math.max(0, e)); }
+      if (laneRef.current) laneRef.current.style.transform = `translateX(${(-u * LANE_CELL).toFixed(1)}px)`;
+      const kind: EighthKind = kindAt(e, seedRef.current);
+
+      // --- 黙れ区間：守れたらボーナス ---
+      if (kind === 'rest') {
+        const end = restEndAt(e, seedRef.current);
+        if (!restBlockRef.current || restBlockRef.current.end !== end) restBlockRef.current = { end, violated: false };
+      } else if (restBlockRef.current && e > restBlockRef.current.end) {
+        if (!restBlockRef.current.violated) {
+          runRef.current.restsKept++;
+          setViewersClamped(viewersRef.current + 15);
+          showJudge('我慢ボーナス', 'text-emerald-500');
+        }
+        restBlockRef.current = null;
+      }
+
+      // --- 視聴者の離脱：言わないでいると減る（黙れ区間は減らない） ---
+      if (kind !== 'rest' && e >= 2) {
+        const idle = now - lastHitTimeRef.current;
+        if (idle > BEAT_INTERVAL_MS * 1.2) {
+          const rate = idle > BEAT_INTERVAL_MS * 3 ? 20 : 9;
+          setViewersClamped(viewersRef.current - rate * dt);
+          if (viewersRef.current <= 0) { finishGame(true); return; }
+        }
+      }
     };
     loop();
     return () => cancelAnimationFrame(raf);
@@ -1286,11 +1402,55 @@ const Game: React.FC = () => {
             {lastRareLabel && (
                 <div key={lastRareLabel} className="self-center mt-1 bg-slate-800/80 text-amber-300 text-xs font-bold px-3 py-1 rounded-full animate-[pop_0.3s]">{lastRareLabel}</div>
             )}
+
+            {/* 視聴者ゲージ（0 で配信終了） */}
+            <div className="self-center mt-1 w-64 md:w-80">
+                <div className={`bg-white/90 backdrop-blur rounded-full p-1.5 border-4 shadow-md flex items-center gap-2 ${viewers <= 20 ? 'border-red-500 animate-pulse' : 'border-slate-300'}`}>
+                    <div className={`font-black text-xs px-2 whitespace-nowrap ${viewers <= 20 ? 'text-red-500' : 'text-slate-500'}`}>{viewers <= 20 ? '離脱寸前' : '視聴者'}</div>
+                    <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                        <div className={`h-full transition-all duration-150 ${viewers <= 20 ? 'bg-red-500' : viewers >= 80 ? 'bg-emerald-400' : 'bg-slate-500'}`} style={{ width: `${viewers}%` }} />
+                    </div>
+                    <div className="text-sm font-black text-slate-700 w-8 text-right tabular-nums">{viewers}</div>
+                </div>
+            </div>
         </div>
     );
 
     const BeatIndicator = (
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center gap-3">
+        <div className="absolute top-[54%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center gap-2">
+            {/* 譜面レーン：左端が「いま」。白＝言う、灰＝言わない（裏拍）、赤＝黙れ */}
+            {(() => {
+              const barNow = barAt(Math.floor(laneIdx / BAR_LEN), seedRef.current);
+              const barNext = barAt(Math.floor(laneIdx / BAR_LEN) + 1, seedRef.current);
+              const posInBar = laneIdx % BAR_LEN;
+              const label = barNow.type !== 'free' ? BAR_LABEL[barNow.type] : (BAR_LEN - posInBar <= 6 && barNext.type !== 'free' ? `次：${BAR_LABEL[barNext.type]}` : '');
+              return (
+                <div className="flex flex-col items-center gap-1 pointer-events-none">
+                  <div className={`h-5 text-xs font-black px-3 rounded-full ${label ? (barNow.type === 'rest' || barNext.type === 'rest' ? 'bg-red-500 text-white' : 'bg-slate-700 text-white') : ''}`}>{label}</div>
+                  <div className="relative overflow-hidden" style={{ width: LANE_CELL * (LANE_CELLS - 1), height: 36 }}>
+                    <div ref={laneRef} className="absolute top-0 left-0 flex items-center h-full will-change-transform">
+                      {Array.from({ length: LANE_CELLS + 1 }).map((_, k) => {
+                        const e2 = laneIdx + k;
+                        const kd = kindAt(e2, seedRef.current);
+                        const onBeat = e2 % 2 === 0;
+                        return (
+                          <div key={e2} className="flex items-center justify-center shrink-0" style={{ width: LANE_CELL }}>
+                            {kd === 'rest' ? (
+                              <div className="w-7 h-7 rounded-md bg-red-500 border-2 border-white text-white text-[11px] font-black flex items-center justify-center shadow">黙</div>
+                            ) : kd === 'off' ? (
+                              <div className="w-3 h-3 rounded-full border-2 border-slate-400 bg-transparent" />
+                            ) : (
+                              <div className={`${onBeat ? 'w-5 h-5' : 'w-3.5 h-3.5'} rounded-full bg-white border-2 border-pink-400 shadow`} />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-pink-500 rounded-full" />
+                  </div>
+                </div>
+              );
+            })()}
             {/* 判定 */}
             <div className="h-10 flex items-end justify-center pointer-events-none">
               {judge && (
@@ -1318,7 +1478,7 @@ const Game: React.FC = () => {
     // ゲーム中のしあしあ（左下）
     const ShiashiaStage = (
         <div className="absolute bottom-0 left-0 z-30 md:left-6">
-            <Shiashia3D beatRef={lastBeatTimeRef} hitRef={hitRef} mood="dance" intensity={Math.min(1, combo / 40)} size={isMobile ? 150 : 240} onPoke={handlePoke} />
+            <Shiashia3D beatRef={lastBeatTimeRef} hitRef={hitRef} mood={stageMood} intensity={Math.min(1, combo / 40)} size={isMobile ? 150 : 240} onPoke={handlePoke} />
         </div>
     );
 
@@ -1603,6 +1763,10 @@ const Game: React.FC = () => {
                     <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
                          <span className="font-bold text-gray-500">ノルマ達成</span>
                          <span className="font-black text-slate-700">{show(1700) ? (stagesDone > 0 ? `${stagesDone}段階` : 'なし') : '-'}</span>
+                    </div>
+                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-sm">
+                         <span className="font-bold text-gray-500">黙れ区間</span>
+                         <span className="font-black text-slate-700">{show(1800) ? `守った ${runRef.current.restsKept} / うるさい ${runRef.current.badHits}` : '-'}</span>
                     </div>
                     <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-sm">
                          <span className="font-bold text-gray-500">PERFECT率</span>

@@ -88,6 +88,12 @@ export const ENDINGS: Ending[] = [
 
   // ===== シークレット（条件で確定） =====
   {
+    id: 'cutoff', no: 15, title: '配信終了エンド', subtitle: '視聴者：0人',
+    scene: 'cutoff', rarity: 'uncommon', condition: 'secret', weight: 0, durationMs: 6500,
+    lines: ['視聴者が、全員いなくなった。', '「配信を終了しました」', '名を伝える相手は、もういない。', '……次は、黙るところで黙ろう。'],
+    oneLiner: '（あなたの名を伝える前に、視聴者が全員帰りました）',
+  },
+  {
     id: 'silent', no: 14, title: '無言配信エンド', subtitle: '視聴者：0人',
     scene: 'silent', rarity: 'rare', condition: 'secret', weight: 0, durationMs: 6500,
     lines: ['…………。', '…………………。', '一度も名を伝えなかった。', '視聴者はいなかった。最初から。'],
@@ -108,6 +114,7 @@ export function saveSeenEndings(map: Record<string, number>) {
 export function pickEnding(run: RunStats, seen: Record<string, number>): Ending {
   // --- シークレット条件 ---
   if (run.hits === 0) return ENDINGS.find((e) => e.id === 'silent')!;
+  if (run.cutoff) return ENDINGS.find((e) => e.id === 'cutoff')!;
 
   const pool = ENDINGS.filter((e) =>
     e.condition === 'any' || (run.cleared ? e.condition === 'clear' : e.condition === 'fail'),

@@ -70,7 +70,7 @@ export interface Achievement {
 export type EndingScene =
   | 'explode' | 'rocket' | 'fire' | 'legend' | 'nafy' | 'god'
   | 'bottom' | 'silent' | 'cat' | 'sleep'
-  | 'glitch' | 'timeloop' | 'mirror' | 'alien';
+  | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff';
 
 export interface Ending {
   id: string;
@@ -102,4 +102,7 @@ export interface RunStats {
   shiashiaPokes: number;
   cleared: boolean;
   perfect: boolean; // ほぼ全ビート叩けた
+  badHits: number;   // 黙れ区間・裏拍で言ってしまった回数
+  restsKept: number; // 黙れ区間を守った回数
+  cutoff: boolean;   // 視聴者が0になって配信終了
 }

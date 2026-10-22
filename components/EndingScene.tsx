@@ -317,6 +317,19 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
       );
       break;
     }
+    case 'cutoff': {
+      bg = 'bg-slate-950';
+      mood = 'sad';
+      extra = (
+        <>
+          <div className="absolute top-[12%] left-1/2 -translate-x-1/2 flex items-center gap-2 bg-red-600 text-white font-bold text-sm px-4 py-1 rounded-full">
+            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />LIVE　視聴者：0人
+          </div>
+          {progress > 0.5 && <div className="absolute inset-0 bg-black/70 ending-fade flex items-center justify-center"><div className="text-slate-300 font-bold text-2xl md:text-4xl border-4 border-slate-500 px-8 py-4 rounded-2xl">配信を終了しました</div></div>}
+        </>
+      );
+      break;
+    }
     case 'silent': {
       bg = 'bg-black';
       mood = 'idle';
