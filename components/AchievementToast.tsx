@@ -19,7 +19,7 @@ const AchievementToasts: React.FC<{ toasts: ToastItem[] }> = ({ toasts }) => (
         className={`toast-in bg-gradient-to-r ${RARITY_STYLE[t.achievement.rarity]} border-4 rounded-2xl shadow-xl px-4 py-2 flex items-center gap-3 min-w-[260px] max-w-[90vw]`}
         style={{ animationDelay: `${i * 0.1}s` }}
       >
-        <div className="text-3xl drop-shadow">{t.achievement.icon}</div>
+        <div className="w-11 h-11 shrink-0 rounded-xl bg-slate-800 text-white border-4 border-white flex items-center justify-center font-black text-lg">{t.achievement.icon}</div>
         <div className="flex flex-col leading-tight">
           <div className="text-[10px] font-bold text-slate-400 tracking-widest">
             実績解除 · {RARITY_LABEL[t.achievement.rarity]}

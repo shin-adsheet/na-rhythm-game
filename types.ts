@@ -81,6 +81,7 @@ export interface Ending {
   rarity: Rarity;
   condition: 'clear' | 'fail' | 'any' | 'secret';
   lines: string[];      // タイプライターで出るテキスト
+  oneLiner: string;     // 結果画面に出る一言（元の「（あなたの名を伝えすぎて、世界が爆発しました）」と同じ形式）
   weight: number;       // 抽選の重み
   durationMs: number;   // 演出時間
 }

@@ -21,10 +21,10 @@ export const FEVER_COMBO = 20;
 /** 連続ヒットが途切れたと判定するまでの猶予（ビート数） */
 export const COMBO_BREAK_BEATS = 2.5;
 
-/** 金の「な」クリックのボーナス登録者数 */
-export const GOLD_BONUS = 10000;
-/** ダイヤの「な」クリックのボーナス登録者数 */
-export const DIAMOND_BONUS = 1000000;
+/** 金の「な」クリックのボーナス（いまの1回分の何倍か） */
+export const GOLD_BONUS = 10;
+/** ダイヤの「な」クリックのボーナス（いまの1回分の何倍か） */
+export const DIAMOND_BONUS = 200;
 
 /** ヒット時にポンッと出る言葉 */
 export const HIT_WORDS = [

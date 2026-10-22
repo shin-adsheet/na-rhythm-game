@@ -37,15 +37,15 @@ const CollectionBook: React.FC<Props> = ({ unlocked, seenEndings, seenVariants, 
       >
         {/* ヘッダー */}
         <div className="flex items-center justify-between px-5 py-3 bg-yellow-200 border-b-4 border-yellow-300">
-          <h2 className="text-2xl font-black text-slate-700">📖 ずかん</h2>
-          <button onClick={onClose} className="bg-white text-slate-500 font-black w-10 h-10 rounded-full border-4 border-slate-200 hover:bg-pink-400 hover:text-white hover:border-white transition-colors">✕</button>
+          <h2 className="text-2xl font-black text-slate-700">ずかん</h2>
+          <button onClick={onClose} className="bg-white text-slate-500 font-black w-10 h-10 rounded-full border-4 border-slate-200 hover:bg-pink-400 hover:text-white hover:border-white transition-colors">×</button>
         </div>
 
         {/* タブ */}
         <div className="flex gap-2 p-3 bg-yellow-50">
           {([
-            ['achievements', `🏆 実績 ${unlockedCount}/${ACHIEVEMENTS.length}`],
-            ['endings', `🎬 エンディング ${endingCount}/${ENDINGS.length}`],
+            ['achievements', `実績 ${unlockedCount}/${ACHIEVEMENTS.length}`],
+            ['endings', `エンディング ${endingCount}/${ENDINGS.length}`],
             ['na', `な 図鑑 ${variantCount}/${allVariants.length}`],
           ] as [Tab, string][]).map(([t, label]) => (
             <button key={t} onClick={() => setTab(t)}
@@ -64,7 +64,7 @@ const CollectionBook: React.FC<Props> = ({ unlocked, seenEndings, seenVariants, 
                 const hidden = a.secret && !done;
                 return (
                   <div key={a.id} className={`flex items-center gap-3 rounded-2xl border-4 px-3 py-2 ${done ? RARITY_BG[a.rarity] : 'bg-slate-50 border-slate-100 opacity-60'}`}>
-                    <div className={`text-3xl ${done ? '' : 'grayscale'}`}>{hidden ? '❓' : a.icon}</div>
+                    <div className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center font-black text-lg border-4 ${done ? 'bg-slate-800 text-white border-white' : 'bg-slate-200 text-slate-400 border-slate-100'}`}>{hidden ? '?' : a.icon}</div>
                     <div className="flex-1 min-w-0">
                       <div className={`text-[10px] font-bold ${RARITY_COLOR[a.rarity]}`}>{RARITY_LABEL[a.rarity]}{a.secret ? ' · シークレット' : ''}</div>
                       <div className="font-black text-slate-800 truncate">{hidden ? '？？？' : a.title}</div>

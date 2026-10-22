@@ -65,6 +65,49 @@ const Confetti: React.FC<{ count?: number; colors?: string[] }> = ({ count = 60,
   );
 };
 
+/* ---- 絵文字を使わない小道具（SVG） ---- */
+const Crown: React.FC = () => (
+  <svg viewBox="0 0 100 70" width="110" height="77" aria-hidden="true">
+    <path d="M8 60 L14 22 L34 40 L50 10 L66 40 L86 22 L92 60 Z" fill="#fbbf24" stroke="#b45309" strokeWidth="4" strokeLinejoin="round" />
+    <rect x="8" y="58" width="84" height="10" rx="3" fill="#f59e0b" stroke="#b45309" strokeWidth="3" />
+    <circle cx="50" cy="10" r="5" fill="#fff" stroke="#b45309" strokeWidth="2" />
+    <circle cx="14" cy="22" r="4" fill="#fff" stroke="#b45309" strokeWidth="2" />
+    <circle cx="86" cy="22" r="4" fill="#fff" stroke="#b45309" strokeWidth="2" />
+  </svg>
+);
+const Cat: React.FC = () => (
+  <svg viewBox="0 0 120 90" width="150" height="112" aria-hidden="true">
+    <ellipse cx="62" cy="62" rx="40" ry="24" fill="#374151" />
+    <path d="M100 60 Q118 50 112 30" stroke="#374151" strokeWidth="9" fill="none" strokeLinecap="round" />
+    <circle cx="34" cy="42" r="22" fill="#374151" />
+    <path d="M16 30 L18 8 L34 22 Z M52 30 L50 8 L34 22 Z" fill="#374151" />
+    <path d="M20 29 L21 15 L31 24 Z M48 29 L47 15 L37 24 Z" fill="#f9a8d4" />
+    <circle cx="27" cy="43" r="3.2" fill="#fde047" /><circle cx="41" cy="43" r="3.2" fill="#fde047" />
+    <circle cx="27" cy="43" r="1.2" fill="#111" /><circle cx="41" cy="43" r="1.2" fill="#111" />
+    <path d="M30 52 Q34 56 38 52" stroke="#f9a8d4" strokeWidth="2" fill="none" strokeLinecap="round" />
+    <rect x="30" y="80" width="10" height="8" rx="3" fill="#374151" /><rect x="76" y="80" width="10" height="8" rx="3" fill="#374151" />
+  </svg>
+);
+const Clock: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <svg viewBox="0 0 100 100" width="130" height="130" className={className} aria-hidden="true">
+    <circle cx="50" cy="50" r="44" fill="#fef3c7" stroke="#92400e" strokeWidth="6" />
+    <circle cx="50" cy="50" r="36" fill="none" stroke="#d97706" strokeWidth="2" strokeDasharray="2 7.4" />
+    <g className="clock-back" style={{ transformOrigin: '50px 50px' }}>
+      <path d="M50 50 L50 20" stroke="#92400e" strokeWidth="5" strokeLinecap="round" />
+      <path d="M50 50 L70 50" stroke="#92400e" strokeWidth="7" strokeLinecap="round" />
+    </g>
+    <circle cx="50" cy="50" r="4" fill="#92400e" />
+  </svg>
+);
+const Ufo: React.FC = () => (
+  <svg viewBox="0 0 160 80" width="200" height="100" aria-hidden="true">
+    <ellipse cx="80" cy="34" rx="30" ry="22" fill="#a5f3fc" stroke="#0e7490" strokeWidth="4" />
+    <ellipse cx="80" cy="50" rx="74" ry="18" fill="#94a3b8" stroke="#1e293b" strokeWidth="4" />
+    <ellipse cx="80" cy="46" rx="60" ry="10" fill="#cbd5e1" />
+    {[-48, -24, 0, 24, 48].map((x) => <circle key={x} cx={80 + x} cy="58" r="5" fill="#fde047" stroke="#854d0e" strokeWidth="2" />)}
+  </svg>
+);
+
 const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }) => {
   const [elapsed, setElapsed] = useState(0);
   const lines = useTypewriter(ending.lines);
@@ -147,7 +190,7 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
       extra = (
         <>
           <Confetti count={90} colors={['#fbbf24', '#f59e0b', '#fff', '#fde68a']} />
-          <div className="absolute top-[14%] left-1/2 -translate-x-1/2 text-7xl animate-bounce drop-shadow-xl">👑</div>
+          <div className="absolute top-[12%] left-1/2 -translate-x-1/2 animate-bounce drop-shadow-xl"><Crown /></div>
           <div className="absolute inset-0 bg-[conic-gradient(from_0deg,rgba(255,255,255,0)_0deg,rgba(255,255,255,0.6)_20deg,rgba(255,255,255,0)_40deg)] animate-[spin_6s_linear_infinite] opacity-60" />
         </>
       );
@@ -200,7 +243,7 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
           {progress > 0.4 && progress < 0.75 && (
             <div className="mb-2 bg-white border-4 border-slate-800 rounded-2xl px-5 py-2 text-4xl font-black text-slate-800 animate-impact">な</div>
           )}
-          <div className="text-8xl">🐈</div>
+          <Cat />
         </div>
       );
       break;
@@ -239,7 +282,7 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
       extra = (
         <>
           <Stars count={40} />
-          <div className="clock-back absolute top-[12%] left-1/2 -translate-x-1/2 text-8xl md:text-9xl">🕰️</div>
+          <div className="absolute top-[10%] left-1/2 -translate-x-1/2"><Clock /></div>
         </>
       );
       break;
@@ -267,7 +310,7 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
         <>
           <Stars count={60} />
           <div className="ufo absolute top-[8%] left-1/2 -translate-x-1/2 flex flex-col items-center">
-            <div className="text-8xl md:text-9xl">🛸</div>
+            <Ufo />
             {progress > 0.35 && <div className="beam w-[40vmin] h-[70vh] bg-gradient-to-b from-lime-300/70 to-transparent" style={{ clipPath: 'polygon(35% 0, 65% 0, 100% 100%, 0 100%)' }} />}
           </div>
         </>
@@ -299,8 +342,8 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
           <div className="text-xl md:text-2xl font-black">{ending.title}</div>
           <div className="text-xs text-white/80">{ending.subtitle}</div>
         </div>
-        {isNew && <div className="bg-yellow-300 text-slate-800 font-black px-3 py-1 rounded-full text-sm border-2 border-white -rotate-6 animate-bounce">NEW!</div>}
       </div>
+      {isNew && <div className="absolute top-24 left-4 bg-yellow-300 text-slate-800 font-black px-3 py-1 rounded-full text-sm border-2 border-white -rotate-6 animate-bounce pointer-events-none">NEW!</div>}
 
       {/* セリフ */}
       <div className={`absolute top-[26%] md:top-[30%] left-1/2 -translate-x-1/2 w-[92%] max-w-2xl text-center ${textColor} pointer-events-none`}>
@@ -311,7 +354,12 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
         ))}
       </div>
 
-      <div className="absolute bottom-3 right-4 text-white/70 text-xs font-bold bg-black/40 px-3 py-1 rounded-full">タップでスキップ ▶</div>
+      {progress > 0.82 && (
+        <div className="absolute bottom-[3%] left-1/2 -translate-x-1/2 w-[94%] max-w-2xl text-center animate-impact pointer-events-none">
+          <span className="inline-block bg-yellow-200 text-red-500 font-black text-base md:text-2xl px-5 py-2 rounded-full border-4 border-white shadow-lg">{ending.oneLiner}</span>
+        </div>
+      )}
+      <div className="absolute top-3 right-3 text-white/80 text-xs font-bold bg-black/40 px-3 py-1 rounded-full">タップでスキップ</div>
     </div>
   );
 };

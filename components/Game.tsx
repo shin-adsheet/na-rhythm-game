@@ -118,6 +118,13 @@ const Game: React.FC = () => {
   const timeLeftRef = useRef(MODE_DURATIONS['30s']);
   const finishingRef = useRef(false);
   const endingDoneRef = useRef(false);
+  const gainStageRef = useRef(0);
+  const crowdStageRef = useRef(0);
+  const [banner, setBanner] = useState<{ id: number; title: string; sub?: string } | null>(null);
+  const [clearStamp, setClearStamp] = useState(false);
+  const [revealT, setRevealT] = useState(0);   // 結果画面の演出時間（ms）
+  const isNewRecordRef = useRef(false);
+  const prevBestRef = useRef(0);
   const rareLabelTimerRef = useRef<number | null>(null);
   const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [inputMode, setInputMode] = useState<'mic' | 'tap'>(process.env.TAP_ONLY ? 'tap' : 'mic');
@@ -260,6 +267,21 @@ const Game: React.FC = () => {
     setSeenVariants(seenVariantsRef.current);
   };
 
+  /** 元の登録者数カーブ：経過秒で段階が変わる */
+  const GAIN_BY_STAGE = [100, 500, 50000, 500000, 1000000];
+  const gainStage = (now: number) => {
+    const t = (now - startTimeRef.current) / 1000;
+    return t > 85 ? 4 : t > 60 ? 3 : t > 30 ? 2 : t > 10 ? 1 : 0;
+  };
+  const currentGain = () => GAIN_BY_STAGE[gainStage(Date.now())];
+
+  /** 途中の節目（元からある：観客の登場・登録者の伸び・ノルマ）を帯で知らせる */
+  const showBanner = (title: string, sub?: string) => {
+    const id = nextId();
+    setBanner({ id, title, sub });
+    setTimeout(() => setBanner((b) => (b && b.id === id ? null : b)), 1700);
+  };
+
   /** 「な」を出す（レア度抽選込み） */
   const spawnNa = (forceRarity?: Rarity) => {
     const rarity = forceRarity ?? rollRarity(feverRef.current);
@@ -301,12 +323,12 @@ const Game: React.FC = () => {
   const handleSpecialClick = (p: NaParticle, e: React.MouseEvent) => {
     e.stopPropagation();
     setParticles((prev) => prev.filter((x) => x.id !== p.id));
-    const mult = feverRef.current ? 2 : 1;
-    const bonus = (p.variant === 'diamond' ? DIAMOND_BONUS : GOLD_BONUS) * mult;
+    // ボーナスは「いまの1回分 × 回数」（元の増え方を崩さない）
+    const bonus = currentGain() * (p.variant === 'diamond' ? DIAMOND_BONUS : GOLD_BONUS);
     subsRef.current += bonus;
     setSubscribers(subsRef.current);
     addScorePop(`+${bonus.toLocaleString()}`);
-    addHitWord(p.variant === 'diamond' ? '💎ダイヤ！' : '⭐ゲット！', 'text-amber-500', false);
+    addHitWord(p.variant === 'diamond' ? 'ダイヤ獲得！' : '金の「な」獲得！', 'text-amber-500', false);
     if (p.variant === 'diamond') {
       runRef.current.diamondClicks++;
       bumpLife((l) => ({ totalDiamond: l.totalDiamond + 1 }));
@@ -559,17 +581,13 @@ const Game: React.FC = () => {
       spawnNa('rare');
     }
 
-    // Calculate Subscriber Gain based on Inflation Logic
-    const elapsedTime = (now - startTimeRef.current) / 1000;
-    let gain = 100;
-    if (elapsedTime > 85) gain = 1000000;
-    else if (elapsedTime > 60) gain = 500000;
-    else if (elapsedTime > 30) gain = 50000;
-    else if (elapsedTime > 10) gain = 500;
-    else gain = 100;
-    if (feverRef.current) gain *= 2;
-    // コンボボーナス（10コンボごとに+10%）
-    gain = Math.round(gain * (1 + Math.floor(c / 10) * 0.1));
+    // 登録者数の増え方は元のまま（経過時間で 100 → 500 → 5万 → 50万 → 100万）
+    const stage = gainStage(now);
+    const gain = GAIN_BY_STAGE[stage];
+    if (stage !== gainStageRef.current) {
+      gainStageRef.current = stage;
+      if (stage > 0) showBanner(`登録者の伸びが変わった`, `1回で ${gain.toLocaleString()}人`);
+    }
 
     subsRef.current += gain;
     setSubscribers(subsRef.current);
@@ -585,11 +603,19 @@ const Game: React.FC = () => {
     // たまに意味もなくカットイン
     if (Math.random() < 0.012) showCutIn('random', false, 1800);
 
-    // クリア
+    // 観客（元からある 30% / 60% の節目）
+    const ratio = scoreRef.current / CLEAR_THRESHOLDS[gameModeRef.current];
+    if (crowdStageRef.current < 1 && ratio > 0.3) { crowdStageRef.current = 1; showBanner('観客が集まりはじめた', 'ノルマ 30%'); }
+    else if (crowdStageRef.current < 2 && ratio > 0.6) { crowdStageRef.current = 2; showBanner('観客が増えてきた', 'ノルマ 60%'); }
+
+    // クリア（ノルマ達成）
     if (!runRef.current.cleared && scoreRef.current >= CLEAR_THRESHOLDS[gameModeRef.current]) {
       runRef.current.cleared = true;
       setClearShown(true);
-      showCutIn('clear', true, 2400);
+      setClearStamp(true);
+      setTimeout(() => setClearStamp(false), 2600);
+      playJingle('clear');
+      setTimeout(() => showCutIn('clear', true, 2400), 900);
       spawnNa('ultra');
       doShake('shake', 600);
     }
@@ -606,6 +632,32 @@ const Game: React.FC = () => {
       setFever(false);
       addHitWord('フィーバー終了…', 'text-slate-400', false);
     }
+  };
+
+  /** 達成感用のジングル（WebAudio で生成。音源不要） */
+  const playJingle = (kind: 'clear' | 'result' | 'fail' | 'record') => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const v = Math.max(0.05, volume) * 0.25;
+      const notes: [number, number, number][] = kind === 'clear'
+        ? [[523, 0, 0.12], [659, 0.12, 0.12], [784, 0.24, 0.12], [1047, 0.36, 0.45]]
+        : kind === 'record'
+        ? [[784, 0, 0.1], [988, 0.1, 0.1], [1175, 0.2, 0.1], [1568, 0.3, 0.5], [1319, 0.45, 0.4]]
+        : kind === 'result'
+        ? [[392, 0, 0.14], [523, 0.14, 0.14], [659, 0.28, 0.3]]
+        : [[330, 0, 0.25], [262, 0.25, 0.45]];
+      notes.forEach(([f, at, len]) => {
+        const o = ctx.createOscillator(); const gn = ctx.createGain();
+        o.type = kind === 'fail' ? 'triangle' : 'square';
+        o.frequency.value = f;
+        gn.gain.setValueAtTime(0.0001, ctx.currentTime + at);
+        gn.gain.exponentialRampToValueAtTime(v, ctx.currentTime + at + 0.01);
+        gn.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + len);
+        o.connect(gn); gn.connect(ctx.destination);
+        o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + len + 0.05);
+      });
+      setTimeout(() => ctx.close().catch(() => {}), 2500);
+    } catch { /* noop */ }
   };
 
   /** タップ / キー入力での「な」（マイクが使えない環境向け） */
@@ -737,6 +789,12 @@ const Game: React.FC = () => {
     if (cutInTimerRef.current) { clearTimeout(cutInTimerRef.current); cutInTimerRef.current = null; }
     finishingRef.current = false;
     endingDoneRef.current = false;
+    gainStageRef.current = 0;
+    crowdStageRef.current = 0;
+    setBanner(null);
+    setClearStamp(false);
+    setRevealT(0);
+    isNewRecordRef.current = false;
     runRef.current = {
       mode: gameMode, hits: 0, subscribers: 0, maxCombo: 0, goldClicks: 0, diamondClicks: 0, rareSeen: 0, ultraSeen: 0,
       feverCount: 0, pauses: 0, cutIns: 0, shiashiaPokes: 0, cleared: false, perfect: false,
@@ -892,6 +950,12 @@ const Game: React.FC = () => {
   const handleEndingDone = () => {
     if (!ending || endingDoneRef.current) return;
     endingDoneRef.current = true;
+    // これまでの最高記録と比べる（保存する前に）
+    try {
+      const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(`rhythm_na_subs_${gameModeRef.current}`) || '[]');
+      prevBestRef.current = prev.length ? Math.max(...prev.map((e) => e.score)) : 0;
+    } catch { prevBestRef.current = 0; }
+    isNewRecordRef.current = subsRef.current > prevBestRef.current && subsRef.current > 0;
     saveScore(subsRef.current, scoreRef.current, ending.id);
     bumpLife((l) => ({ plays: l.plays + 1, totalHits: l.totalHits + scoreRef.current }));
     checkAchievements(true);
@@ -980,6 +1044,20 @@ const Game: React.FC = () => {
       stopMicAnalysis(false);
     }
     return () => {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState]);
+
+  // 結果画面の演出タイマー
+  useEffect(() => {
+    if (gameState !== 'FINISHED') return;
+    const t0 = Date.now();
+    setRevealT(0);
+    const iv = setInterval(() => setRevealT(Date.now() - t0), 40);
+    const cleared = runRef.current.cleared;
+    const j1 = setTimeout(() => playJingle(cleared ? 'clear' : 'fail'), 350);
+    const j2 = setTimeout(() => { if (isNewRecordRef.current) playJingle('record'); }, 2600);
+    const stop = setTimeout(() => clearInterval(iv), 6000);
+    return () => { clearInterval(iv); clearTimeout(j1); clearTimeout(j2); clearTimeout(stop); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState]);
 
@@ -1108,7 +1186,7 @@ const Game: React.FC = () => {
                 )}
                 {fever && (
                     <div className="fever-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 text-white font-black px-5 py-1 rounded-full border-4 border-white shadow-lg text-lg md:text-2xl">
-                        🔥 FEVER ×2 🔥
+                        FEVER　レアな「な」が出やすい
                     </div>
                 )}
             </div>
@@ -1233,9 +1311,9 @@ const Game: React.FC = () => {
 
                      {/* ずかんボタン */}
                      <button onClick={() => setShowBook(true)} className="w-full bg-white/80 backdrop-blur rounded-2xl p-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.1)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between">
-                         <span className="font-black text-slate-700 text-lg">📖 ずかん</span>
+                         <span className="font-black text-slate-700 text-lg">ずかん</span>
                          <span className="text-xs font-bold text-slate-400">
-                             🏆 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length} · 🎬 {Object.keys(seenEndings).length}/{TOTAL_ENDINGS}
+                             実績 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length} · エンディング {Object.keys(seenEndings).length}/{TOTAL_ENDINGS}
                          </span>
                      </button>
                 </div>
@@ -1244,18 +1322,18 @@ const Game: React.FC = () => {
                 <div className="flex-1 order-2">
                      <div className="h-full bg-sky-200/90 backdrop-blur rounded-[2rem] border-4 md:border-8 border-white p-4 text-slate-700 flex flex-col justify-center gap-4 shadow-lg relative overflow-hidden">
                          <div className="absolute top-[-20px] left-[-20px] w-20 h-20 bg-sky-300 rounded-full opacity-50"></div>
-                         <div className="bg-white text-sky-500 font-black px-4 py-1 rounded-full inline-block self-center mb-2 shadow-sm text-lg border-2 border-sky-100">⚙️ せってい</div>
+                         <div className="bg-white text-sky-500 font-black px-4 py-1 rounded-full inline-block self-center mb-2 shadow-sm text-lg border-2 border-sky-100">せってい</div>
 
                          <div className="bg-white/50 p-3 rounded-xl">
                              <div className="flex justify-between mb-1 font-bold text-sky-600 text-sm">
-                                 <span>🔊 おんりょう</span>
+                                 <span>おんりょう</span>
                                  <span>{Math.round(volume * 100)}%</span>
                              </div>
                              <input type="range" min="0" max="1" step="0.1" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full accent-yellow-400" />
                          </div>
 
                          <div className="bg-white/50 p-3 rounded-xl">
-                             <div className="font-bold text-sky-600 mb-1 text-sm">📁 BGMをえらぶ</div>
+                             <div className="font-bold text-sky-600 mb-1 text-sm">BGMをえらぶ</div>
                              <input type="file" accept="audio/*" onChange={handleBgmSelect}
                                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer mb-2" />
                              <input type="text" placeholder="またはURLを入力 (GitHub Rawなど)" value={customUrl} onChange={handleUrlChange}
@@ -1266,9 +1344,9 @@ const Game: React.FC = () => {
                          {/* 入力モード */}
                          {!TAP_ONLY && (
                          <div className="bg-white/50 p-3 rounded-xl">
-                             <div className="font-bold text-sky-600 mb-2 text-sm">🎮 にゅうりょく</div>
+                             <div className="font-bold text-sky-600 mb-2 text-sm">にゅうりょく</div>
                              <div className="flex gap-2">
-                                 {([['mic', '🎤 声で「な」'], ['tap', '👆 タップ / スペース']] as const).map(([m, label]) => (
+                                 {([['mic', '声で「な」'], ['tap', 'タップ / スペース']] as const).map(([m, label]) => (
                                      <button key={m} onClick={() => setInputMode(m)}
                                          className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${inputMode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706]' : 'bg-white text-slate-400'}`}>
                                          {label}
@@ -1279,7 +1357,7 @@ const Game: React.FC = () => {
                          )}
                          {TAP_ONLY && (
                          <div className="bg-white/50 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">
-                             👆 この公開版はタップ / スペースキーで「な」を伝えます。<br/>
+                             この公開版はタップ / スペースキーで「な」を伝えます。<br/>
                              （声で遊ぶには GitHub のプロジェクトをローカルで起動）
                          </div>
                          )}
@@ -1287,7 +1365,7 @@ const Game: React.FC = () => {
                          {!TAP_ONLY && (
                          <div className={`bg-white/60 p-3 rounded-xl flex-1 flex flex-col justify-center border-2 border-white gap-2 ${inputMode === 'tap' ? 'opacity-50' : ''}`}>
                              <div className="flex justify-between items-center">
-                                 <span className="font-bold text-sky-600 text-sm">🎤 マイクテスト</span>
+                                 <span className="font-bold text-sky-600 text-sm">マイクテスト</span>
                                  <button onClick={toggleMicTest} className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${isMicTesting ? 'bg-green-400 text-white border-green-200' : 'bg-white text-gray-400 border-gray-200'}`}>
                                      {isMicTesting ? 'ON' : 'OFF'}
                                  </button>
@@ -1346,7 +1424,16 @@ const Game: React.FC = () => {
         return ending ? (
           <EndingScene ending={ending} beatRef={lastBeatTimeRef} hitRef={hitRef} isNew={endingIsNew} onDone={handleEndingDone} />
         ) : null;
-      case 'FINISHED':
+      case 'FINISHED': {
+        // --- 達成感のある結果発表：順番に出す ---
+        const show = (ms: number) => revealT >= ms;
+        const countK = Math.min(1, Math.max(0, (revealT - 900) / 1400));
+        const eased = 1 - Math.pow(1 - countK, 3);
+        const shownSubs = Math.round(subscribers * eased);
+        const ratio = score / threshold;
+        const rank = ratio >= 1.3 ? 'S' : ratio >= 1 ? 'A' : ratio >= 0.7 ? 'B' : ratio >= 0.4 ? 'C' : 'D';
+        const rankColor = rank === 'S' ? 'text-amber-400' : rank === 'A' ? 'text-pink-500' : rank === 'B' ? 'text-sky-500' : 'text-slate-500';
+        const isNewRecord = isNewRecordRef.current;
         return (
           <div className="w-full h-full overflow-y-auto relative z-20">
           <div className="min-h-full text-center flex flex-col items-center w-full max-w-4xl mx-auto px-4 py-6 relative justify-center">
@@ -1356,58 +1443,83 @@ const Game: React.FC = () => {
                 </div>
             )}
 
-            <h2 className="text-6xl md:text-9xl font-black text-pink-500 drop-shadow-[4px_4px_0_#fff] mb-4 animate-impact tracking-tight z-10">おしまい！</h2>
+            <h2 className="text-6xl md:text-9xl font-black text-pink-500 drop-shadow-[4px_4px_0_#fff] mb-2 animate-impact tracking-tight z-10">おしまい！</h2>
 
-            {/* 到達エンディング */}
-            {ending && (
-                <div className="mb-4 z-10 bg-slate-800 text-white rounded-2xl px-5 py-2 border-4 border-white shadow-lg flex items-center gap-3">
-                    <div className="text-left">
-                        <div className="text-[10px] tracking-widest text-white/60">ENDING No.{String(ending.no).padStart(2, '0')}</div>
-                        <div className="font-black text-lg md:text-xl">{ending.title}</div>
+            {/* 判定スタンプ：ドン */}
+            <div className="h-20 md:h-24 flex items-center justify-center z-10">
+              {show(350) && (
+                <div key="stamp" className={`stamp-in font-black text-4xl md:text-6xl px-6 py-1 border-[6px] rounded-2xl -rotate-6 ${isCleared ? 'text-red-500 border-red-500 bg-white/80' : 'text-slate-500 border-slate-500 bg-white/70'}`}>
+                  {isCleared ? 'ノルマ達成' : 'ノルマ未達'}
+                </div>
+              )}
+            </div>
+
+            {/* 到達エンディング＋一言 */}
+            {ending && show(600) && (
+                <div className="mb-3 z-10 flex flex-col items-center gap-2 animate-impact">
+                    <div className="bg-slate-800 text-white rounded-2xl px-5 py-2 border-4 border-white shadow-lg flex items-center gap-3">
+                        <div className="text-left">
+                            <div className="text-[10px] tracking-widest text-white/60">ENDING No.{String(ending.no).padStart(2, '0')}</div>
+                            <div className="font-black text-lg md:text-xl">{ending.title}</div>
+                        </div>
+                        {endingIsNew && <span className="bg-yellow-300 text-slate-800 font-black px-2 py-1 rounded-full text-xs -rotate-6">NEW!</span>}
                     </div>
-                    {endingIsNew && <span className="bg-yellow-300 text-slate-800 font-black px-2 py-1 rounded-full text-xs -rotate-6">NEW!</span>}
+                    <p className="text-base md:text-2xl font-black text-red-500 bg-yellow-200 px-6 py-2 rounded-full border-4 border-white shadow-lg">{ending.oneLiner}</p>
                 </div>
             )}
 
-            {isCleared && (
-                 <div className="mb-4 z-10 animate-bounce">
-                     <p className="text-lg md:text-2xl font-black text-red-500 bg-yellow-200 px-6 py-2 rounded-full border-4 border-white shadow-lg">（あなたの名を伝えすぎて、世界が爆発しました）</p>
-                 </div>
-            )}
-
             <div className="flex flex-col md:flex-row gap-6 items-center w-full justify-center z-10">
-                <div className="bg-white/80 backdrop-blur-md p-6 md:p-8 rounded-[3rem] border-8 border-yellow-300 shadow-xl flex flex-col items-center transform rotate-[-2deg] min-w-[300px]">
+                <div className="relative bg-white/80 backdrop-blur-md p-6 md:p-8 rounded-[3rem] border-8 border-yellow-300 shadow-xl flex flex-col items-center transform rotate-[-2deg] min-w-[300px]">
+                    {/* ランク */}
+                    {show(2300) && (
+                      <div className={`stamp-in absolute -top-6 -right-6 w-20 h-20 md:w-24 md:h-24 rounded-full bg-white border-[6px] border-slate-800 flex flex-col items-center justify-center shadow-xl rotate-12`}>
+                        <span className="text-[9px] font-bold text-slate-500 tracking-widest">RANK</span>
+                        <span className={`text-4xl md:text-5xl font-black leading-none ${rankColor}`}>{rank}</span>
+                      </div>
+                    )}
+                    {/* 新記録 */}
+                    {isNewRecord && show(2600) && (
+                      <div className="stamp-in absolute -top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white font-black text-sm md:text-base px-4 py-1 rounded-full border-4 border-white shadow-lg -rotate-3 whitespace-nowrap">
+                        NEW RECORD
+                      </div>
+                    )}
                     <p className="text-xl text-yellow-500 font-bold mb-2">チャンネル登録者数</p>
-                    <p className="text-5xl md:text-6xl font-black text-slate-700">{subscribers.toLocaleString()} <span className="text-2xl">人</span></p>
+                    <p className={`text-5xl md:text-6xl font-black text-slate-700 tabular-nums ${countK >= 1 ? 'animate-impact' : ''}`}>{show(900) ? shownSubs.toLocaleString() : 0} <span className="text-2xl">人</span></p>
+                    {isNewRecord && show(2600) && prevBestRef.current > 0 && (
+                      <p className="text-xs font-bold text-red-500 mt-1">これまでの記録 {prevBestRef.current.toLocaleString()}人 を更新</p>
+                    )}
                     <div className="mt-4 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
                          <span className="font-bold text-gray-500">伝えた回数</span>
-                         <span className="font-black text-slate-700">{score}回</span>
+                         <span className="font-black text-slate-700">{show(1200) ? score : 0}回 <span className="text-xs text-gray-400">/ ノルマ {threshold}</span></span>
                     </div>
                     <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
                          <span className="font-bold text-gray-500">最大コンボ</span>
-                         <span className="font-black text-pink-500">{maxCombo}</span>
+                         <span className="font-black text-pink-500">{show(1500) ? maxCombo : 0}</span>
                     </div>
-                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-sm">
-                         <span className="font-bold text-gray-500">⭐{runRef.current.goldClicks} 💎{runRef.current.diamondClicks} 🔥{runRef.current.feverCount}</span>
+                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-xs md:text-sm">
+                         <span className="font-bold text-gray-500">金 {runRef.current.goldClicks} · ダイヤ {runRef.current.diamondClicks} · フィーバー {runRef.current.feverCount}</span>
                          <span className="font-bold text-gray-500">レア {runRef.current.rareSeen} / 超 {runRef.current.ultraSeen}</span>
                     </div>
-                    {isCleared && <p className="text-red-500 font-black mt-4 text-3xl animate-pulse">CLEAR!</p>}
                 </div>
 
                 <div className="bg-sky-100/90 p-6 rounded-[2rem] border-4 border-white shadow-lg w-full max-w-sm transform rotate-[2deg]">
                     <div className="bg-sky-400 text-white text-xl font-black py-2 px-6 rounded-full inline-block mb-4 shadow-sm">ランキング (人数)</div>
                     <ul className="space-y-2">
-                        {highScores.map((entry, i) => (
-                            <li key={i} className={`flex justify-between items-center px-4 py-2 rounded-xl ${i === 0 ? 'bg-yellow-100 text-yellow-600 font-black border-2 border-yellow-200' : 'bg-white/50 text-slate-600 font-bold'}`}>
+                        {highScores.map((entry, i) => {
+                            const mine = isNewRecord && i === 0 && entry.score === subscribers;
+                            return (
+                            <li key={i} className={`flex justify-between items-center px-4 py-2 rounded-xl ${i === 0 ? 'bg-yellow-100 text-yellow-600 font-black border-2 border-yellow-200' : 'bg-white/50 text-slate-600 font-bold'} ${mine ? 'ring-4 ring-red-300' : ''}`}>
                                 <div className="flex flex-col">
                                     <div className="flex items-center gap-2">
                                         <span>#{i + 1}</span>
                                         <span className="text-lg">{entry.score.toLocaleString()}人</span>
+                                        {mine && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">NEW</span>}
                                     </div>
                                     <span className="text-xs text-slate-400 ml-6">({entry.hitCount || 0}回{entry.endingId ? ` · ${ENDINGS.find((e) => e.id === entry.endingId)?.title ?? ''}` : ''})</span>
                                 </div>
                             </li>
-                        ))}
+                            );
+                        })}
                         {highScores.length === 0 && <li className="text-gray-400 text-center py-4">まだきろくがないよ</li>}
                     </ul>
                 </div>
@@ -1418,11 +1530,12 @@ const Game: React.FC = () => {
                   <span className="absolute inset-0 translate-y-2 bg-pink-300 rounded-full"></span>
                   <span className="relative inline-block border-4 border-white px-12 py-4 text-2xl font-black text-white bg-pink-500 rounded-full shadow-lg group-hover:-translate-y-1 transition-transform">もういちどあそぶ</span>
                 </button>
-                <button onClick={() => setShowBook(true)} className="bg-white text-slate-700 font-black px-8 py-3 rounded-full border-4 border-yellow-300 shadow-lg hover:scale-105 active:scale-95 transition-transform">📖 ずかんを見る</button>
+                <button onClick={() => setShowBook(true)} className="bg-white text-slate-700 font-black px-8 py-3 rounded-full border-4 border-yellow-300 shadow-lg hover:scale-105 active:scale-95 transition-transform">ずかんを見る</button>
             </div>
           </div>
           </div>
         );
+      }
     }
   };
 
@@ -1448,6 +1561,38 @@ const Game: React.FC = () => {
         ))}
 
         {fever && gameState === 'PLAYING' && <div className="fever-glow absolute inset-0 z-[1] pointer-events-none" />}
+
+        {/* 途中の節目の帯 */}
+        {banner && gameState === 'PLAYING' && (
+          <div key={banner.id} className="absolute inset-x-0 top-[62%] z-[45] pointer-events-none flex justify-center" style={{ ['--dur' as any]: '1.7s' }}>
+            <div className="cutin-text bg-slate-800/90 text-white rounded-full px-6 py-2 border-4 border-white shadow-xl flex items-baseline gap-3">
+              <span className="font-black text-lg md:text-2xl">{banner.title}</span>
+              {banner.sub && <span className="text-xs md:text-sm font-bold text-yellow-300">{banner.sub}</span>}
+            </div>
+          </div>
+        )}
+
+        {/* ノルマ達成スタンプ */}
+        {clearStamp && (
+          <div className="absolute inset-0 z-[58] pointer-events-none flex items-center justify-center">
+            <div className="absolute inset-0 bg-yellow-200/40 flash-white" />
+            <div className="stamp-in text-white font-black text-6xl md:text-[9rem] leading-none -rotate-6 drop-shadow-[8px_8px_0_rgba(190,24,93,0.5)]" style={{ WebkitTextStroke: '4px #be185d', paintOrder: 'stroke fill' }}>
+              ノルマ達成
+            </div>
+            <div className="absolute bottom-[22%] stamp-in bg-white text-pink-600 font-black text-lg md:text-2xl px-6 py-2 rounded-full border-4 border-pink-500 shadow-xl" style={{ animationDelay: '0.3s' }}>
+              まだ終わらない。伝え続けろ
+            </div>
+          </div>
+        )}
+
+        {/* 結果画面の紙吹雪 */}
+        {gameState === 'FINISHED' && runRef.current.cleared && revealT > 300 && (
+          <div className="absolute inset-0 z-[25] pointer-events-none overflow-hidden">
+            {Array.from({ length: 70 }).map((_, i) => (
+              <div key={i} className="absolute top-0 confetti" style={{ left: `${(i * 37) % 100}%`, width: 6 + (i % 4) * 2, height: 10 + (i % 3) * 4, background: ['#fbbf24', '#f472b6', '#38bdf8', '#4ade80', '#fff'][i % 5], animationDelay: `${(i % 10) * 0.25}s`, ['--dur' as any]: `${2.5 + (i % 5) * 0.5}s` }} />
+            ))}
+          </div>
+        )}
         {flash && <div className="absolute inset-0 bg-white z-[55] flash-white pointer-events-none" />}
 
         {renderContent()}

@@ -124,9 +124,9 @@ export function createParticles(variant: NaVariant, rarity: Rarity): NaParticle[
     case 'neon':
       return [{ ...base(), top: `${20 + Math.random() * 40}%`, size: '7rem', duration: '2s', life: 2500 }];
     case 'gold':
-      return [{ ...base(), text: '★な★', clickable: true, size: '5rem', duration: '7s', life: 7500, left: `${15 + Math.random() * 70}%` }];
+      return [{ ...base(), text: 'な', clickable: true, size: '5rem', duration: '7s', life: 7500, left: `${15 + Math.random() * 70}%` }];
     case 'diamond':
-      return [{ ...base(), text: '💎な💎', clickable: true, size: '6rem', duration: '9s', life: 9500, left: `${15 + Math.random() * 70}%` }];
+      return [{ ...base(), text: '◆な◆', clickable: true, size: '6rem', duration: '9s', life: 9500, left: `${15 + Math.random() * 70}%` }];
     case 'chain':
       return [{ ...base(), text: CHAIN_TEXTS[Math.floor(Math.random() * CHAIN_TEXTS.length)], left: '-20%', top: `${10 + Math.random() * 70}%`, size: '5rem', duration: '2.2s', life: 3000 }];
     case 'thunder':
