@@ -2,19 +2,76 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# 【底辺チューバーからの脱却】名をたくさん伝えれる画期的ツール
 
-This contains everything you need to run your app locally.
+175BPM の曲に合わせて「な」と言い続けるリズムゲーム。
+8分音符のタイミングで「な」と言えるとヒット → 登録者数が増える → ノルマ達成でクリア。
 
-View your app in AI Studio: https://ai.studio/apps/drive/1Dad6d7nBCJhVpJfNNCLOa2vkh7raMeLn
+## あそびかた
+
+1. マイクを許可して「はんのうライン」を調整（マイクテストで緑に振れる位置）
+2. モード（10秒 / 30秒 / フル73秒）を選んで「始める！」
+3. ビートに合わせて「な！」「な！」「な！」
+
+## ゲーム要素
+
+### コンボ & フィーバー
+- リズムよく連続ヒットでコンボ。2.5拍あけると切れる
+- 10コンボごとに登録者ゲイン +10%
+- **20コンボでフィーバー**：登録者ゲイン×2、レアな「な」の出現率アップ、背景が変わる
+
+### 25種類の「な」演出（レア度つき）
+| レア度 | 確率（通常 / フィーバー） | 例 |
+|---|---|---|
+| ノーマル | 80% / 55% | 落下・ふわふわ・ぐるぐる・ぽよん・ジグザグ・ポンッ・なみなみ・シュッ |
+| アンコモン | 14% / 28% | 虹・でっかい・大群・ぐるり・分身・ネオン |
+| レア | 5% / 13% | **金の「な」（クリックで+10,000人）**・なななな…・雷・3D・ブラックホール・ドット |
+| ウルトラレア | 1% / 4% | 「な」の津波・世界反転・カオス・「な」の雨・**ダイヤの「な」（クリックで+1,000,000人）** |
+
+金とダイヤは画面に残っている間にタップ/クリックで獲得。
+
+### しあしあ 3D
+- ゲーム中は左下で「両手を前に伸ばして、お尻をちょっと突き出して、両手を交互に上下」のダンスを8分音符で踊る
+- ヒットすると口が「な」の形に開く
+- タイトル画面やゲーム中にタップすると反応する（実績あり）
+- コンボ・フィーバー・レア・クリア時などに漫画風カットインで登場
+
+#### 自分の3Dモデルに差し替える
+`public/shiashia.glb` を置くと自動で読み込みます（無ければプリミティブ製のしあしあ）。
+- 身長は自動で合わせます
+- ボーン名に `UpperArm` / `upper_arm` / `Arm` を含む左右のボーン（`Left`/`Right`, `_L`/`_R`, `.L`/`.R`）があれば腕を振ります
+- 色だけ変えたい場合は `components/Shiashia3D.tsx` の `DEFAULT_COLORS` を編集
+
+### 実績（35種）
+コンボ・クリア・登録者数・金/ダイヤ・レア目撃・つつき・無言配信・一時停止連打・タイトル連打・エンディング収集など。
+解除時に右上にトーストが出て、タイトルの「📖 ずかん」で一覧できます（シークレット実績あり）。
+
+### ランダムエンディング（14種）
+クリア / 未クリア / どちらでも / シークレットのプールから重み付きで抽選。各エンディングはタイプライターのセリフ＋専用アニメーション付き。
+未見のものは少し出やすくなっています。「無言配信エンド」は 0 ヒットで確定。
 
 ## Run Locally
 
 **Prerequisites:**  Node.js
 
-
-1. Install dependencies:
-   `npm install`
+1. Install dependencies: `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+3. Run the app: `npm run dev`
+
+## ファイル構成
+
+```
+components/
+  Game.tsx           ゲーム本体（コンボ・フィーバー・判定・画面遷移）
+  NaEffects.tsx      「な」の描画（バリアント→CSS）
+  Shiashia3D.tsx     しあしあ3D（Three.js）
+  CutIn.tsx          カットイン
+  EndingScene.tsx    エンディング演出
+  AchievementToast.tsx 実績トースト
+  CollectionBook.tsx ずかん（実績 / エンディング / な図鑑）
+utils/
+  naEffects.ts       レア度抽選・パーティクル生成・名前
+  achievements.ts    実績定義・判定・保存
+  endings.ts         エンディング定義・抽選・保存
+index.html           全アニメーションの CSS keyframes
+```

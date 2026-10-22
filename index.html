@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
@@ -13,7 +13,7 @@
       body {
         font-family: 'Mochiy Pop One', sans-serif;
       }
-      
+
       /* Polka Dot Background */
       .bg-polka {
         background-color: #ffffff;
@@ -22,19 +22,382 @@
         background-size: 100px 100px;
         animation: scroll-bg 20s linear infinite;
       }
-      
+      /* フィーバー中の背景 */
+      .bg-fever {
+        background-color: #fff1f8;
+        background-image: radial-gradient(#fbcfe8 20%, transparent 20%), radial-gradient(#fde68a 20%, transparent 20%);
+        background-position: 0 0, 50px 50px;
+        background-size: 100px 100px;
+        animation: scroll-bg 2s linear infinite;
+      }
+      .fever-glow {
+        background: linear-gradient(120deg, rgba(251,191,36,0.25), rgba(244,114,182,0.25), rgba(56,189,248,0.25), rgba(251,191,36,0.25));
+        background-size: 300% 300%;
+        animation: fever-glow 2s linear infinite;
+        mix-blend-mode: multiply;
+      }
+      @keyframes fever-glow {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 300% 50%; }
+      }
+      @keyframes fever-hue {
+        0% { filter: hue-rotate(0deg); }
+        100% { filter: hue-rotate(360deg); }
+      }
+
       @keyframes scroll-bg {
         0% { background-position: 0 0, 50px 50px; }
         100% { background-position: 100px 100px, 150px 150px; }
       }
 
+      /* ===== 「な」のアニメーション ===== */
       @keyframes fall {
         0% { transform: translateY(-100%) rotate(-30deg) scale(1); opacity: 1; }
         100% { transform: translateY(110vh) rotate(30deg) scale(1.5); opacity: 0; }
       }
-      .animate-fall {
-        animation: fall 5s linear forwards;
+      .animate-fall { animation: fall 5s linear forwards; }
+
+      @keyframes na-float {
+        0% { transform: translateY(0) scale(0.6) rotate(0deg); opacity: 0; }
+        15% { opacity: 1; }
+        100% { transform: translateY(-120vh) scale(1.3) rotate(15deg); opacity: 0; }
       }
+      .na-float { animation: na-float var(--dur, 3s) ease-out forwards; }
+
+      @keyframes na-spin {
+        0% { transform: translateY(-20vh) rotate(0deg) scale(0.8); opacity: 1; }
+        100% { transform: translateY(110vh) rotate(1080deg) scale(1.2); opacity: 0; }
+      }
+      .na-spin { animation: na-spin var(--dur, 3s) linear forwards; }
+
+      @keyframes na-bounce {
+        0% { transform: translateY(-40vh) scaleX(1) scaleY(1); }
+        30% { transform: translateY(0) scaleX(1.3) scaleY(0.6); }
+        45% { transform: translateY(-25vh) scaleX(0.9) scaleY(1.2); }
+        60% { transform: translateY(0) scaleX(1.2) scaleY(0.7); }
+        72% { transform: translateY(-12vh) scaleX(1) scaleY(1.05); }
+        82% { transform: translateY(0) scaleX(1.1) scaleY(0.85); }
+        100% { transform: translateY(0) scale(1); opacity: 0; }
+      }
+      .na-bounce { animation: na-bounce var(--dur, 1.6s) cubic-bezier(0.3, 0, 0.6, 1) forwards; transform-origin: bottom center; }
+
+      @keyframes na-zigzag {
+        0% { transform: translate(0, -20vh) rotate(-15deg); opacity: 1; }
+        25% { transform: translate(15vw, 15vh) rotate(15deg); }
+        50% { transform: translate(-15vw, 45vh) rotate(-15deg); }
+        75% { transform: translate(15vw, 75vh) rotate(15deg); }
+        100% { transform: translate(-10vw, 110vh) rotate(-15deg); opacity: 0; }
+      }
+      .na-zigzag { animation: na-zigzag var(--dur, 3s) ease-in-out forwards; }
+
+      @keyframes na-pop {
+        0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+        40% { transform: scale(1.4) rotate(5deg); opacity: 1; }
+        60% { transform: scale(1) rotate(0deg); }
+        100% { transform: scale(1.2) rotate(0deg); opacity: 0; }
+      }
+      .na-pop { animation: na-pop var(--dur, 0.9s) cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+      @keyframes na-wave {
+        0% { transform: translate(0, 0) rotate(-10deg); opacity: 1; }
+        25% { transform: translate(30vw, -12vh) rotate(10deg); }
+        50% { transform: translate(60vw, 0) rotate(-10deg); }
+        75% { transform: translate(90vw, 12vh) rotate(10deg); }
+        100% { transform: translate(130vw, 0) rotate(-10deg); opacity: 0.6; }
+      }
+      .na-wave { animation: na-wave var(--dur, 3.5s) ease-in-out forwards; }
+
+      @keyframes na-slide-l {
+        0% { transform: translateX(0) skewX(30deg); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: translateX(130vw) skewX(-30deg); opacity: 1; }
+      }
+      @keyframes na-slide-r {
+        0% { transform: translateX(0) skewX(-30deg); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: translateX(-130vw) skewX(30deg); opacity: 1; }
+      }
+      .na-slide-l { animation: na-slide-l var(--dur, 0.8s) cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+      .na-slide-r { animation: na-slide-r var(--dur, 0.8s) cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+      @keyframes na-rainbow {
+        0% { transform: translateY(-20vh) rotate(-10deg); filter: hue-rotate(0deg); opacity: 1; }
+        100% { transform: translateY(110vh) rotate(10deg); filter: hue-rotate(720deg); opacity: 0; }
+      }
+      .na-rainbow {
+        animation: na-rainbow var(--dur, 3.5s) linear forwards;
+        background: linear-gradient(90deg, #f43f5e, #f59e0b, #22c55e, #06b6d4, #8b5cf6, #f43f5e);
+        -webkit-background-clip: text; background-clip: text; color: transparent !important;
+        -webkit-text-stroke: 0 !important;
+      }
+
+      @keyframes na-giant {
+        0% { transform: translateY(-120%) scale(0.5) rotate(-5deg); opacity: 0; }
+        20% { transform: translateY(10vh) scale(1.1) rotate(2deg); opacity: 1; }
+        30% { transform: translateY(0) scale(1) rotate(0deg); }
+        70% { transform: translateY(5vh) scale(1) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(120vh) scale(1.5) rotate(10deg); opacity: 0; }
+      }
+      .na-giant { animation: na-giant var(--dur, 4s) cubic-bezier(0.3, 0, 0.5, 1) forwards; }
+
+      @keyframes na-ring {
+        0% { transform: rotate(var(--angle)) translateX(0) rotate(calc(-1 * var(--angle))) scale(0); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: rotate(calc(var(--angle) + 540deg)) translateX(45vmin) rotate(calc(-1 * var(--angle) - 540deg)) scale(1.2); opacity: 0; }
+      }
+      .na-ring { animation: na-ring var(--dur, 2.4s) ease-out forwards; }
+
+      @keyframes na-shadow {
+        0% { transform: translateX(-40vw) scale(1.4); opacity: 0; }
+        30% { opacity: 0.6; }
+        100% { transform: translateX(40vw) scale(0.6); opacity: 0; }
+      }
+      .na-shadow { animation: na-shadow var(--dur, 1.2s) ease-out forwards; }
+
+      @keyframes na-neon {
+        0%, 100% { opacity: 0; }
+        10%, 30%, 50%, 70% { opacity: 1; text-shadow: 0 0 10px #f0f, 0 0 20px #f0f, 0 0 40px #f0f, 0 0 80px #0ff; }
+        20%, 40%, 60% { opacity: 0.2; text-shadow: none; }
+        80% { opacity: 1; transform: scale(1.3); }
+      }
+      .na-neon { animation: na-neon var(--dur, 2s) linear forwards; color: #fff !important; -webkit-text-stroke: 2px #f0f !important; }
+
+      @keyframes na-gold {
+        0% { transform: translateY(-20vh) rotate(-5deg) scale(0.8); opacity: 0; }
+        10% { opacity: 1; transform: translateY(0) scale(1.1); }
+        20% { transform: translateY(3vh) rotate(5deg) scale(1); }
+        40% { transform: translateY(20vh) rotate(-8deg) scale(1.1); }
+        60% { transform: translateY(38vh) rotate(8deg) scale(1); }
+        80% { transform: translateY(56vh) rotate(-5deg) scale(1.1); }
+        100% { transform: translateY(110vh) rotate(0deg) scale(0.8); opacity: 0; }
+      }
+      @keyframes gold-glow {
+        0%, 100% { filter: drop-shadow(0 0 6px #fbbf24) brightness(1); }
+        50% { filter: drop-shadow(0 0 24px #f59e0b) brightness(1.3); }
+      }
+      .na-gold {
+        animation: na-gold var(--dur, 7s) ease-in-out forwards, gold-glow 0.6s ease-in-out infinite;
+        color: #fde047 !important; -webkit-text-stroke: 3px #b45309 !important;
+        cursor: pointer; pointer-events: auto !important;
+      }
+      .na-diamond {
+        animation: na-gold var(--dur, 9s) ease-in-out forwards, gold-glow 0.4s ease-in-out infinite, fever-hue 1.5s linear infinite;
+        color: #a5f3fc !important; -webkit-text-stroke: 3px #0e7490 !important;
+        cursor: pointer; pointer-events: auto !important;
+      }
+
+      @keyframes na-chain {
+        0% { transform: translateX(0) scaleX(0.3); opacity: 0; }
+        15% { transform: translateX(10vw) scaleX(1.5); opacity: 1; }
+        100% { transform: translateX(140vw) scaleX(1); opacity: 1; }
+      }
+      .na-chain { animation: na-chain var(--dur, 2.2s) cubic-bezier(0.1, 0.9, 0.3, 1) forwards; white-space: nowrap; }
+
+      @keyframes na-thunder {
+        0% { transform: translateY(-120%) scaleY(3); opacity: 0; }
+        8% { transform: translateY(20vh) scaleY(0.6); opacity: 1; }
+        12% { transform: translateY(18vh) scaleY(1.1); }
+        20%, 60% { transform: translateY(20vh) scaleY(1); opacity: 1; }
+        100% { transform: translateY(20vh) scale(2); opacity: 0; }
+      }
+      .na-thunder { animation: na-thunder var(--dur, 0.7s) ease-out forwards; color: #fef08a !important; -webkit-text-stroke: 3px #eab308 !important; text-shadow: 0 0 30px #fde047, 0 0 60px #fff; }
+      @keyframes flash-white {
+        0% { opacity: 0.9; } 100% { opacity: 0; }
+      }
+      .flash-white { animation: flash-white 0.5s ease-out forwards; }
+
+      @keyframes na-flip {
+        0% { transform: perspective(600px) rotateY(0deg) rotateX(0deg) scale(0.5); opacity: 0; }
+        20% { opacity: 1; }
+        100% { transform: perspective(600px) rotateY(1080deg) rotateX(360deg) scale(1.4); opacity: 0; }
+      }
+      .na-flip { animation: na-flip var(--dur, 2s) ease-in-out forwards; }
+
+      @keyframes na-blackhole {
+        0% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+        100% { transform: translate(var(--dx), var(--dy)) rotate(720deg) scale(0); opacity: 0; }
+      }
+      .na-blackhole { animation: na-blackhole var(--dur, 1.8s) cubic-bezier(0.6, 0, 1, 0.4) forwards; }
+
+      @keyframes na-pixel {
+        0% { transform: translateY(-20vh); opacity: 1; }
+        100% { transform: translateY(110vh); opacity: 1; }
+      }
+      .na-pixel { animation: na-pixel var(--dur, 3s) steps(12, end) forwards; image-rendering: pixelated; font-family: monospace !important; text-shadow: 4px 4px 0 #000; }
+
+      @keyframes na-tsunami {
+        0% { transform: translateX(0) rotate(0deg); opacity: 1; }
+        100% { transform: translateX(-150vw) rotate(-20deg); opacity: 1; }
+      }
+      .na-tsunami { animation: na-tsunami var(--dur, 2.4s) cubic-bezier(0.2, 0.7, 0.3, 1) forwards; color: #67e8f9 !important; -webkit-text-stroke: 3px #0891b2 !important; }
+
+      @keyframes na-invert-text {
+        0% { transform: scale(0) rotate(0deg); opacity: 0; }
+        20% { transform: scale(1.3) rotate(180deg); opacity: 1; }
+        80% { transform: scale(1) rotate(180deg); opacity: 1; }
+        100% { transform: scale(2) rotate(180deg); opacity: 0; }
+      }
+      .na-invert { animation: na-invert-text var(--dur, 2.5s) ease-out forwards; color: #111 !important; -webkit-text-stroke: 3px #fff !important; }
+      @keyframes world-invert {
+        0% { filter: invert(0) ; transform: rotate(0deg); }
+        15% { filter: invert(1); transform: rotate(180deg); }
+        85% { filter: invert(1); transform: rotate(180deg); }
+        100% { filter: invert(0); transform: rotate(360deg); }
+      }
+      .world-invert { animation: world-invert 2.5s ease-in-out forwards; }
+
+      @keyframes na-matrix {
+        0% { transform: translateY(-100%); opacity: 1; }
+        100% { transform: translateY(110vh); opacity: 0.8; }
+      }
+      .na-matrix { animation: na-matrix var(--dur, 3s) linear forwards; color: #4ade80 !important; -webkit-text-stroke: 0 !important; text-shadow: 0 0 8px #22c55e; white-space: pre; line-height: 1; font-family: monospace !important; }
+
+      /* ===== ヒット時のポップ文字 ===== */
+      @keyframes hit-word {
+        0% { transform: translate(-50%, 0) scale(0.3) rotate(-10deg); opacity: 0; }
+        30% { transform: translate(-50%, -40px) scale(1.2) rotate(3deg); opacity: 1; }
+        100% { transform: translate(-50%, -120px) scale(1) rotate(0deg); opacity: 0; }
+      }
+      .hit-word { animation: hit-word 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+      @keyframes score-pop {
+        0% { transform: translateY(0) scale(0.5); opacity: 0; }
+        20% { transform: translateY(-10px) scale(1.2); opacity: 1; }
+        100% { transform: translateY(-80px) scale(1); opacity: 0; }
+      }
+      .score-pop { animation: score-pop 1s ease-out forwards; }
+
+      /* ===== 画面シェイク ===== */
+      @keyframes shake {
+        0%, 100% { transform: translate(0, 0); }
+        10% { transform: translate(-8px, 6px) rotate(-0.5deg); }
+        20% { transform: translate(8px, -6px) rotate(0.5deg); }
+        30% { transform: translate(-6px, -4px); }
+        40% { transform: translate(6px, 4px); }
+        50% { transform: translate(-4px, 6px); }
+        60% { transform: translate(4px, -6px); }
+        70% { transform: translate(-3px, 2px); }
+        80% { transform: translate(3px, -2px); }
+        90% { transform: translate(-1px, 1px); }
+      }
+      .shake { animation: shake 0.5s ease-in-out; }
+      .shake-hard { animation: shake 0.9s ease-in-out infinite; }
+
+      /* ===== カットイン ===== */
+      @keyframes cutin-bg {
+        0% { transform: translateX(-110%) skewX(-15deg); }
+        12% { transform: translateX(0) skewX(-15deg); }
+        85% { transform: translateX(0) skewX(-15deg); }
+        100% { transform: translateX(110%) skewX(-15deg); }
+      }
+      .cutin-bg { animation: cutin-bg var(--dur, 2s) cubic-bezier(0.2, 0.9, 0.2, 1) forwards; }
+      @keyframes cutin-text {
+        0% { transform: translateX(80vw) scale(2); opacity: 0; }
+        18% { transform: translateX(0) scale(1); opacity: 1; }
+        28% { transform: translateX(-10px) scale(1.05); }
+        80% { transform: translateX(-30px) scale(1); opacity: 1; }
+        100% { transform: translateX(-100vw) scale(1); opacity: 0; }
+      }
+      .cutin-text { animation: cutin-text var(--dur, 2s) cubic-bezier(0.2, 0.9, 0.2, 1) forwards; }
+      @keyframes cutin-char {
+        0% { transform: translateX(-60vw) scale(0.6); opacity: 0; }
+        15% { transform: translateX(0) scale(1); opacity: 1; }
+        85% { transform: translateX(20px) scale(1.02); opacity: 1; }
+        100% { transform: translateX(60vw) scale(1); opacity: 0; }
+      }
+      .cutin-char { animation: cutin-char var(--dur, 2s) cubic-bezier(0.2, 0.9, 0.2, 1) forwards; }
+      @keyframes speedlines {
+        0% { background-position: 0 0; }
+        100% { background-position: 200px 0; }
+      }
+      .speedlines {
+        background: repeating-linear-gradient(90deg, rgba(255,255,255,0.25) 0 4px, transparent 4px 22px);
+        animation: speedlines 0.25s linear infinite;
+      }
+
+      /* ===== 実績トースト ===== */
+      @keyframes toast-in {
+        0% { transform: translateX(120%) rotate(3deg); opacity: 0; }
+        12% { transform: translateX(-6px) rotate(-1deg); opacity: 1; }
+        18% { transform: translateX(0) rotate(0deg); }
+        85% { transform: translateX(0); opacity: 1; }
+        100% { transform: translateX(120%); opacity: 0; }
+      }
+      .toast-in { animation: toast-in 4s cubic-bezier(0.2, 0.9, 0.2, 1) forwards; }
+
+      /* ===== フィーバー文字 ===== */
+      @keyframes fever-text {
+        0%, 100% { transform: scale(1) rotate(-3deg); }
+        50% { transform: scale(1.15) rotate(3deg); }
+      }
+      .fever-text { animation: fever-text 0.35s ease-in-out infinite, fever-hue 2s linear infinite; }
+
+      /* ===== 紙吹雪 ===== */
+      @keyframes confetti {
+        0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(110vh) rotate(1080deg); opacity: 0.8; }
+      }
+      .confetti { animation: confetti var(--dur, 3s) linear forwards; }
+
+      /* ===== エンディング用 ===== */
+      @keyframes ending-fade { from { opacity: 0; } to { opacity: 1; } }
+      .ending-fade { animation: ending-fade 0.8s ease-out forwards; }
+      @keyframes rocket-up {
+        0% { transform: translate(-50%, 0) rotate(0deg); }
+        10% { transform: translate(-50%, 0) rotate(-3deg); }
+        20% { transform: translate(-50%, 0) rotate(3deg); }
+        100% { transform: translate(-50%, -140vh) rotate(0deg); }
+      }
+      .rocket-up { animation: rocket-up 5s cubic-bezier(0.6, 0, 0.9, 0.4) forwards; }
+      @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+      .twinkle { animation: twinkle var(--dur, 1.5s) ease-in-out infinite; }
+      @keyframes flame {
+        0%, 100% { transform: scaleY(1) scaleX(1); }
+        50% { transform: scaleY(1.3) scaleX(0.9); }
+      }
+      .flame { animation: flame 0.3s ease-in-out infinite; transform-origin: bottom; }
+      @keyframes comment-fly {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-160vw); }
+      }
+      .comment-fly { animation: comment-fly var(--dur, 4s) linear forwards; white-space: nowrap; }
+      @keyframes glitch {
+        0% { clip-path: inset(0 0 90% 0); transform: translate(-4px, 0); }
+        20% { clip-path: inset(30% 0 40% 0); transform: translate(4px, -2px); }
+        40% { clip-path: inset(60% 0 10% 0); transform: translate(-6px, 2px); }
+        60% { clip-path: inset(10% 0 70% 0); transform: translate(6px, 0); }
+        80% { clip-path: inset(80% 0 5% 0); transform: translate(-2px, 3px); }
+        100% { clip-path: inset(40% 0 30% 0); transform: translate(2px, -3px); }
+      }
+      .glitch-layer { animation: glitch 0.4s steps(1) infinite; }
+      @keyframes rain {
+        0% { transform: translateY(-20vh); }
+        100% { transform: translateY(120vh); }
+      }
+      .rain { animation: rain var(--dur, 1s) linear infinite; }
+      @keyframes zzz {
+        0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+        30% { opacity: 1; }
+        100% { transform: translate(60px, -120px) scale(1.4); opacity: 0; }
+      }
+      .zzz { animation: zzz 2.5s ease-out infinite; }
+      @keyframes cat-walk {
+        0% { transform: translateX(-30vw) scaleX(1); }
+        45% { transform: translateX(0) scaleX(1); }
+        55% { transform: translateX(0) scaleX(1); }
+        100% { transform: translateX(60vw) scaleX(1); }
+      }
+      .cat-walk { animation: cat-walk 6s ease-in-out forwards; }
+      @keyframes clock-back { from { transform: rotate(0deg); } to { transform: rotate(-1440deg); } }
+      .clock-back { animation: clock-back 5s cubic-bezier(0.3, 0, 0.2, 1) forwards; }
+      @keyframes halo { 0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.8; } 50% { transform: translateX(-50%) scale(1.15); opacity: 1; } }
+      .halo { animation: halo 1.2s ease-in-out infinite, fever-hue 4s linear infinite; }
+      @keyframes ufo { 0% { transform: translate(-60vw, 0); } 40% { transform: translate(0, 0); } 60% { transform: translate(0, 0); } 100% { transform: translate(0, -120vh); } }
+      .ufo { animation: ufo 6s ease-in-out forwards; }
+      @keyframes beam { 0%, 100% { opacity: 0.3; } 50% { opacity: 0.8; } }
+      .beam { animation: beam 0.3s linear infinite; }
+      @keyframes typewriter-cursor { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+      .tw-cursor { animation: typewriter-cursor 0.6s step-end infinite; }
+
       @keyframes smash-pulse {
         0% { transform: scale(1); filter: brightness(100%); }
         50% { transform: scale(1.05); filter: brightness(110%); }
@@ -52,12 +415,12 @@
       .animate-impact {
         animation: impact-text 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
       }
-      
+
       @keyframes crowd-jump {
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-10px); }
       }
-      
+
       @keyframes pop {
         0% { transform: scale(0.8); opacity: 0; }
         100% { transform: scale(1); opacity: 1; }
@@ -98,7 +461,9 @@
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0"
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "three": "https://aistudiocdn.com/three@^0.170.0",
+    "three/": "https://aistudiocdn.com/three@^0.170.0/"
   }
 }
 </script>
