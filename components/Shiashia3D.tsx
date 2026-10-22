@@ -55,9 +55,10 @@ const Shiashia3D: React.FC<Props> = ({
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
-    camera.position.set(0, 2.5, 9.2);
-    camera.lookAt(0, 2.15, 0);
+    // モデルは px 単位（身長 780）。服の物理が px の世界座標で計算するので、モデルは縮めずカメラを離す
+    const camera = new THREE.PerspectiveCamera(30, 1, 10, 50000);
+    camera.position.set(0, 440, 1640);
+    camera.lookAt(0, 380, 0);
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
@@ -73,10 +74,9 @@ const Shiashia3D: React.FC<Props> = ({
     const J: Record<string, any> = g.userData.J || {};
     const setBlink: ((v: number) => void) | undefined = g.userData.setBlink;
     const root = new THREE.Group();
-    const K = 4.4 / (DIM.H || 780);     // px → シーン単位（身長 4.4）
-    root.scale.setScalar(K);
     root.add(g);
     scene.add(root);
+    void DIM;
 
     const restAll = () => {
       for (const k in J) {
@@ -252,8 +252,9 @@ const Shiashia3D: React.FC<Props> = ({
       if (J.tail) { J.tail.rotation.z += 0.35 * Math.sin(time * 9) * (0.5 + inten); J.tail.rotation.x += 0.2 * Math.sin(time * 6 + 1); }
 
       g.position.y = baseY + lift;
-      const s = 1 + hitPulse * 0.06;
-      root.scale.set(K * s * (1 + squash), K * (1 - squash) * (2 - s), K * s * (1 + squash));
+      // 拡大縮小は服の物理（px の世界座標）を狂わせるので、頭の大きさだけで「ポンッ」を出す
+      const hs = 1 + hitPulse * 0.08 - squash * 0.5;
+      if (J.head) { const hb = J.head.userData.baseScale || (J.head.userData.baseScale = J.head.scale.clone()); J.head.scale.set(hb.x * hs, hb.y * hs, hb.z * hs); }
       root.rotation.set(D2(leanX), D2(spinY), D2(tiltZ));
       g.updateMatrixWorld(true);
       g.userData.cloth?.(dt);     // セーターの軽い物理（ゆれ）
