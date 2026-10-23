@@ -118,7 +118,7 @@ const PROP: Record<CutInEvent, React.ReactNode> = {
   ban: <Hammer />,
 };
 
-const EventCutIn: React.FC<{ data: CutInData | null }> = ({ data }) => {
+const EventCutIn: React.FC<{ data: CutInData | null; mobile?: boolean }> = ({ data, mobile }) => {
   if (!data) return null;
   const th = THEME[data.event];
   const chars = Array.from(data.title);
@@ -126,7 +126,7 @@ const EventCutIn: React.FC<{ data: CutInData | null }> = ({ data }) => {
     <div
       key={data.id}
       className="ci-wrap absolute inset-x-0 z-[60] pointer-events-none"
-      style={{ top: '15%', height: '31%', ['--dur' as any]: `${data.durationMs}ms` }}
+      style={{ top: mobile ? '21%' : '15%', height: mobile ? '25%' : '31%', ['--dur' as any]: `${data.durationMs}ms` }}
     >
       {/* 帯 */}
       <div className="ci-band absolute inset-y-0 -left-[6%] -right-[6%] -skew-y-2 shadow-2xl overflow-hidden" style={{ background: th.band }}>
@@ -138,14 +138,14 @@ const EventCutIn: React.FC<{ data: CutInData | null }> = ({ data }) => {
       </div>
 
       {/* 右側：見出し */}
-      <div className="absolute inset-y-0 right-[4%] left-[40%] md:left-[36%] flex flex-col justify-center items-start gap-1 md:gap-2">
+      <div className={`absolute inset-y-0 right-[3%] ${mobile ? 'left-[45%]' : 'left-[36%]'} flex flex-col justify-center items-start gap-1 md:gap-2`}>
         <div className="ci-tag flex items-center gap-2">
           <span className="bg-red-600 text-white text-[10px] md:text-xs font-black px-2 py-0.5 rounded">LIVE</span>
           <span className="bg-black/40 text-white text-[10px] md:text-sm font-bold px-2 py-0.5 rounded">{th.tag}</span>
         </div>
         <div className="flex items-center gap-2 md:gap-4">
           <div
-            className="text-[1.65rem] leading-tight sm:text-4xl md:text-6xl font-black whitespace-nowrap"
+            className="text-[1.45rem] leading-tight sm:text-4xl md:text-6xl font-black whitespace-nowrap"
             style={{ color: th.title, WebkitTextStroke: `3px ${th.stroke}`, paintOrder: 'stroke fill' }}
           >
             {chars.map((c, i) => <span key={i} className="ci-char inline-block" style={{ ['--i' as any]: i }}>{c}</span>)}

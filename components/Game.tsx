@@ -14,6 +14,7 @@ import { ACHIEVEMENTS, achievementById, evaluate, loadUnlocked, saveUnlocked, lo
 import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings } from '../utils/endings';
 import NaEffects from './NaEffects';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
+import ShiashiaSeated, { STORY } from './ShiashiaSeated';
 import Track from './Track';
 import EventCutIn, { CutInData } from './EventCutIn';
 import CommentStream, { CommentMood } from './CommentStream';
@@ -29,7 +30,7 @@ import CollectionBook from './CollectionBook';
 const TAP_ONLY = !!process.env.TAP_ONLY;           // 公開版（マイクが使えない環境）
 const ASSET_BASE = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
 const DEFAULT_BGM = ASSET_BASE + 'bgm/bgm.mp3';
-const MENU_BGM = ASSET_BASE + 'bgm/top.mp3';
+const MENU_BGM = ASSET_BASE + 'bgm/top_chip.mp3';   // タイトル曲「な 2」のチップチューン・アレンジ
 
 interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean }
 const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true };
@@ -72,7 +73,7 @@ const SubsCounter: React.FC<{ value: number; big?: boolean }> = ({ value, big })
   }, []);
   return (
     <span className="flex flex-col items-center leading-none">
-      <span className={`font-black text-slate-800 tracking-tight tabular-nums ${big ? 'text-5xl md:text-7xl' : 'text-4xl'}`}>
+      <span className={`font-black text-slate-800 tracking-tight tabular-nums ${big ? 'text-4xl sm:text-5xl md:text-6xl' : 'text-4xl'}`}>
         <span ref={ref}>0</span><span className="text-xl md:text-2xl text-slate-500 ml-1">人</span>
       </span>
       <span ref={subRef} className="text-[10px] md:text-xs font-bold text-slate-400 tabular-nums mt-0.5" />
@@ -209,6 +210,10 @@ const Game: React.FC = () => {
   const [endingIsNew, setEndingIsNew] = useState(false);
   const [revealT, setRevealT] = useState(0);
   const [banFlash, setBanFlash] = useState(false);
+  const [storyIdx, setStoryIdx] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const settingsBoxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (showSettings) setTimeout(() => settingsBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }, [showSettings]);
 
   const quota = QUOTA[mode];
   const chaos = Math.min(1, Math.log10(subs + 1) / 8);
@@ -753,42 +758,124 @@ const Game: React.FC = () => {
     if (!atCut) return 'translate(0px, 0px) scale(1)';
     const left = isMobile ? 0 : 24;
     const cx = left + stageSize / 2, cy = vp.h - stageSize / 2;
-    const tx = vp.w * (isMobile ? 0.19 : 0.2) - cx;
-    const ty = vp.h * 0.31 - cy;
-    const s = Math.max(1, Math.min(2.2, (vp.h * 0.36) / stageSize));
+    const tx = vp.w * (isMobile ? 0.2 : 0.2) - cx;
+    const ty = vp.h * (isMobile ? 0.345 : 0.31) - cy;
+    const s = Math.max(1, Math.min(2.2, (vp.h * (isMobile ? 0.25 : 0.36)) / stageSize));
     return `translate(${tx}px, ${ty}px) scale(${s})`;
   })();
 
-  const renderReady = () => (
-    <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10">
-      <div className="min-h-full flex flex-col items-center justify-center p-4 py-8 md:py-4">
-        <div className="relative mb-5 flex flex-col items-center text-center z-20">
-          <div className="mb-2 bg-yellow-300 text-slate-800 px-4 py-1 rounded-full font-black text-xs md:text-sm border-2 md:border-4 border-white shadow-md -rotate-2">底辺チューバーからの脱却</div>
+  const renderSettings = () => (
+    <div className="bg-sky-100/95 backdrop-blur rounded-[1.5rem] border-4 border-white p-3 text-slate-700 flex flex-col gap-3 shadow-lg">
+      <div className="bg-white/60 p-3 rounded-xl">
+        <div className="flex justify-between mb-1 font-bold text-sky-600 text-sm"><span>おんりょう</span><span>{Math.round(settings.volume * 100)}%</span></div>
+        <input id="vol" type="range" min="0" max="1" step="0.05" value={settings.volume} onChange={(e) => setSettings({ volume: parseFloat(e.target.value) })} className="w-full" />
+        <label className="flex items-center gap-2 mt-2 text-xs font-bold text-sky-700" htmlFor="clicks">
+          <input id="clicks" type="checkbox" checked={settings.clicks} onChange={(e) => setSettings({ clicks: e.target.checked })} /> 拍にクリック音を入れる
+        </label>
+      </div>
+
+      {!TAP_ONLY ? (
+        <div className="bg-white/60 p-3 rounded-xl">
+          <div className="font-bold text-sky-600 mb-2 text-sm">にゅうりょく</div>
+          <div className="flex gap-2">
+            {([['mic', '声で「な」'], ['tap', 'タップ / スペース']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setSettings({ input: m })}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${settings.input === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706]' : 'bg-white text-slate-400'}`}>{label}</button>
+            ))}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1.5 leading-snug">声は「な」でなくても、声が出たら反応します。</div>
+        </div>
+      ) : (
+        <div className="bg-white/60 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">この公開版はタップ / スペースキーで「な」を伝えます。声で遊ぶには GitHub のプロジェクトを起動してください。</div>
+      )}
+
+      {!TAP_ONLY && settings.input === 'mic' && (
+        <div className="bg-white/70 p-3 rounded-xl flex flex-col gap-2">
+          <div className="flex justify-between items-center">
+            <span className="font-bold text-sky-600 text-sm">マイクテスト</span>
+            <button onClick={async () => { if (micTesting) { stopMic(); } else if (await ensureMic()) setMicTesting(true); }}
+              className={`px-4 py-1.5 text-xs font-bold rounded-full border-2 ${micTesting ? 'bg-green-400 text-white border-green-200' : 'bg-white text-gray-400 border-gray-200'}`}>{micTesting ? 'ON' : 'OFF'}</button>
+          </div>
+          <select className="w-full text-sm p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white" value={settings.deviceId} onChange={(e) => { setSettings({ deviceId: e.target.value }); stopMic(); }}>
+            <option value="">いつものマイク</option>
+            {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `マイク ${d.deviceId.slice(0, 5)}`}</option>)}
+          </select>
+          <LevelMeter mic={micRef.current} threshold={settings.threshold} />
           <div className="flex items-center gap-2">
-            {!isMobile && <div className="-mr-6"><Shiashia3D mood="dance" intensity={0.3} size={190} onPoke={handlePoke} /></div>}
-            <div className="flex flex-col items-center -rotate-1 py-2 select-none">
-              <div className="flex items-end justify-center flex-wrap gap-x-2">
-                <span className="text-6xl sm:text-8xl md:text-[8rem] font-black text-pink-500 leading-none drop-shadow-xl" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>名</span>
-                <span className="text-2xl sm:text-4xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>を</span>
-                <span className="text-4xl sm:text-6xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2.5px white', paintOrder: 'stroke fill' }}>たくさん</span>
-                <span className="text-3xl sm:text-5xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>伝えれる</span>
+            <span className="text-[11px] text-slate-500 font-bold whitespace-nowrap">はんのうライン</span>
+            <input id="thr" type="range" min="5" max="90" value={settings.threshold} onChange={(e) => setSettings({ threshold: parseInt(e.target.value) })} className="flex-1" />
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white/60 p-3 rounded-xl flex flex-col gap-2">
+        <div className="flex justify-between items-center">
+          <span className="font-bold text-sky-600 text-sm">タイミング補正</span>
+          <button onClick={async () => { setError(null); if (input === 'mic' && !(await ensureMic())) return; setGameState('CALIBRATE'); }} className="px-4 py-1.5 text-xs font-black rounded-full bg-white text-sky-600 border-2 border-sky-200">合わせる</button>
+        </div>
+        <div className="flex items-center gap-2">
+          <input id="off" type="range" min="-150" max="350" step="5" value={Math.round((offsets[input] ?? 0) * 1000)} onChange={(e) => setOffset(input, parseInt(e.target.value) / 1000)} className="flex-1" />
+          <span className="text-xs font-black text-slate-600 w-16 text-right tabular-nums">{offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
+        </div>
+        <div className="text-[11px] text-slate-500 leading-snug">「おそい」と感じたら右へ。初めて遊ぶときは自動で合わせます。</div>
+      </div>
+
+      <div className="bg-white/60 p-3 rounded-xl">
+        <div className="font-bold text-sky-600 mb-1 text-sm">BGMをえらぶ</div>
+        <input type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setBgmUrl(URL.createObjectURL(f)); setCustomUrl(''); } }}
+          className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-sky-50 file:text-sky-700 mb-2" />
+        <input type="text" placeholder="またはURLを入力" value={customUrl} onChange={(e) => { setCustomUrl(e.target.value); setBgmUrl(e.target.value || DEFAULT_BGM); }}
+          className="w-full text-sm p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white" />
+        <div className="text-[11px] text-slate-500 mt-1 leading-tight">譜面は標準の曲に合わせてあります。別の曲だと音符と曲が合いません。</div>
+      </div>
+    </div>
+  );
+
+  const renderReady = () => {
+    const say = STORY[storyIdx]?.say || '';
+    const sceneSize = isMobile ? Math.min(330, vp.w - 40) : 340;
+    return (
+      <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="min-h-full w-full max-w-5xl mx-auto px-4 py-5 md:py-8 grid md:grid-cols-2 gap-4 md:gap-8 items-center">
+          {/* 左：タイトルと、椅子のしあしあ */}
+          <div className="flex flex-col items-center text-center min-w-0">
+            <div className="mb-1.5 bg-yellow-300 text-slate-800 px-4 py-1 rounded-full font-black text-xs md:text-sm border-2 md:border-4 border-white shadow-md -rotate-2">底辺チューバーからの脱却</div>
+            <div className="flex flex-col items-center -rotate-1 select-none">
+              <div className="flex items-end justify-center flex-wrap gap-x-1.5">
+                <span className="text-6xl sm:text-7xl md:text-8xl font-black text-pink-500 leading-none drop-shadow-xl" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>名</span>
+                <span className="text-xl sm:text-3xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>を</span>
+                <span className="text-3xl sm:text-5xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2.5px white', paintOrder: 'stroke fill' }}>たくさん</span>
+                <span className="text-2xl sm:text-4xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>伝えれる</span>
               </div>
-              <span className="text-3xl sm:text-5xl md:text-7xl font-black text-slate-800 mt-1" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>画期的ツール</span>
+              <span className="text-3xl sm:text-5xl md:text-6xl font-black text-slate-800 mt-1" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>画期的ツール</span>
+            </div>
+            <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/60 px-3 py-0.5 rounded-full">的なもの</div>
+
+            <div className="relative mt-2" style={{ width: sceneSize, height: sceneSize }}>
+              <div className="absolute inset-[6%] rounded-full bg-white/70 border-4 border-white shadow-inner" />
+              <div className="absolute inset-0">
+                <ShiashiaSeated size={sceneSize} onPoke={handlePoke} onBeat={setStoryIdx} />
+              </div>
+              {say && (
+                <div key={storyIdx} className="bubble-in absolute top-[3%] left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none">
+                  <div className="relative bg-white border-4 border-slate-800 rounded-2xl px-3.5 py-1.5 text-slate-800 font-black text-sm md:text-base whitespace-nowrap shadow-[4px_4px_0_rgba(30,41,59,0.25)]">
+                    {say}
+                    <span className="absolute left-1/2 -bottom-[12px] -translate-x-1/2 w-0 h-0 border-x-[9px] border-x-transparent border-t-[12px] border-t-slate-800" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-          <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/50 px-3 py-1 rounded-full">的なもの</div>
-          {isMobile && <div className="mt-1"><Shiashia3D mood="dance" intensity={0.3} size={140} onPoke={handlePoke} /></div>}
-        </div>
 
-        <div className="flex flex-col lg:flex-row gap-4 w-full max-w-4xl items-stretch justify-center">
-          <div className="flex-1 flex flex-col gap-3 min-w-0">
-            <div className="bg-white/85 backdrop-blur rounded-2xl p-3 shadow-[0_4px_0_rgba(0,0,0,0.1)] border-4 border-white flex flex-col gap-2">
-              <div className="text-cyan-500 font-bold text-center text-sm">モードをえらんでね</div>
+          {/* 右：あそぶ */}
+          <div className="flex flex-col gap-3 min-w-0 w-full max-w-md mx-auto">
+            <div className="bg-white/90 backdrop-blur rounded-2xl p-3 shadow-[0_4px_0_rgba(0,0,0,0.08)] border-4 border-white flex flex-col gap-2">
+              <div className="text-cyan-600 font-bold text-center text-sm">モードをえらんでね</div>
               <div className="grid grid-cols-3 gap-2">
                 {(['10s', '30s', 'FULL'] as GameMode[]).map((m) => (
                   <button key={m} onClick={() => setMode(m)}
-                    className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center gap-0.5 ${mode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706] -translate-y-px' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                    <span className="font-black text-sm md:text-base">{MODE_LABEL[m]}</span>
+                    className={`py-3 px-1 rounded-xl transition-all flex flex-col items-center gap-0.5 ${mode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706] -translate-y-px' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className="font-black text-base">{MODE_LABEL[m]}</span>
                     <span className="text-[10px] font-bold">ノルマ {fmtSubs(QUOTA[m])}人</span>
                   </button>
                 ))}
@@ -796,98 +883,32 @@ const Game: React.FC = () => {
               <div className="text-[11px] text-slate-500 text-center font-bold">{MODE_DESC[mode]}</div>
             </div>
 
-            <button onClick={handleStart} className="group relative w-full focus:outline-none transition-all hover:scale-[1.02] active:scale-95 duration-200 min-h-[110px] md:min-h-[150px]">
+            <button onClick={handleStart} className="group relative w-full focus:outline-none transition-transform active:scale-95 duration-200 h-[104px] md:h-[132px]">
               <div className="absolute inset-0 bg-pink-300 rounded-[2rem] translate-y-2" />
-              <div className="absolute inset-0 bg-gradient-to-b from-pink-400 to-pink-500 rounded-[2rem] border-4 border-white shadow-inner flex flex-col items-center justify-center overflow-hidden">
-                <div className="absolute top-[-20%] left-[-10%] w-32 h-32 bg-white/20 rotate-45" />
+              <div className="absolute inset-0 bg-gradient-to-b from-pink-400 to-pink-500 rounded-[2rem] border-4 border-white flex flex-col items-center justify-center overflow-hidden">
+                <div className="absolute top-[-30%] left-[-10%] w-32 h-32 bg-white/20 rotate-45" />
                 <span className="text-4xl md:text-5xl font-black text-white drop-shadow-md z-10">始める！</span>
-                <div className="bg-white/30 rounded-full px-5 py-1.5 mt-3 z-10">
-                  <span className="text-base md:text-xl font-bold text-white">{MODE_LABEL[mode]}で 登録者{fmtSubs(QUOTA[mode])}人 を目指す</span>
-                </div>
+                <span className="mt-1.5 z-10 text-sm md:text-base font-bold text-white bg-white/25 rounded-full px-4 py-1">{MODE_LABEL[mode]}で 登録者{fmtSubs(QUOTA[mode])}人 を目指す</span>
               </div>
             </button>
 
-            <button onClick={() => setShowBook(true)} className="w-full bg-white/85 backdrop-blur rounded-2xl p-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.1)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between">
-              <span className="font-black text-slate-700 text-lg">ずかん</span>
-              <span className="text-xs font-bold text-slate-400">実績 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length} · エンディング {Object.keys(seenEndings).length}/{TOTAL_ENDINGS}</span>
-            </button>
-          </div>
-
-          {/* 設定 */}
-          <div className="flex-1 min-w-0">
-            <div className="h-full bg-sky-200/90 backdrop-blur rounded-[2rem] border-4 md:border-8 border-white p-4 text-slate-700 flex flex-col gap-3 shadow-lg">
-              <div className="bg-white text-sky-500 font-black px-4 py-1 rounded-full self-center shadow-sm text-lg border-2 border-sky-100">せってい</div>
-
-              <div className="bg-white/50 p-3 rounded-xl">
-                <div className="flex justify-between mb-1 font-bold text-sky-600 text-sm"><span>おんりょう</span><span>{Math.round(settings.volume * 100)}%</span></div>
-                <input id="vol" type="range" min="0" max="1" step="0.05" value={settings.volume} onChange={(e) => setSettings({ volume: parseFloat(e.target.value) })} className="w-full" />
-                <label className="flex items-center gap-2 mt-2 text-xs font-bold text-sky-700" htmlFor="clicks">
-                  <input id="clicks" type="checkbox" checked={settings.clicks} onChange={(e) => setSettings({ clicks: e.target.checked })} /> 拍にクリック音を入れる
-                </label>
-              </div>
-
-              {!TAP_ONLY && (
-                <div className="bg-white/50 p-3 rounded-xl">
-                  <div className="font-bold text-sky-600 mb-2 text-sm">にゅうりょく</div>
-                  <div className="flex gap-2">
-                    {([['mic', '声で「な」'], ['tap', 'タップ / スペース']] as const).map(([m, label]) => (
-                      <button key={m} onClick={() => setSettings({ input: m })}
-                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${settings.input === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706]' : 'bg-white text-slate-400'}`}>{label}</button>
-                    ))}
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-1.5 leading-snug">声は「な」でなくても、声が出たら反応します。</div>
-                </div>
-              )}
-              {TAP_ONLY && (
-                <div className="bg-white/50 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">この公開版はタップ / スペースキーで「な」を伝えます。<br />声で遊ぶには GitHub のプロジェクトを起動してください。</div>
-              )}
-
-              {!TAP_ONLY && settings.input === 'mic' && (
-                <div className="bg-white/60 p-3 rounded-xl flex flex-col gap-2 border-2 border-white">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-sky-600 text-sm">マイクテスト</span>
-                    <button onClick={async () => { if (micTesting) { stopMic(); } else if (await ensureMic()) setMicTesting(true); }}
-                      className={`px-3 py-1 text-xs font-bold rounded-full border-2 ${micTesting ? 'bg-green-400 text-white border-green-200' : 'bg-white text-gray-400 border-gray-200'}`}>{micTesting ? 'ON' : 'OFF'}</button>
-                  </div>
-                  <select className="w-full text-xs p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white" value={settings.deviceId} onChange={(e) => { setSettings({ deviceId: e.target.value }); stopMic(); }}>
-                    <option value="">いつものマイク</option>
-                    {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `マイク ${d.deviceId.slice(0, 5)}`}</option>)}
-                  </select>
-                  <LevelMeter mic={micRef.current} threshold={settings.threshold} />
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">はんのうライン</span>
-                    <input id="thr" type="range" min="5" max="90" value={settings.threshold} onChange={(e) => setSettings({ threshold: parseInt(e.target.value) })} className="flex-1" />
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-white/50 p-3 rounded-xl flex flex-col gap-2">
-                <div className="flex justify-between items-center">
-                  <span className="font-bold text-sky-600 text-sm">タイミング補正</span>
-                  <button onClick={async () => { setError(null); if (input === 'mic' && !(await ensureMic())) return; setGameState('CALIBRATE'); }} className="px-3 py-1 text-xs font-black rounded-full bg-white text-sky-600 border-2 border-sky-200">合わせる</button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input id="off" type="range" min="-150" max="350" step="5" value={Math.round((offsets[input] ?? 0) * 1000)} onChange={(e) => setOffset(input, parseInt(e.target.value) / 1000)} className="flex-1" />
-                  <span className="text-xs font-black text-slate-600 w-16 text-right tabular-nums">{offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
-                </div>
-                <div className="text-[10px] text-slate-500 leading-snug">「おそい」と感じたら右へ。初めて遊ぶときは自動で合わせます。</div>
-              </div>
-
-              <div className="bg-white/50 p-3 rounded-xl">
-                <div className="font-bold text-sky-600 mb-1 text-sm">BGMをえらぶ</div>
-                <input type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setBgmUrl(URL.createObjectURL(f)); setCustomUrl(''); } }}
-                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-sky-50 file:text-sky-700 mb-2" />
-                <input type="text" placeholder="またはURLを入力" value={customUrl} onChange={(e) => { setCustomUrl(e.target.value); setBgmUrl(e.target.value || DEFAULT_BGM); }}
-                  className="w-full text-xs p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white" />
-                <div className="text-[10px] text-slate-500 mt-1 leading-tight">譜面は標準の曲に合わせてあります。別の曲だと音符と曲が合いません。</div>
-              </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setShowBook(true)} className="bg-white/90 rounded-2xl py-3 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex flex-col items-center">
+                <span className="font-black text-slate-700">ずかん</span>
+                <span className="text-[10px] font-bold text-slate-400">実績 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length}・エンド {Object.keys(seenEndings).length}/{TOTAL_ENDINGS}</span>
+              </button>
+              <button onClick={() => setShowSettings((v) => !v)} className={`rounded-2xl py-3 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex flex-col items-center ${showSettings ? 'bg-sky-300 text-white' : 'bg-white/90 text-slate-700'}`}>
+                <span className="font-black">せってい</span>
+                <span className={`text-[10px] font-bold ${showSettings ? 'text-white/80' : 'text-slate-400'}`}>{input === 'mic' ? '声' : 'タップ'}・補正 {offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
+              </button>
             </div>
+            {showSettings && <div ref={settingsBoxRef} className="scroll-mt-4">{renderSettings()}</div>}
+            {error && <div className="bg-red-400 text-white font-bold p-3 rounded-xl border-4 border-white shadow-lg text-center text-sm">{error}</div>}
           </div>
         </div>
-        {error && <div className="mt-4 bg-red-400 text-white font-bold p-3 rounded-xl border-4 border-white shadow-lg max-w-lg text-center text-sm">{error}</div>}
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderPlaying = () => {
     const ratio = subs / quota;
@@ -897,48 +918,67 @@ const Game: React.FC = () => {
         {/* 上：時間の細いバー */}
         <div className="absolute top-0 left-0 right-0 h-1.5 bg-pink-100 z-40"><div className="h-full bg-pink-400 transition-[width] duration-100" style={{ width: `${timePct * 100}%` }} /></div>
 
-        <button data-noinput onPointerDown={(e) => e.stopPropagation()} onClick={pauseGame}
-          className="absolute top-3 left-3 z-50 bg-white/90 text-slate-500 hover:bg-yellow-300 hover:text-white border-4 border-slate-200 rounded-full w-12 h-12 flex items-center justify-center shadow-md" aria-label="一時停止">
+        <button data-noinput onPointerDown={(e) => e.stopPropagation()} onClick={pauseGame} style={{ top: 'calc(10px + env(safe-area-inset-top, 0px))' }}
+          className="absolute left-3 z-50 bg-white/90 text-slate-500 hover:bg-yellow-300 hover:text-white border-4 border-slate-200 rounded-full w-12 h-12 flex items-center justify-center shadow-md" aria-label="一時停止">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
         </button>
 
-        {/* 上：登録者（＝ノルマ）。いちばん大事なものだけ */}
-        <div className="absolute top-3 left-0 right-0 z-30 flex flex-col items-center pointer-events-none px-16">
-          <div className={`bg-white/90 backdrop-blur rounded-3xl px-5 md:px-8 pt-1.5 pb-2 border-b-8 shadow-xl text-center ${buzz ? 'border-amber-400' : ratio >= 1 ? 'border-yellow-300' : 'border-slate-200'}`}>
-            <div className="text-[10px] md:text-xs font-bold text-slate-400 tracking-wider">チャンネル登録者数</div>
-            <SubsCounter value={subs} big />
-          </div>
-          <div className="mt-2 w-[min(520px,82vw)]">
-            <div className="flex justify-between text-[10px] md:text-xs font-black px-1">
-              <span className={ratio >= 1 ? 'text-amber-500' : 'text-cyan-600'}>{ratio >= 1 ? 'ノルマ達成' : 'ノルマ'} {fmtSubs(quota)}人</span>
-              <span className="text-slate-500 tabular-nums">{ratio >= 1 ? `${ratio.toFixed(1)}倍` : `${Math.floor(ratio * 100)}%`}</span>
+        {/* 上：登録者（＝ノルマ）・視聴者・警告。スマホは縦に並べる */}
+        {(() => {
+          const viewersBox = (
+            <div className={`bg-white/90 rounded-2xl px-2.5 py-1.5 border-4 shadow-md ${isMobile ? 'flex-1' : 'w-40'} ${viewers <= 20 ? 'border-red-500 animate-pulse' : buzz ? 'border-amber-400' : 'border-slate-200'}`}>
+              <div className="flex justify-between text-[10px] font-black">
+                <span className={viewers <= 20 ? 'text-red-500' : 'text-slate-500'}>{viewers <= 20 ? '離脱寸前' : '視聴者'}</span>
+                <span className="text-slate-600 tabular-nums">{viewers}</span>
+              </div>
+              <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mt-0.5">
+                <div className={`h-full transition-[width] duration-150 ${viewers <= 20 ? 'bg-red-500' : viewers >= 85 ? 'bg-amber-400' : 'bg-slate-500'}`} style={{ width: `${viewers}%` }} />
+              </div>
             </div>
-            <div className="h-3.5 bg-white/90 rounded-full overflow-hidden border-2 border-white shadow">
-              <div className={`h-full transition-[width] duration-200 ${ratio >= 1 ? 'bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500' : 'bg-cyan-400'}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+          );
+          const strikesBox = (
+            <div className="flex items-center gap-1 bg-white/90 rounded-full px-2.5 py-1 border-2 border-slate-200 shrink-0">
+              <span className="text-[10px] font-black text-slate-500">警告</span>
+              {Array.from({ length: BAN_STRIKES }).map((_, i) => <span key={i} className={`w-2.5 h-2.5 rounded-full ${i < strikes ? 'bg-red-500' : 'bg-slate-200'}`} />)}
             </div>
-          </div>
-        </div>
-
-        {/* 右上：視聴者と警告 */}
-        <div className="absolute top-3 right-3 z-40 flex flex-col items-end gap-1.5 pointer-events-none">
-          <div className={`bg-white/90 rounded-2xl px-2.5 py-1.5 border-4 shadow-md w-28 md:w-40 ${viewers <= 20 ? 'border-red-500 animate-pulse' : buzz ? 'border-amber-400' : 'border-slate-200'}`}>
-            <div className="flex justify-between text-[10px] font-black">
-              <span className={viewers <= 20 ? 'text-red-500' : 'text-slate-500'}>{viewers <= 20 ? '離脱寸前' : '視聴者'}</span>
-              <span className="text-slate-600 tabular-nums">{viewers}</span>
+          );
+          const quotaBar = (
+            <div className="w-full">
+              <div className="flex justify-between text-[10px] md:text-xs font-black px-1">
+                <span className={ratio >= 1 ? 'text-amber-500' : 'text-cyan-600'}>{ratio >= 1 ? 'ノルマ達成' : 'ノルマ'} {fmtSubs(quota)}人</span>
+                <span className="text-slate-500 tabular-nums">{ratio >= 1 ? `${ratio.toFixed(1)}倍` : `${Math.floor(ratio * 100)}%`}</span>
+              </div>
+              <div className="h-3.5 bg-white/90 rounded-full overflow-hidden border-2 border-white shadow">
+                <div className={`h-full transition-[width] duration-200 ${ratio >= 1 ? 'bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500' : 'bg-cyan-400'}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+              </div>
             </div>
-            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mt-0.5">
-              <div className={`h-full transition-[width] duration-150 ${viewers <= 20 ? 'bg-red-500' : viewers >= 85 ? 'bg-amber-400' : 'bg-slate-500'}`} style={{ width: `${viewers}%` }} />
+          );
+          const subsBox = (
+            <div className={`bg-white/90 backdrop-blur rounded-3xl px-5 md:px-8 pt-1 pb-1.5 border-b-[6px] shadow-xl text-center ${buzz ? 'border-amber-400' : ratio >= 1 ? 'border-yellow-300' : 'border-slate-200'}`}>
+              <div className="text-[10px] md:text-xs font-bold text-slate-400 tracking-wider">チャンネル登録者数</div>
+              <SubsCounter value={subs} big />
             </div>
-          </div>
-          <div className="flex items-center gap-1 bg-white/90 rounded-full px-2 py-0.5 border-2 border-slate-200">
-            <span className="text-[10px] font-black text-slate-500">警告</span>
-            {Array.from({ length: BAN_STRIKES }).map((_, i) => <span key={i} className={`w-2.5 h-2.5 rounded-full ${i < strikes ? 'bg-red-500' : 'bg-slate-200'}`} />)}
-          </div>
-        </div>
+          );
+          return isMobile ? (
+            <div className="absolute left-0 right-0 z-30 flex flex-col items-stretch gap-1.5 pointer-events-none px-3" style={{ top: 'calc(10px + env(safe-area-inset-top, 0px))' }}>
+              <div className="flex items-start justify-center pl-12 pr-12">{subsBox}</div>
+              {quotaBar}
+              <div className="flex items-center gap-2">{viewersBox}{strikesBox}</div>
+            </div>
+          ) : (
+            <>
+              <div className="absolute top-3 left-0 right-0 z-30 flex flex-col items-center pointer-events-none px-48">
+                {subsBox}
+                <div className="mt-2 w-[min(520px,100%)]">{quotaBar}</div>
+              </div>
+              <div className="absolute top-3 right-3 z-40 flex flex-col items-end gap-1.5 pointer-events-none">{viewersBox}{strikesBox}</div>
+            </>
+          );
+        })()}
 
         {/* アイテム効果 */}
         {itemCard && performance.now() < itemCard.until + 400 && (
-          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: isMobile ? '22%' : '24%' }}>
+          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: isMobile ? 'calc(178px + env(safe-area-inset-top, 0px))' : '24%' }}>
             <div className={`bg-gradient-to-r ${ITEM_COLOR[itemCard.def.kind]} text-white rounded-2xl px-4 py-2 border-4 border-white shadow-xl text-center min-w-[220px]`}>
               <div className="text-[10px] font-black tracking-widest opacity-80">special「な」</div>
               <div className="font-black text-lg md:text-2xl leading-tight">{itemCard.def.name}</div>
@@ -1178,7 +1218,7 @@ const Game: React.FC = () => {
         </div>
       )}
 
-      {playing && <EventCutIn data={cutIn} />}
+      {playing && <EventCutIn data={cutIn} mobile={isMobile} />}
       {banFlash && playing && <div className="absolute inset-0 z-[58] bg-red-700/40 pointer-events-none flash-white" />}
 
       {gameState !== 'PLAYING' && <AchievementToasts toasts={toasts} />}

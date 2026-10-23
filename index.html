@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <title>名をたくさん伝えれる画期的ツール</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,7 +11,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&display=swap" rel="stylesheet">
     <style>
       html, body, #root { height: 100%; margin: 0; }
+      * { -webkit-tap-highlight-color: transparent; }
       body {
+        -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
         font-family: 'Mochiy Pop One', sans-serif;
         overflow: hidden;
       }
@@ -340,6 +342,8 @@
         100% { transform: translateY(-8px) scale(1); opacity: 0; }
       }
       .rules-in { animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+      .bubble-in { animation: bubble-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+      @keyframes bubble-in { from { transform: translate(-50%, 10px) scale(0.6); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
 
       /* ===== スタンプ（ドン） ===== */
       @keyframes stamp-in {

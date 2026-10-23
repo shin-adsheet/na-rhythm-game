@@ -78,8 +78,8 @@ const RulesCard: React.FC<Props> = ({ mode, input, ready, offsetMs, skip, onSkip
             <button onClick={onCalibrate} className="font-black text-sky-600 underline underline-offset-4 shrink-0">合わせ直す</button>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button onClick={onBack} className="sm:w-28 py-3 rounded-full font-black text-slate-500 bg-slate-100 border-4 border-white">もどる</button>
+          <div className="sticky bottom-2 z-10 flex flex-row gap-2 bg-white/95 rounded-full p-1 -mx-1 shadow-[0_-6px_16px_rgba(255,255,255,0.9)]">
+            <button onClick={onBack} className="w-24 sm:w-28 shrink-0 py-3 rounded-full font-black text-slate-500 bg-slate-100 border-4 border-white">もどる</button>
             <button onClick={onStart} disabled={!ready} className="flex-1 py-3 rounded-full font-black text-xl text-white bg-pink-500 border-4 border-white shadow-lg hover:scale-[1.02] active:scale-95 transition-transform disabled:opacity-50">
               {ready ? '配信スタート' : '曲を読み込み中…'}
             </button>

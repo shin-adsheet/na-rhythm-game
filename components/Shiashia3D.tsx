@@ -45,7 +45,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const D2 = THREE.MathUtils.degToRad;
 const BEAT_S = 60 / 175;
 
-interface Rig {
+export interface Rig {
   g: THREE.Group;
   J: Record<string, any>;
   setBlink?: (v: number) => void;
@@ -54,7 +54,7 @@ interface Rig {
   side: number;            // 1 = しあしあ、-1 = コラボ相手（動きを左右反転）
 }
 
-function makeRig(colors?: Record<string, number>, side = 1): Rig {
+export function makeRig(colors?: Record<string, number>, side = 1): Rig {
   const cfg = JSON.parse(JSON.stringify(SHIA_CONFIG));
   if (colors) cfg.colors = { ...cfg.colors, ...colors };
   const g: THREE.Group = buildELGirl(cfg);
@@ -68,7 +68,7 @@ function makeRig(colors?: Record<string, number>, side = 1): Rig {
   g.position.y = rig.baseY;
   return rig;
 }
-function restAll(r: Rig) {
+export function restAll(r: Rig) {
   for (const k in r.J) { const o = r.J[k]; if (o?.isObject3D) o.rotation.set(...((o.userData.rest as [number, number, number]) || [0, 0, 0])); }
 }
 
