@@ -328,6 +328,48 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone }) => {
       );
       break;
     }
+    case 'dictator': {
+      bg = 'bg-gradient-to-b from-zinc-950 via-red-950 to-red-900';
+      mood = 'idle';
+      const rise = Math.min(1, progress / 0.25);
+      extra = (
+        <>
+          {/* スポットライト */}
+          <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at 50% 85%, rgba(254,240,138,0.45) 0%, rgba(254,240,138,0.08) 35%, transparent 60%)' }} />
+          {/* 左右の垂れ幕 */}
+          {[-1, 1].map((sd) => (
+            <div key={sd} className="absolute top-0 w-[18%] max-w-[140px] flex flex-col items-center" style={{ [sd < 0 ? 'left' : 'right']: '4%', height: `${70 * rise}%`, transition: 'height 0.1s linear' } as React.CSSProperties}>
+              <div className="w-full flex-1 bg-gradient-to-b from-red-600 to-red-800 border-x-4 border-yellow-500 flex items-center justify-center shadow-2xl overflow-hidden">
+                <span className="text-yellow-300 font-black text-5xl md:text-7xl" style={{ WebkitTextStroke: '2px #7f1d1d' }}>な</span>
+              </div>
+              <div className="w-full h-4 bg-yellow-500" style={{ clipPath: 'polygon(0 0,100% 0,100% 100%,50% 30%,0 100%)' }} />
+            </div>
+          ))}
+          {/* 旗をふる群衆 */}
+          <div className="absolute bottom-0 left-0 right-0 h-[22%] flex items-end justify-around px-2 opacity-90">
+            {Array.from({ length: 18 }).map((_, i) => (
+              <svg key={i} viewBox="0 0 40 60" className="w-[5.5%] min-w-[18px] h-auto" style={{ animation: `crowd-jump ${0.5 + (i % 3) * 0.1}s infinite`, animationDelay: `${(i % 6) * 0.08}s` }} aria-hidden="true">
+                <circle cx="14" cy="30" r="7" fill="#1c1917" />
+                <rect x="7" y="38" width="14" height="22" rx="5" fill="#1c1917" />
+                <line x1="20" y1="42" x2="24" y2="4" stroke="#1c1917" strokeWidth="2.5" />
+                <rect x="24" y="4" width="14" height="10" fill="#dc2626" />
+                <text x="31" y="12.5" fontSize="8" fontWeight="900" fill="#fde047" textAnchor="middle">な</text>
+              </svg>
+            ))}
+          </div>
+          {/* 国章 */}
+          {progress > 0.3 && (
+            <div className="absolute top-[9%] left-1/2 -translate-x-1/2 ending-fade">
+              <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-yellow-400 border-[6px] border-yellow-200 shadow-[0_0_40px_rgba(250,204,21,0.7)] flex items-center justify-center">
+                <span className="text-red-700 font-black text-5xl md:text-6xl leading-none">名</span>
+              </div>
+            </div>
+          )}
+          <Confetti count={progress > 0.55 ? 50 : 0} colors={['#fde047', '#dc2626', '#facc15']} />
+        </>
+      );
+      break;
+    }
     case 'ban': {
       bg = 'bg-black';
       mood = 'ban';

@@ -72,7 +72,7 @@ export interface Achievement {
 export type EndingScene =
   | 'explode' | 'rocket' | 'fire' | 'legend' | 'nafy' | 'god'
   | 'bottom' | 'silent' | 'cat' | 'sleep'
-  | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff' | 'ban';
+  | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff' | 'ban' | 'dictator';
 
 export interface Ending {
   id: string;
