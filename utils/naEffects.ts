@@ -4,8 +4,8 @@ import { NaParticle, NaVariant, Rarity } from '../types';
 export const VARIANTS_BY_RARITY: Record<Rarity, NaVariant[]> = {
   normal:   ['fall', 'float', 'spin', 'bounce', 'zigzag', 'pop', 'wave', 'slide'],
   uncommon: ['rainbow', 'giant', 'swarm', 'ring', 'shadow', 'neon'],
-  rare:     ['gold', 'chain', 'thunder', 'flip', 'blackhole', 'pixel'],
-  ultra:    ['tsunami', 'invert', 'chaos', 'matrix', 'diamond'],
+  rare:     ['chain', 'thunder', 'flip', 'blackhole', 'pixel'],
+  ultra:    ['tsunami', 'chaos', 'matrix'],
 };
 
 /** 日本語の名前（図鑑・ログ用） */

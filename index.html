@@ -268,6 +268,79 @@
       }
       .score-pop { animation: score-pop 1s ease-out forwards; }
 
+      /* ===== できごとカットイン（イージングで、じっくり見せる） ===== */
+      .ci-wrap { animation: ci-exit 0.45s cubic-bezier(0.7, 0, 0.84, 0) calc(var(--dur) - 0.45s) forwards; }
+      @keyframes ci-exit { to { transform: translateX(-30%) skewX(8deg); opacity: 0; } }
+      .ci-band { animation: ci-band 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      @keyframes ci-band {
+        0% { clip-path: inset(0 100% 0 0); transform: translateX(14%) skewY(-2deg); }
+        100% { clip-path: inset(0 0 0 0); transform: translateX(0) skewY(-2deg); }
+      }
+      .ci-char { animation: ci-char 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; animation-delay: calc(0.28s + var(--i) * 55ms); }
+      @keyframes ci-char {
+        0% { transform: translateY(60%) scale(0.2) rotate(-14deg); opacity: 0; }
+        70% { opacity: 1; }
+        100% { transform: translateY(0) scale(1) rotate(0); opacity: 1; }
+      }
+      .ci-tag { animation: ci-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) 0.18s both; }
+      .ci-sub { animation: ci-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.75s both; }
+      @keyframes ci-up { from { transform: translateY(18px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+      .ci-prop { animation: ci-prop 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s both; }
+      @keyframes ci-prop { from { transform: scale(0) rotate(-40deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+      .ci-shield { animation: ci-shield 1s cubic-bezier(0.34, 1.56, 0.64, 1) 0.9s both; }
+      @keyframes ci-shield {
+        0% { transform: perspective(400px) rotateY(-540deg) scale(0.3); opacity: 0; }
+        100% { transform: perspective(400px) rotateY(0) scale(1); opacity: 1; }
+      }
+      .ci-stamp { animation: stamp-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) 1.25s both; }
+      .ci-float { animation: ci-float 1.4s ease-in-out infinite; }
+      @keyframes ci-float { 0%, 100% { transform: translateY(0) rotate(-8deg); } 50% { transform: translateY(-10px) rotate(8deg); } }
+      .ci-press { animation: ci-press 0.18s steps(2) infinite; }
+      @keyframes ci-press { 50% { opacity: 0.35; } }
+      .ci-spin-in { animation: ci-spin 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+      @keyframes ci-spin { from { transform: rotate(-180deg) scale(0); } to { transform: rotate(0) scale(1); } }
+      .ci-wave { animation: ci-wave 1.2s ease-in-out infinite; }
+      @keyframes ci-wave { 0%, 100% { opacity: 0.15; } 50% { opacity: 1; } }
+      .ci-penlight { animation: ci-pen 0.34s ease-in-out infinite alternate; }
+      @keyframes ci-pen { from { transform: rotate(-22deg); } to { transform: rotate(22deg); } }
+      .ci-orbit { animation: ci-orbit 3s linear infinite; }
+      @keyframes ci-orbit { to { transform: rotate(360deg); } }
+      .ci-flame { animation: ci-flame 0.28s ease-in-out infinite alternate; }
+      @keyframes ci-flame { from { transform: scaleY(0.75); } to { transform: scaleY(1.2); } }
+      .ci-hammer { animation: ci-hammer 0.7s cubic-bezier(0.7, 0, 0.84, 0) 0.45s both; }
+      @keyframes ci-hammer {
+        0% { transform: rotate(-70deg); }
+        70% { transform: rotate(18deg); }
+        85% { transform: rotate(8deg); }
+        100% { transform: rotate(14deg); }
+      }
+      .ci-scan { background: repeating-linear-gradient(0deg, rgba(255,255,255,0.06) 0 2px, transparent 2px 5px); animation: ci-scan 0.6s linear infinite; }
+      @keyframes ci-scan { to { background-position: 0 10px; } }
+
+      /* ===== special「な」 ===== */
+      .special-fly { animation: special-fly var(--dur, 5s) cubic-bezier(0.37, 0, 0.63, 1) forwards, special-spin 2.4s linear infinite; }
+      @keyframes special-fly {
+        0% { transform: translateX(0) translateY(0); }
+        25% { transform: translateX(-32vw) translateY(-26px); }
+        50% { transform: translateX(-62vw) translateY(14px); }
+        75% { transform: translateX(-90vw) translateY(-18px); }
+        100% { transform: translateX(-125vw) translateY(0); }
+      }
+      @keyframes special-spin { to { filter: hue-rotate(360deg); } }
+      .item-in { animation: item-in 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+      @keyframes item-in { from { transform: translate(-50%, -24px) scale(0.6); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+      .item-bar { animation: item-bar linear forwards; transform-origin: left; }
+      @keyframes item-bar { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+      /* ===== 判定の文字 ===== */
+      .judge-pop { animation: judge-pop 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.3) forwards; }
+      @keyframes judge-pop {
+        0% { transform: translateY(10px) scale(0.6); opacity: 0; }
+        30% { transform: translateY(0) scale(1.12); opacity: 1; }
+        100% { transform: translateY(-8px) scale(1); opacity: 0; }
+      }
+      .rules-in { animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
       /* ===== スタンプ（ドン） ===== */
       @keyframes stamp-in {
         0% { transform: scale(3) rotate(-14deg); opacity: 0; }
@@ -470,7 +543,6 @@
 {
   "imports": {
     "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.29.1",
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "three": "https://aistudiocdn.com/three@^0.170.0",

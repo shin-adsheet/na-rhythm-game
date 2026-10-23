@@ -1,5 +1,5 @@
 
-export type GameState = 'READY' | 'COUNTDOWN' | 'PLAYING' | 'ENDING' | 'FINISHED' | 'PAUSED';
+export type GameState = 'READY' | 'CALIBRATE' | 'RULES' | 'PLAYING' | 'PAUSED' | 'ENDING' | 'FINISHED';
 export type GameMode = '10s' | '30s' | 'FULL';
 
 export type Rarity = 'normal' | 'uncommon' | 'rare' | 'ultra';
@@ -58,8 +58,10 @@ export interface ScoreEntry {
   endingId?: string;
 }
 
+export type AchievementGroup = '盾' | 'クリア' | 'うまさ' | '炎上' | 'バズ' | 'special' | 'エンディング' | 'おまけ';
 export interface Achievement {
   id: string;
+  group: AchievementGroup;
   title: string;
   description: string;
   icon: string;
@@ -70,7 +72,7 @@ export interface Achievement {
 export type EndingScene =
   | 'explode' | 'rocket' | 'fire' | 'legend' | 'nafy' | 'god'
   | 'bottom' | 'silent' | 'cat' | 'sleep'
-  | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff';
+  | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff' | 'ban';
 
 export interface Ending {
   id: string;
@@ -79,30 +81,34 @@ export interface Ending {
   subtitle: string;
   scene: EndingScene;
   rarity: Rarity;
-  condition: 'clear' | 'fail' | 'any' | 'secret';
+  kind: 'clear' | 'fail' | 'bad' | 'secret';
+  hint: string;         // ずかんに出る条件のヒント
   lines: string[];      // タイプライターで出るテキスト
   oneLiner: string;     // 結果画面に出る一言（元の「（あなたの名を伝えすぎて、世界が爆発しました）」と同じ形式）
-  weight: number;       // 抽選の重み
   durationMs: number;   // 演出時間
 }
 
 /** 1プレイの結果（実績・エンディング判定に使う） */
 export interface RunStats {
   mode: GameMode;
-  hits: number;
-  subscribers: number;
-  maxCombo: number;
-  goldClicks: number;
-  diamondClicks: number;
-  rareSeen: number;
-  ultraSeen: number;
-  feverCount: number;
-  pauses: number;
-  cutIns: number;
-  shiashiaPokes: number;
+  subs: number;
+  quota: number;
   cleared: boolean;
-  perfect: boolean; // ほぼ全ビート叩けた
-  badHits: number;   // 黙れ区間・裏拍で言ってしまった回数
-  restsKept: number; // 黙れ区間を守った回数
-  cutoff: boolean;   // 視聴者が0になって配信終了
+  hits: number;
+  perfect: number;
+  great: number;
+  good: number;
+  misses: number;
+  extras: number;      // 音符がない所で声（空振り）
+  fuels: number;       // 炎上中に声を出した区間の数（BAN の警告）
+  burnsKept: number;
+  burnsTotal: number;
+  maxCombo: number;
+  buzzes: number;
+  items: number;       // special「な」を使った回数
+  pokes: number;       // プレイ中にしあしあをつついた回数
+  pauses: number;
+  cutoff: boolean;     // 視聴者 0 で配信終了
+  ban: boolean;        // 警告 3 回で BAN
+  finished: boolean;   // 曲の最後まで（または強制終了まで）たどり着いた
 }

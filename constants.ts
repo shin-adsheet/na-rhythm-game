@@ -1,49 +1,32 @@
+import { GameMode } from './types';
 
-export const GAME_DURATION_S = 73; // Default fallback
-export const BPM = 175;
-export const BEAT_INTERVAL_MS = (60 / BPM) * 1000;
-export const COUNTDOWN_SECONDS = 3;
-
-export const MODE_DURATIONS = {
-  '10s': 10,
-  '30s': 30,
-  'FULL': 73
+export const MODE_LABEL: Record<GameMode, string> = {
+  '10s': '10秒',
+  '30s': '30秒',
+  'FULL': 'フル',
 };
 
-export const CLEAR_THRESHOLDS = {
-  '10s': 70,
-  '30s': 210,
-  'FULL': 365
+export const MODE_DESC: Record<GameMode, string> = {
+  '10s': '曲の頭 10 秒。まずはここから',
+  '30s': '曲の頭 30 秒。炎上が 1 回ある',
+  'FULL': '1 曲まるごと。炎上が 5 回ある',
 };
-
-/** コンボがこの数を超えるとフィーバー */
-export const FEVER_COMBO = 20;
-/** 連続ヒットが途切れたと判定するまでの猶予（ビート数） */
-export const COMBO_BREAK_BEATS = 2.5;
-
-/** 金の「な」クリックのボーナス（いまの1回分の何倍か） */
-export const GOLD_BONUS = 10;
-/** ダイヤの「な」クリックのボーナス（いまの1回分の何倍か） */
-export const DIAMOND_BONUS = 200;
-
-/** ヒット時にポンッと出る言葉 */
-export const HIT_WORDS = [
-  'な！', 'いいね', 'ナイス', '神', '最高', 'かわいい', 'うるさい', 'な？',
-  '伝わった', 'もっと', 'ななな', 'わかる', 'えらい', 'ズバッ', '名！', 'バズれ',
-];
-
-/** 判定（ビートからのズレ ms） */
-export const JUDGE_PERFECT_MS = 35;
-export const JUDGE_GREAT_MS = 70;
-/** 強い演出（レア以上・カットイン）を続けて出さない間隔 ms */
-export const STRONG_FX_COOLDOWN_MS = 7000;
-/** ノルマ達成後の次のノルマ（基準の何倍ずつ増えるか） */
-export const QUOTA_STEP = 0.5;
 
 /** ローカルストレージのキー */
 export const LS_KEYS = {
   achievements: 'rhythm_na_achievements',
   endings: 'rhythm_na_endings_seen',
-  stats: 'rhythm_na_lifetime_stats',
-  variants: 'rhythm_na_variants_seen',
+  stats: 'rhythm_na_lifetime_stats_v2',
+  offsets: 'rhythm_na_offsets',
+  settings: 'rhythm_na_settings',
+  skipRules: 'rhythm_na_skip_rules',
+  scores: (mode: GameMode) => `rhythm_na_subs_v2_${mode}`,
+};
+
+/** 背景に流れるコメント */
+export const COMMENTS = {
+  normal: ['な', 'なー', 'な！', 'わかる', 'かわいい', 'いいね', '初見です', '伸びろ', '神曲', 'リズム感', 'ななな', '名', 'うますぎ', '登録した', 'これ好き', 'もっと'],
+  hype: ['伸びてる', 'バズってる', '神回', '切り抜き確定', 'おすすめから来た', 'な！な！な！', '登録者えぐい', 'インフレ', '人類が「な」', '止まらん', '大型新人', 'ここすき'],
+  burn: ['黙れ', '炎上してて草', '説明しろ', '通報した', '燃えてる', '謝罪会見まだ？', '今は黙れ', 'まだ言うの', '火消しして', '炎上中', '低評価'],
+  nu: ['ぬ？', 'ぬ', 'なじゃなくてぬ', 'ぬぬぬ', '伝わってない', 'ぬ！'],
 };

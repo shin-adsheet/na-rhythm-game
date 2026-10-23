@@ -5,8 +5,6 @@ import { RARITY_LABEL } from '../utils/naEffects';
 
 interface Props {
   ending: Ending;
-  beatRef: React.MutableRefObject<number>;
-  hitRef: React.MutableRefObject<number>;
   isNew: boolean;
   onDone: () => void;
 }
@@ -108,7 +106,7 @@ const Ufo: React.FC = () => (
   </svg>
 );
 
-const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }) => {
+const EndingScene: React.FC<Props> = ({ ending, isNew, onDone }) => {
   const [elapsed, setElapsed] = useState(0);
   const lines = useTypewriter(ending.lines);
   const progress = Math.min(1, elapsed / ending.durationMs);
@@ -296,7 +294,7 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
         <>
           <div className="absolute top-0 bottom-0 left-1/2 w-1 bg-slate-300 shadow-[0_0_30px_#94a3b8]" />
           <div className="absolute bottom-[8%] left-1/2 translate-x-[4%]" style={{ transform: 'scaleX(-1)' }}>
-            <Shiashia3D beatRef={beatRef} hitRef={hitRef} mood="dance" intensity={0.5} size={300} colors={{ hair: 0x94a3b8, hairDark: 0x64748b, topAccent: 0x64748b }} />
+            <Shiashia3D mood="dance" intensity={0.5} size={300} colors={{ hair: 0x94a3b8, hairIn: 0x64748b, sweater: 0xcbd5e1, sweaterIn: 0x94a3b8, tail: 0x94a3b8 }} />
           </div>
         </>
       );
@@ -330,6 +328,24 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
       );
       break;
     }
+    case 'ban': {
+      bg = 'bg-black';
+      mood = 'ban';
+      wrapperClass = progress < 0.2 ? 'shake' : '';
+      extra = (
+        <>
+          <div className="absolute inset-0" style={{ background: 'repeating-linear-gradient(45deg, rgba(127,29,29,0.35) 0 18px, transparent 18px 36px)' }} />
+          {progress > 0.35 && (
+            <div className="absolute top-[14%] left-1/2 -translate-x-1/2 w-[88%] max-w-md bg-zinc-900 border-4 border-red-600 rounded-2xl p-4 text-center ending-fade">
+              <div className="text-red-500 font-black text-3xl md:text-5xl tracking-widest">BAN</div>
+              <div className="text-zinc-300 text-xs md:text-sm font-bold mt-2">このチャンネルは利用規約に違反したため削除されました</div>
+              <div className="text-zinc-500 text-[10px] mt-1">理由：炎上中に名を伝えた（警告 3/3）</div>
+            </div>
+          )}
+        </>
+      );
+      break;
+    }
     case 'silent': {
       bg = 'bg-black';
       mood = 'idle';
@@ -345,7 +361,7 @@ const EndingScene: React.FC<Props> = ({ ending, beatRef, hitRef, isNew, onDone }
 
       {/* キャラ */}
       <div className={`absolute bottom-[6%] left-1/2 -translate-x-1/2 ${charClass}`} style={charStyle}>
-        <Shiashia3D beatRef={beatRef} hitRef={hitRef} mood={mood} intensity={0.6} size={300} />
+        <Shiashia3D mood={mood} intensity={0.6} size={300} />
       </div>
 
       {/* エンディング名 */}

@@ -1,6 +1,6 @@
 {
   "name": "【底辺チューバーからの脱却】名 を たくさん 伝えれる 画期的ツール",
-  "description": "A rhythm game where you pronounce the Japanese character 'な' (na) to the beat of a 175 BPM song. Features combos & fever mode, 25 kinds of 'な' effects with rarity tiers (gold/diamond 'な' are clickable for bonuses), a dancing 3D character (Shiashia) with manga-style cut-ins, 35 achievements, and 14 random endings with animations.",
+  "description": "A rhythm game where you say 'な' (na) to a fixed chart synced to a 175 BPM song. Subscribers inflate YouTube-style toward a quota; stay quiet during flame-up sections or get banned; keep viewers from leaving. Includes timing calibration, 10 special-item effects, YouTube-style milestone cut-ins with a 3D character, rule-based endings and achievements. Microphone detects sound only (no AI).",
   "requestFramePermissions": [
     "microphone"
   ]

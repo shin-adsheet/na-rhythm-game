@@ -1,1247 +1,718 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenAI, Modality } from "@google/genai";
-import type { LiveServerMessage } from "@google/genai";
-import { GameState, GameMode, ScoreEntry, NaParticle, Rarity, NaVariant, Ending, RunStats } from '../types';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { GameState, GameMode, ScoreEntry, NaParticle, RunStats, Ending } from '../types';
+import { MODE_LABEL, MODE_DESC, LS_KEYS } from '../constants';
+import { buildChart, BEAT, EIGHTH } from '../utils/chart';
+import { JudgeEngine, NoteState, BurnState } from '../utils/judge';
 import {
-  MODE_DURATIONS, BEAT_INTERVAL_MS, COUNTDOWN_SECONDS, CLEAR_THRESHOLDS,
-  FEVER_COMBO, COMBO_BREAK_BEATS, GOLD_BONUS, DIAMOND_BONUS, HIT_WORDS, LS_KEYS,
-  JUDGE_PERFECT_MS, JUDGE_GREAT_MS, STRONG_FX_COOLDOWN_MS, QUOTA_STEP,
-} from '../constants';
-import { encode } from '../utils/audioUtils';
-import { rollRarity, pickVariant, createParticles, nextId, VARIANT_LABELS } from '../utils/naEffects';
+  gainFor, VIEWERS, FUEL_LOSS, BAN_STRIKES, BUZZ_EIGHTHS, QUOTA, MILESTONES, fmtSubs, Judge, comboMul, viewerMul,
+} from '../utils/economy';
+import { SongPlayer, playJingle } from '../utils/songPlayer';
+import { MicDetector } from '../utils/micDetector';
+import { rollItem, ItemDef, ItemId, ITEM_COLOR } from '../utils/items';
+import { rollRarity, pickVariant, createParticles } from '../utils/naEffects';
 import { ACHIEVEMENTS, achievementById, evaluate, loadUnlocked, saveUnlocked, loadLifetime, saveLifetime, LifetimeStats } from '../utils/achievements';
 import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings } from '../utils/endings';
 import NaEffects from './NaEffects';
-import { kindAt, restEndAt, barAt, BAR_LABEL, BAR_LEN, EighthKind } from '../utils/pattern';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
-import CutIn, { CutInData, CutInKind, CUTIN_LINES } from './CutIn';
+import Track from './Track';
+import EventCutIn, { CutInData } from './EventCutIn';
+import CommentStream, { CommentMood } from './CommentStream';
+import Calibration from './Calibration';
+import RulesCard from './RulesCard';
 import AchievementToasts, { ToastItem } from './AchievementToast';
 import EndingScene from './EndingScene';
 import CollectionBook from './CollectionBook';
 
-const HIT_WINDOW_MS = 100; // Tightened window, but we check 8th notes now
-const LANE_CELL = 34;      // 譜面レーンの 1 マスの幅（px）
-const LANE_CELLS = 10;
+/* ============================================================
+ * 設定・保存
+ * ============================================================ */
+const TAP_ONLY = !!process.env.TAP_ONLY;           // 公開版（マイクが使えない環境）
+const ASSET_BASE = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
+const DEFAULT_BGM = ASSET_BASE + 'bgm/bgm.mp3';
+const MENU_BGM = ASSET_BASE + 'bgm/top.mp3';
 
-// SVG Component for the Crowd
-const Crowd: React.FC<{ progress: number; fever: boolean }> = ({ progress, fever }) => {
-  // progress 0 to 1
-  const showLevel1 = progress > 0.3;
-  const showLevel2 = progress > 0.6;
-  const showLevel3 = progress >= 1.0;
-  const c1 = fever ? 'bg-pink-200' : 'bg-gray-200';
-  const c2 = fever ? 'bg-pink-300' : 'bg-gray-300';
-  const c3 = fever ? 'bg-pink-400' : 'bg-gray-400';
+interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean }
+const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true };
+const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
+const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
+type Offsets = { mic: number | null; tap: number | null };
 
+const emptyRun = (mode: GameMode): RunStats => ({
+  mode, subs: 0, quota: QUOTA[mode], cleared: false, hits: 0, perfect: 0, great: 0, good: 0, misses: 0, extras: 0,
+  fuels: 0, burnsKept: 0, burnsTotal: 0, maxCombo: 0, buzzes: 0, items: 0, pokes: 0, pauses: 0, cutoff: false, ban: false, finished: false,
+});
+
+const EVENT_MOOD: Record<string, ShiashiaMood> = {
+  sing: 'sing', game: 'game', collab: 'dance', asmr: 'asmr', live: 'celebrate', world: 'celebrate', burn: 'shock', ban: 'ban',
+};
+
+/* ============================================================
+ * 小さい部品
+ * ============================================================ */
+
+/** 登録者数：目標に向かってなめらかに回る（インフレ感） */
+const SubsCounter: React.FC<{ value: number; big?: boolean }> = ({ value, big }) => {
+  const ref = useRef<HTMLSpanElement>(null);
+  const subRef = useRef<HTMLSpanElement>(null);
+  const shown = useRef(0);
+  const target = useRef(value);
+  target.current = value;
+  useEffect(() => {
+    let raf = 0, last = performance.now();
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
+      const d = target.current - shown.current;
+      shown.current += Math.abs(d) < 1 ? d : d * Math.min(1, dt * 9);
+      if (ref.current) ref.current.textContent = fmtSubs(shown.current);
+      if (subRef.current) subRef.current.textContent = shown.current >= 10000 ? `${Math.floor(shown.current).toLocaleString('ja-JP')}人` : '';
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+  }, []);
   return (
-    <div className="absolute bottom-0 left-0 w-full h-1/2 pointer-events-none z-0 overflow-hidden">
-      {/* Level 1: Back Row */}
-      <div className={`absolute bottom-[-50px] left-0 w-full h-full flex justify-around items-end transition-transform duration-700 ${showLevel1 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
-         {Array.from({ length: 8 }).map((_, i) => (
-             <div key={`l1-${i}`} className={`w-24 h-32 ${c1} rounded-t-full mx-1 animate-[crowd-jump_0.6s_infinite] origin-bottom`} style={{ animationDelay: `${i * 0.1}s` }}></div>
-         ))}
-      </div>
-
-      {/* Level 2: Mid Row */}
-      <div className={`absolute bottom-[-30px] left-[-5%] w-[110%] h-full flex justify-around items-end transition-transform duration-700 delay-100 ${showLevel2 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
-         {Array.from({ length: 7 }).map((_, i) => (
-             <div key={`l2-${i}`} className={`w-32 h-40 ${c2} rounded-t-full mx-1 animate-[crowd-jump_0.5s_infinite] origin-bottom`} style={{ animationDelay: `${i * 0.15}s` }}></div>
-         ))}
-      </div>
-
-      {/* Level 3: Front Row */}
-      <div className={`absolute bottom-[-10px] left-[-10%] w-[120%] h-full flex justify-around items-end transition-transform duration-700 delay-200 ${showLevel3 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0'}`}>
-         {Array.from({ length: 6 }).map((_, i) => (
-             <div key={`l3-${i}`} className={`w-40 h-48 ${c3} rounded-t-full mx-1 animate-[crowd-jump_0.4s_infinite] origin-bottom relative`} style={{ animationDelay: `${i * 0.05}s` }}>
-                {/* Hands */}
-                <div className={`absolute -top-10 -left-4 w-12 h-24 ${c3} rounded-full rotate-[-20deg]`}></div>
-                <div className={`absolute -top-10 -right-4 w-12 h-24 ${c3} rounded-full rotate-[20deg]`}></div>
-             </div>
-         ))}
-      </div>
-    </div>
+    <span className="flex flex-col items-center leading-none">
+      <span className={`font-black text-slate-800 tracking-tight tabular-nums ${big ? 'text-5xl md:text-7xl' : 'text-4xl'}`}>
+        <span ref={ref}>0</span><span className="text-xl md:text-2xl text-slate-500 ml-1">人</span>
+      </span>
+      <span ref={subRef} className="text-[10px] md:text-xs font-bold text-slate-400 tabular-nums mt-0.5" />
+    </span>
   );
 };
 
-interface HitWord { id: number; text: string; left: string; top: string; color: string; }
-interface ScorePop { id: number; text: string; left: string; }
-
-const Game: React.FC = () => {
-  const [gameState, setGameState] = useState<GameState>('READY');
-  const [gameMode, setGameMode] = useState<GameMode>('30s');
-  const [score, setScore] = useState(0); // This is "Hits" now
-  const [subscribers, setSubscribers] = useState(0); // This is the new "Score"
-  const [timeLeft, setTimeLeft] = useState(MODE_DURATIONS['30s']);
-  const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
-  const [particles, setParticles] = useState<NaParticle[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [highScores, setHighScores] = useState<ScoreEntry[]>([]);
-
-  // Animation State
-  const [isHitAnimating, setIsHitAnimating] = useState(false);
-
-  // --- 演出 State ---
-  const [combo, setCombo] = useState(0);
-  const [maxCombo, setMaxCombo] = useState(0);
-  const [fever, setFever] = useState(false);
-  const [hitWords, setHitWords] = useState<HitWord[]>([]);
-  const [scorePops, setScorePops] = useState<ScorePop[]>([]);
-  const [cutIn, setCutIn] = useState<CutInData | null>(null);
-  const [shakeClass, setShakeClass] = useState('');
-  const [worldInvert, setWorldInvert] = useState(false);
-  const [flash, setFlash] = useState(false);
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const [ending, setEnding] = useState<Ending | null>(null);
-  const [endingIsNew, setEndingIsNew] = useState(false);
-  const [showBook, setShowBook] = useState(false);
-  const [clearShown, setClearShown] = useState(false);
-  const [lastRareLabel, setLastRareLabel] = useState<string | null>(null);
-
-  // --- 永続データ ---
-  const [unlocked, setUnlocked] = useState<Record<string, number>>({});
-  const [seenEndings, setSeenEndings] = useState<Record<string, number>>({});
-  const [seenVariants, setSeenVariants] = useState<Record<string, number>>({});
-  const unlockedRef = useRef<Record<string, number>>({});
-  const seenEndingsRef = useRef<Record<string, number>>({});
-  const seenVariantsRef = useRef<Record<string, number>>({});
-  const lifeRef = useRef<LifetimeStats>(loadLifetime());
-
-  // --- 1プレイの統計 ---
-  const runRef = useRef<RunStats & { finished?: boolean }>({
-    mode: '30s', hits: 0, subscribers: 0, maxCombo: 0, goldClicks: 0, diamondClicks: 0, rareSeen: 0, ultraSeen: 0,
-    feverCount: 0, pauses: 0, cutIns: 0, shiashiaPokes: 0, cleared: false, perfect: false, badHits: 0, restsKept: 0, cutoff: false,
-  });
-  const comboRef = useRef(0);
-  const feverRef = useRef(false);
-  const lastHitTimeRef = useRef(0);     // コンボ切れ判定用
-  const hitRef = useRef(0);             // しあしあ3D の口パク用
-  const cutInTimerRef = useRef<number | null>(null);
-  const gameModeRef = useRef<GameMode>('30s');
-  const scoreRef = useRef(0);
-  const subsRef = useRef(0);
-  const timeLeftRef = useRef(MODE_DURATIONS['30s']);
-  const finishingRef = useRef(false);
-  const endingDoneRef = useRef(false);
-  const gainStageRef = useRef(0);
-  const crowdStageRef = useRef(0);
-  const [banner, setBanner] = useState<{ id: number; title: string; sub?: string } | null>(null);
-  const [clearStamp, setClearStamp] = useState(false);
-  const [revealT, setRevealT] = useState(0);   // 結果画面の演出時間（ms）
-  const isNewRecordRef = useRef(false);
-  const prevBestRef = useRef(0);
-  // --- ゲーム性 ---
-  const judgeRef = useRef({ perfect: 0, great: 0, good: 0 });
-  const perfectStreakRef = useRef(0);
-  const [judge, setJudge] = useState<{ id: number; text: string; cls: string } | null>(null);
-  const [quotaStage, setQuotaStage] = useState(1);          // いま何段階目のノルマか
-  const quotaStageRef = useRef(1);
-  const [ghostHits, setGhostHits] = useState(0);             // 自己ベストの回数（ペース表示）
-  const strongFxRef = useRef(0);                              // 直近の強い演出の時刻
-  const beatRingRef = useRef<HTMLDivElement>(null);
-  // --- リスク要素：譜面・視聴者 ---
-  const beatCountRef = useRef(-1);                            // メトロノームが鳴った回数（-1＝まだ）
-  const seedRef = useRef(1);
-  const viewersRef = useRef(50);
-  const [viewers, setViewers] = useState(50);
-  const buzzUntilRef = useRef(0);                             // 満員ボーナス中（レア率アップ）
-  const restBlockRef = useRef<{ end: number; violated: boolean } | null>(null);
-  const [laneIdx, setLaneIdx] = useState(0);
-  const laneRef = useRef<HTMLDivElement>(null);
-  const [stageMood, setStageMood] = useState<ShiashiaMood>('dance');
-  const stageMoodTimer = useRef<number | null>(null);
-  const rareLabelTimerRef = useRef<number | null>(null);
-  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' ? window.innerWidth < 768 : false);
-  const [inputMode, setInputMode] = useState<'mic' | 'tap'>(process.env.TAP_ONLY ? 'tap' : 'mic');
-  const inputModeRef = useRef<'mic' | 'tap'>(process.env.TAP_ONLY ? 'tap' : 'mic');
-  const lastTapRef = useRef(0);
-  const tapLoopRef = useRef<number | null>(null);
-  inputModeRef.current = inputMode;
-  gameModeRef.current = gameMode;
-
-  // Asset URLs - using GitHub Raw URLs for reliable hosting
-  const assetBase = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
-  const defaultBgmUrl = assetBase + 'bgm/bgm.mp3';
-  const menuBgmUrl = assetBase + 'bgm/top.mp3';
-  const TAP_ONLY = !!process.env.TAP_ONLY; // ビルド時フラグ：マイクを使わない配布版
-
-  // Settings State
-  const [volume, setVolume] = useState(0.5);
-  const [bgmSource, setBgmSource] = useState<string>(defaultBgmUrl);
-  const [customUrl, setCustomUrl] = useState(''); // State for manual URL input
-  const [micThreshold, setMicThreshold] = useState(30); // 0-100 visual scale
-  const [inputLevel, setInputLevel] = useState(0);
-  const [isMicTesting, setIsMicTesting] = useState(false);
-
-  // Device Selection State
-  const [audioDevices, setAudioDevices] = useState<MediaDeviceInfo[]>([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-
-  const sessionPromise = useRef<Promise<any> | null>(null);
-  const lastTranscription = useRef('');
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const metronomeInterval = useRef<number | null>(null);
-  const gameTimer = useRef<number | null>(null);
-  const bgmRef = useRef<HTMLAudioElement>(null);
-  const menuBgmRef = useRef<HTMLAudioElement>(null);
-
-  // Refs for Mic Test & Game Audio Analysis
-  const streamRef = useRef<MediaStream | null>(null);
-  const micAnalyserRef = useRef<AnalyserNode | null>(null);
-  const micCheckInterval = useRef<number | null>(null);
-  const micAudioCtxRef = useRef<AudioContext | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
-  const isGameActiveRef = useRef(false); // Strict control for scoring loop
-
-  // Logic Refs
-  const lastAudioVolume = useRef(0);
-  const isArmedRef = useRef(true); // For "Valley" detection
-  const currentNotePeakRef = useRef(0); // Track peak of current sound to determine drop-off
-
-  // Rhythm Refs
-  const lastBeatTimeRef = useRef<number>(0);
-  const startTimeRef = useRef<number>(0); // To calculate elapsed time for inflation
-  const pauseStartTimeRef = useRef<number>(0); // To adjust startTimeRef after pause
-
-  // ===================== 永続データの読み込み =====================
+/** マイクの音量メーター（毎フレーム直接書き換える） */
+const LevelMeter: React.FC<{ mic: MicDetector; threshold: number }> = ({ mic, threshold }) => {
+  const bar = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const u = loadUnlocked(); unlockedRef.current = u; setUnlocked(u);
-    const e = loadSeenEndings(); seenEndingsRef.current = e; setSeenEndings(e);
-    try {
-      const v = JSON.parse(localStorage.getItem(LS_KEYS.variants) || '{}');
-      seenVariantsRef.current = v; setSeenVariants(v);
-    } catch { /* noop */ }
-    loadScores();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  const bumpLife = (patch: Partial<LifetimeStats> | ((l: LifetimeStats) => Partial<LifetimeStats>)) => {
-    const p = typeof patch === 'function' ? patch(lifeRef.current) : patch;
-    lifeRef.current = { ...lifeRef.current, ...p };
-    saveLifetime(lifeRef.current);
-  };
-
-  // ===================== 実績 =====================
-  const checkAchievements = useCallback((finished = false) => {
-    const run = { ...runRef.current, hits: scoreRef.current, subscribers: subsRef.current, maxCombo: Math.max(runRef.current.maxCombo, comboRef.current), finished };
-    const seenCount = Object.keys(seenEndingsRef.current).length;
-    const secretSeen = ENDINGS.some((e) => e.condition === 'secret' && seenEndingsRef.current[e.id]);
-    const newly = evaluate(run, lifeRef.current, { seen: seenCount, total: TOTAL_ENDINGS, secretSeen }, unlockedRef.current);
-    if (newly.length === 0) return;
-    const now = Date.now();
-    newly.forEach((id) => { unlockedRef.current[id] = now; });
-    unlockedRef.current = { ...unlockedRef.current };
-    saveUnlocked(unlockedRef.current);
-    setUnlocked(unlockedRef.current);
-    const items: ToastItem[] = newly.map((id, i) => ({ id: now + i, achievement: achievementById(id)! }));
-    setToasts((prev) => [...prev, ...items]);
-    items.forEach((it) => setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== it.id)), 4200));
-  }, []);
-
-  // ===================== カットイン =====================
-  const showCutIn = useCallback((kind: CutInKind, force = false, durationMs = 2000) => {
-    if (cutInTimerRef.current && !force) return; // 表示中は重ねない
-    const candidates = CUTIN_LINES[kind];
-    const pick = candidates[Math.floor(Math.random() * candidates.length)];
-    const moodByKind = { combo: 'dance', fever: 'celebrate', rare: 'shock', ultra: 'spin', gold: 'celebrate', clear: 'celebrate', random: 'idle', poke: 'shock' } as const;
-    if (cutInTimerRef.current) clearTimeout(cutInTimerRef.current);
-    setCutIn({ id: nextId(), kind, text: pick.text, sub: pick.sub, durationMs, mood: moodByKind[kind] });
-    runRef.current.cutIns++;
-    bumpLife((l) => ({ cutIns: l.cutIns + 1 }));
-    cutInTimerRef.current = window.setTimeout(() => {
-      setCutIn(null);
-      cutInTimerRef.current = null;
-    }, durationMs);
-    setTimeout(() => checkAchievements(), 50);
-  }, [checkAchievements]);
-
-  const doShake = (cls: string, ms: number) => {
-    setShakeClass(cls);
-    setTimeout(() => setShakeClass(''), ms);
-  };
-
-  const addHitWord = (text: string, color = 'text-pink-500', near = true) => {
-    const id = nextId();
-    const left = near ? `${40 + Math.random() * 20}%` : `${10 + Math.random() * 80}%`;
-    const top = near ? `${35 + Math.random() * 20}%` : `${15 + Math.random() * 60}%`;
-    setHitWords((prev) => [...prev.slice(-12), { id, text, left, top, color }]);
-    setTimeout(() => setHitWords((prev) => prev.filter((w) => w.id !== id)), 900);
-  };
-
-  const addScorePop = (text: string) => {
-    const id = nextId();
-    setScorePops((prev) => [...prev.slice(-8), { id, text, left: `${45 + Math.random() * 10}%` }]);
-    setTimeout(() => setScorePops((prev) => prev.filter((w) => w.id !== id)), 1000);
-  };
-
-  const flashRareLabel = (label: string) => {
-    setLastRareLabel(label);
-    if (rareLabelTimerRef.current) clearTimeout(rareLabelTimerRef.current);
-    rareLabelTimerRef.current = window.setTimeout(() => setLastRareLabel(null), 3000);
-  };
-
-  const recordVariant = (v: NaVariant) => {
-    seenVariantsRef.current = { ...seenVariantsRef.current, [v]: (seenVariantsRef.current[v] || 0) + 1 };
-    try { localStorage.setItem(LS_KEYS.variants, JSON.stringify(seenVariantsRef.current)); } catch { /* noop */ }
-    setSeenVariants(seenVariantsRef.current);
-  };
-
-  /** 何段階目のノルマが何回か（1段階目は元のノルマ、以降は基準×QUOTA_STEPずつ増える） */
-  const quotaTarget = (stage: number, mode: GameMode = gameModeRef.current) =>
-    Math.round(CLEAR_THRESHOLDS[mode] * (1 + QUOTA_STEP * (stage - 1)));
-
-  /** 強い演出を出していいか（出すなら時刻を記録） */
-  const canStrongFx = (force = false) => {
-    const now = Date.now();
-    if (!force && now - strongFxRef.current < STRONG_FX_COOLDOWN_MS) return false;
-    strongFxRef.current = now;
-    return true;
-  };
-
-  /** 元の登録者数カーブ：経過秒で段階が変わる */
-  const GAIN_BY_STAGE = [100, 500, 50000, 500000, 1000000];
-  const gainStage = (now: number) => {
-    const t = (now - startTimeRef.current) / 1000;
-    return t > 85 ? 4 : t > 60 ? 3 : t > 30 ? 2 : t > 10 ? 1 : 0;
-  };
-  const currentGain = () => GAIN_BY_STAGE[gainStage(Date.now())];
-
-  /** 途中の節目（元からある：観客の登場・登録者の伸び・ノルマ）を帯で知らせる */
-  const showBanner = (title: string, sub?: string) => {
-    const id = nextId();
-    setBanner({ id, title, sub });
-    setTimeout(() => setBanner((b) => (b && b.id === id ? null : b)), 1700);
-  };
-
-  /** 「な」を出す（レア度抽選込み） */
-  const spawnNa = (forceRarity?: Rarity) => {
-    let rarity = forceRarity ?? rollRarity(feverRef.current || Date.now() < buzzUntilRef.current);
-    // 強い演出は間隔をあける（集中できるように）
-    if (!forceRarity && (rarity === 'rare' || rarity === 'ultra') && !canStrongFx()) rarity = 'uncommon';
-    const variant = pickVariant(rarity);
-    const ps = createParticles(variant, rarity);
-    setParticles((prev) => [...prev, ...ps].slice(-160));
-    recordVariant(variant);
-
-    // --- レア演出 ---
-    if (rarity === 'rare') {
-      runRef.current.rareSeen++;
-      bumpLife((l) => ({ rareSeen: l.rareSeen + 1 }));
-      flashRareLabel(`レア：${VARIANT_LABELS[variant]}`);
-    }
-    if (rarity === 'ultra') {
-      runRef.current.ultraSeen++;
-      bumpLife((l) => ({ ultraSeen: l.ultraSeen + 1 }));
-      flashRareLabel(`ウルトラレア：${VARIANT_LABELS[variant]}`);
-      showCutIn('ultra', true, 1800);
-    }
-
-    switch (variant) {
-      case 'giant': doShake('shake', 350); break;
-      case 'thunder':
-        setFlash(true); setTimeout(() => setFlash(false), 500);
-        doShake('shake', 500);
-        break;
-      case 'tsunami': doShake('shake-hard', 2400); break;
-      case 'chaos': doShake('shake-hard', 3500); break;
-      case 'invert': setWorldInvert(true); setTimeout(() => setWorldInvert(false), 2500); break;
-      case 'blackhole': break;
-      default: break;
-    }
-    if (rarity !== 'normal') setTimeout(() => checkAchievements(), 30);
-  };
-
-  // ===================== 特殊な「な」クリック =====================
-  const handleSpecialClick = (p: NaParticle, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setParticles((prev) => prev.filter((x) => x.id !== p.id));
-    // ボーナスは「いまの1回分 × 回数」（元の増え方を崩さない）
-    const bonus = currentGain() * (p.variant === 'diamond' ? DIAMOND_BONUS : GOLD_BONUS);
-    subsRef.current += bonus;
-    setSubscribers(subsRef.current);
-    addScorePop(`+${bonus.toLocaleString()}`);
-    addHitWord(p.variant === 'diamond' ? 'ダイヤ獲得！' : '金の「な」獲得！', 'text-amber-500', false);
-    if (p.variant === 'diamond') {
-      runRef.current.diamondClicks++;
-      bumpLife((l) => ({ totalDiamond: l.totalDiamond + 1 }));
-      doShake('shake', 400);
-      // ダイヤはおまけで大群も出す
-      spawnNa('uncommon');
-    } else {
-      runRef.current.goldClicks++;
-      bumpLife((l) => ({ totalGold: l.totalGold + 1 }));
-      // 金はカットインなし（ポップだけ）
-    }
-    checkAchievements();
-  };
-
-  // ===================== しあしあをつつく =====================
-  const handlePoke = () => {
-    runRef.current.shiashiaPokes++;
-    bumpLife((l) => ({ totalPokes: l.totalPokes + 1 }));
-    addHitWord(['つんっ', 'ひゃっ', 'やめて', 'な！', 'くすぐったい'][Math.floor(Math.random() * 5)], 'text-emerald-500', false);
-    // プレイ中はつついてもカットインは出さない
-    if (gameState === 'READY' && lifeRef.current.totalPokes % 5 === 0) showCutIn('poke', true, 1800);
-    checkAchievements();
-  };
-
-  // Sync BGM Volume
-  useEffect(() => {
-      if (gameState !== 'COUNTDOWN') {
-          if (bgmRef.current) {
-              bgmRef.current.volume = volume;
-          }
-      }
-      if (menuBgmRef.current) {
-          menuBgmRef.current.volume = volume;
-      }
-  }, [volume, gameState]);
-
-  // Handle BGM File Selection
-  const handleBgmSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files && e.target.files[0]) {
-          const file = e.target.files[0];
-          const url = URL.createObjectURL(file);
-          setBgmSource(url);
-          setCustomUrl('');
-          if (bgmSource.startsWith('blob:')) {
-              URL.revokeObjectURL(bgmSource);
-          }
-          bumpLife({ bgmChanged: true });
-          checkAchievements();
-      }
-  };
-
-  // Handle URL Input
-  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const url = e.target.value;
-      setCustomUrl(url);
-      if (url) {
-          setBgmSource(url);
-          bumpLife({ bgmChanged: true });
-          checkAchievements();
-      } else {
-          setBgmSource(defaultBgmUrl);
-      }
-  };
-
-  // --- Device Management ---
-  const fetchAudioDevices = useCallback(async () => {
-    try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const inputs = devices.filter(d => d.kind === 'audioinput');
-        setAudioDevices(inputs);
-        if (inputs.length > 0) {
-             const exists = inputs.find(d => d.deviceId === selectedDeviceId);
-             if (!selectedDeviceId || !exists) {
-                 setSelectedDeviceId(inputs[0].deviceId);
-             }
-        }
-    } catch (e) {
-        console.warn("Could not enumerate devices");
-    }
-  }, [selectedDeviceId]);
-
-  useEffect(() => {
-    fetchAudioDevices();
-    navigator.mediaDevices.addEventListener('devicechange', fetchAudioDevices);
-    return () => navigator.mediaDevices.removeEventListener('devicechange', fetchAudioDevices);
-  }, [fetchAudioDevices]);
-
-  const getAudioStream = async () => {
-      if (streamRef.current) {
-          const tracks = streamRef.current.getAudioTracks();
-          if (tracks.length > 0 && tracks[0].readyState === 'live') {
-              const settings = tracks[0].getSettings();
-              if (!selectedDeviceId || settings.deviceId === selectedDeviceId) {
-                  return streamRef.current;
-              }
-          }
-      }
-      if (streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop());
-      }
-      const constraints = {
-          audio: selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : true
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      return stream;
-  };
-
-  // --- Score Saving ---
-  const saveScore = (finalSubscribers: number, finalHitCount: number, endingId?: string) => {
-    const key = `rhythm_na_subs_${gameModeRef.current}`;
-    const existing = localStorage.getItem(key);
-    let scores: ScoreEntry[] = existing ? JSON.parse(existing) : [];
-    const safeSubs = typeof finalSubscribers === 'number' ? finalSubscribers : 0;
-    const safeHits = typeof finalHitCount === 'number' ? finalHitCount : 0;
-    scores.push({ score: safeSubs, hitCount: safeHits, date: Date.now(), endingId });
-    scores.sort((a, b) => b.score - a.score);
-    scores = scores.slice(0, 5);
-    try {
-        localStorage.setItem(key, JSON.stringify(scores));
-    } catch (e) {
-        console.error("Failed to save score");
-    }
-    setHighScores(scores);
-  };
-
-  const loadScores = () => {
-    const key = `rhythm_na_subs_${gameModeRef.current}`;
-    const existing = localStorage.getItem(key);
-    if (existing) {
-        try {
-            setHighScores(JSON.parse(existing));
-        } catch (e) {
-            setHighScores([]);
-        }
-    } else {
-        setHighScores([]);
-    }
-  };
-
-  // --- Audio Cleanup ---
-  const cleanupAudio = useCallback(() => {
-    if (metronomeInterval.current) {
-      clearInterval(metronomeInterval.current);
-      metronomeInterval.current = null;
-    }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-  }, []);
-
-  const stopMicAnalysis = useCallback((keepStream = false) => {
-    if (micCheckInterval.current) {
-        clearInterval(micCheckInterval.current);
-        micCheckInterval.current = null;
-    }
-    if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-    }
-    if (micAudioCtxRef.current && micAudioCtxRef.current.state !== 'closed') {
-        micAudioCtxRef.current.close();
-        micAudioCtxRef.current = null;
-    }
-    if (!keepStream && streamRef.current) {
-         streamRef.current.getTracks().forEach(t => t.stop());
-         streamRef.current = null;
-    }
-    setInputLevel(0);
-    setIsMicTesting(false);
-  }, []);
-
-  // --- Audio Volume Helper ---
-  const calculateVolume = (analyser: AnalyserNode, dataArray: Uint8Array<ArrayBuffer>) => {
-    analyser.getByteFrequencyData(dataArray);
-    let sum = 0;
-    const binsToCheck = dataArray.length / 2;
-    for(let i = 0; i < binsToCheck; i++) {
-        sum += dataArray[i];
-    }
-    const average = sum / binsToCheck;
-    return Math.min(100, (average / 128) * 100 * 2.0);
-  };
-
-  // --- Mic Test Logic ---
-  const toggleMicTest = async () => {
-    if (isMicTesting) {
-        stopMicAnalysis();
-        return;
-    }
-    try {
-        const stream = await getAudioStream();
-        fetchAudioDevices();
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        micAudioCtxRef.current = audioCtx;
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.5;
-        source.connect(analyser);
-        micAnalyserRef.current = analyser;
-        const dataArray = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
-        micCheckInterval.current = window.setInterval(() => {
-            const normalized = calculateVolume(analyser, dataArray);
-            setInputLevel(normalized);
-        }, 50);
-        setIsMicTesting(true);
-        setError(null);
-        bumpLife({ micTested: true });
-        checkAchievements();
-    } catch (err) {
-        console.error("Mic access denied");
-        setError("マイクにアクセスできませんでした。");
-    }
-  };
-
-  // ===================== ヒット！ =====================
-  /** いま何マス目か（8分音符単位）。メトロノームの回数とビート内の位置から */
-  const eighthAt = (now: number) => {
-    if (beatCountRef.current < 0) return -1;
-    const phase = ((now - lastBeatTimeRef.current) % BEAT_INTERVAL_MS) / BEAT_INTERVAL_MS;
-    return beatCountRef.current * 2 + (phase < 0.25 ? 0 : phase < 0.75 ? 1 : 2);
-  };
-
-  const setViewersClamped = (v: number) => {
-    const nv = Math.max(0, Math.min(100, v));
-    if (Math.round(nv) !== Math.round(viewersRef.current)) setViewers(Math.round(nv));
-    viewersRef.current = nv;
-  };
-
-  const flashStageMood = (m: ShiashiaMood, ms: number) => {
-    setStageMood(m);
-    if (stageMoodTimer.current) clearTimeout(stageMoodTimer.current);
-    stageMoodTimer.current = window.setTimeout(() => setStageMood('dance'), ms);
-  };
-
-  /** 言ってはいけないところで言った */
-  const triggerBad = (kind: EighthKind) => {
-    if (!isGameActiveRef.current) return;
-    const now = Date.now();
-    hitRef.current = now;
-    runRef.current.badHits++;
-    const rest = kind === 'rest';
-    if (rest && restBlockRef.current) restBlockRef.current.violated = true;
-    showJudge(rest ? '黙れって言った' : 'うるさい', 'text-red-500');
-    setViewersClamped(viewersRef.current - (rest ? 25 : 12));
-    breakCombo();
-    flashStageMood('shock', 700);
-    playJingle('buzz');
-    doShake('shake', 250);
-    if (viewersRef.current <= 0) finishGame(true);
-  };
-
-  /** ヒットの申告：譜面を見て、OK なら得点、NG なら減点 */
-  const attemptHit = (distMs: number) => {
-    const kind = kindAt(eighthAt(Date.now()), seedRef.current);
-    if (kind === 'ok') triggerHit(distMs); else triggerBad(kind);
-  };
-
-  const showJudge = (text: string, cls: string) => {
-    setJudge({ id: nextId(), text, cls });
-  };
-
-  const triggerHit = (distMs = 0) => {
-    if (!isGameActiveRef.current) return; // Strict check
-    const now = Date.now();
-
-    // --- 判定 ---
-    const jd = distMs <= JUDGE_PERFECT_MS ? 'perfect' : distMs <= JUDGE_GREAT_MS ? 'great' : 'good';
-    judgeRef.current[jd]++;
-
-    // --- 視聴者：ヒットで増える。満員で一度だけボーナス ---
-    setViewersClamped(viewersRef.current + (jd === 'perfect' ? 3 : 2));
-    if (viewersRef.current >= 100) {
-      const bonus = currentGain() * 5;
-      subsRef.current += bonus;
-      addScorePop(`+${bonus.toLocaleString()}`);
-      showBanner('視聴者が満員', 'ボーナス ＋ しばらくレアが出やすい');
-      buzzUntilRef.current = now + BEAT_INTERVAL_MS * 16;
-      setViewersClamped(70);
-      spawnNa('uncommon');
-    }
-    if (jd === 'perfect') {
-      perfectStreakRef.current++;
-      const ps = perfectStreakRef.current;
-      showJudge(ps >= 5 ? `PERFECT ×${ps}` : 'PERFECT', 'text-amber-400');
-      if (ps === 10 || ps === 25 || ps === 50) showBanner(`PERFECT ${ps}連続`, 'ズレなし');
-    } else {
-      perfectStreakRef.current = 0;
-      showJudge(jd === 'great' ? 'GREAT' : 'GOOD', jd === 'great' ? 'text-pink-500' : 'text-sky-500');
-    }
-
-    // Trigger Reactive Animation
-    setIsHitAnimating(true);
-    setTimeout(() => setIsHitAnimating(false), 100);
-    hitRef.current = now;
-    lastHitTimeRef.current = now;
-
-    // Increment Hits
-    scoreRef.current += 1;
-    setScore(scoreRef.current);
-
-    // --- コンボ ---
-    comboRef.current += 1;
-    const c = comboRef.current;
-    setCombo(c);
-    if (c > runRef.current.maxCombo) { runRef.current.maxCombo = c; setMaxCombo(c); }
-    if (c === 30 || c === 60 || c === 100 || (c > 100 && c % 50 === 0)) {
-      if (canStrongFx(true)) showCutIn('combo', true, 1600);
-      spawnNa('uncommon');
-    } else if (c === 10) {
-      showBanner('10コンボ', 'このまま続けると フィーバー');
-    }
-
-    // --- フィーバー ---
-    if (!feverRef.current && c >= FEVER_COMBO) {
-      feverRef.current = true;
-      setFever(true);
-      runRef.current.feverCount++;
-      canStrongFx(true); showCutIn('fever', true, 1800);
-      spawnNa('uncommon');
-    }
-
-    // 登録者数の増え方は元のまま（経過時間で 100 → 500 → 5万 → 50万 → 100万）
-    const stage = gainStage(now);
-    const gain = GAIN_BY_STAGE[stage];
-    if (stage !== gainStageRef.current) {
-      gainStageRef.current = stage;
-      if (stage > 0) showBanner(`登録者の伸びが変わった`, `1回で ${gain.toLocaleString()}人`);
-    }
-
-    subsRef.current += gain;
-    setSubscribers(subsRef.current);
-
-    // --- 演出 ---
-    spawnNa();
-    if (feverRef.current && Math.random() < 0.3) spawnNa();
-    if (c % 10 === 0) addHitWord(HIT_WORDS[Math.floor(Math.random() * HIT_WORDS.length)]);
-    if (c % 10 === 0) addScorePop(`+${gain.toLocaleString()}`);
-
-    // 観客（元からある 30% / 60% の節目）
-    const ratio = scoreRef.current / CLEAR_THRESHOLDS[gameModeRef.current];
-    if (crowdStageRef.current < 1 && ratio > 0.3) { crowdStageRef.current = 1; showBanner('観客が集まりはじめた', 'ノルマ 30%'); }
-    else if (crowdStageRef.current < 2 && ratio > 0.6) { crowdStageRef.current = 2; showBanner('観客が増えてきた', 'ノルマ 60%'); }
-
-    // ノルマ達成（1段階目は大きく、2段階目以降は次のノルマが出る）
-    if (scoreRef.current >= quotaTarget(quotaStageRef.current)) {
-      const st = quotaStageRef.current;
-      quotaStageRef.current = st + 1;
-      setQuotaStage(st + 1);
-      if (st === 1) {
-        runRef.current.cleared = true;
-        setClearShown(true);
-        setClearStamp(true);
-        setTimeout(() => setClearStamp(false), 2200);
-        playJingle('clear');
-        canStrongFx(true);
-        spawnNa('rare');
-        doShake('shake', 500);
-      } else {
-        playJingle('result');
-        showBanner(`ノルマ${st} 達成`, `次は ${quotaTarget(st + 1)}回`);
-        spawnNa('uncommon');
-      }
-    }
-
-    if (c % 10 === 0 || c === 1) checkAchievements();
-  };
-
-  const breakCombo = () => {
-    if (comboRef.current === 0) return;
-    if (comboRef.current >= 5) showJudge('コンボ切れ', 'text-slate-400');
-    comboRef.current = 0;
-    perfectStreakRef.current = 0;
-    setCombo(0);
-    if (feverRef.current) {
-      feverRef.current = false;
-      setFever(false);
-      addHitWord('フィーバー終了…', 'text-slate-400', false);
-    }
-  };
-
-  /** 達成感用のジングル（WebAudio で生成。音源不要） */
-  const playJingle = (kind: 'clear' | 'result' | 'fail' | 'record' | 'buzz') => {
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const v = Math.max(0.05, volume) * 0.25;
-      const notes: [number, number, number][] = kind === 'clear'
-        ? [[523, 0, 0.12], [659, 0.12, 0.12], [784, 0.24, 0.12], [1047, 0.36, 0.45]]
-        : kind === 'record'
-        ? [[784, 0, 0.1], [988, 0.1, 0.1], [1175, 0.2, 0.1], [1568, 0.3, 0.5], [1319, 0.45, 0.4]]
-        : kind === 'result'
-        ? [[392, 0, 0.14], [523, 0.14, 0.14], [659, 0.28, 0.3]]
-        : kind === 'buzz'
-        ? [[160, 0, 0.22]]
-        : [[330, 0, 0.25], [262, 0.25, 0.45]];
-      notes.forEach(([f, at, len]) => {
-        const o = ctx.createOscillator(); const gn = ctx.createGain();
-        o.type = kind === 'fail' ? 'triangle' : kind === 'buzz' ? 'sawtooth' : 'square';
-        o.frequency.value = f;
-        gn.gain.setValueAtTime(0.0001, ctx.currentTime + at);
-        gn.gain.exponentialRampToValueAtTime(v, ctx.currentTime + at + 0.01);
-        gn.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + at + len);
-        o.connect(gn); gn.connect(ctx.destination);
-        o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + len + 0.05);
-      });
-      setTimeout(() => ctx.close().catch(() => {}), 2500);
-    } catch { /* noop */ }
-  };
-
-  /** タップ / キー入力での「な」（マイクが使えない環境向け） */
-  const handleTap = () => {
-    if (!isGameActiveRef.current) return;
-    const now = Date.now();
-    if (now - lastTapRef.current < 60) return; // 連打のダブル判定防止
-    lastTapRef.current = now;
-    const timeSinceLastBeat = now - lastBeatTimeRef.current;
-    const phase = (timeSinceLastBeat % BEAT_INTERVAL_MS) / BEAT_INTERVAL_MS;
-    const distToQuarter = Math.min(phase, 1.0 - phase) * BEAT_INTERVAL_MS;
-    const distToEighth = Math.abs(phase - 0.5) * BEAT_INTERVAL_MS;
-    if (distToQuarter < HIT_WINDOW_MS * 1.3 || distToEighth < HIT_WINDOW_MS * 1.3) {
-      attemptHit(Math.min(distToQuarter, distToEighth));
-    } else {
-      addHitWord(phase < 0.25 || (phase > 0.5 && phase < 0.75) ? 'おそい' : 'はやい', 'text-slate-400');
-    }
-  };
-  const handleTapRef = useRef(handleTap);
-  handleTapRef.current = handleTap;
-
-  const startTapLoop = () => {
-    if (tapLoopRef.current) cancelAnimationFrame(tapLoopRef.current);
-    const loop = () => {
-      if (!isGameActiveRef.current) return;
-      if (comboRef.current > 0 && Date.now() - lastHitTimeRef.current > BEAT_INTERVAL_MS * COMBO_BREAK_BEATS) {
-        breakCombo();
-      }
-      tapLoopRef.current = requestAnimationFrame(loop);
-    };
-    loop();
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.repeat) return;
-      if (e.code === 'Space' || e.code === 'Enter' || e.key.toLowerCase() === 'n') {
-        if (inputModeRef.current === 'tap') { e.preventDefault(); handleTapRef.current(); }
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
-  const startGameAudioAnalysis = async () => {
-    try {
-        const stream = await getAudioStream();
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        micAudioCtxRef.current = audioCtx;
-        const source = audioCtx.createMediaStreamSource(stream);
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.2;
-        source.connect(analyser);
-        const dataArray = new Uint8Array(new ArrayBuffer(analyser.frequencyBinCount));
-
-        isArmedRef.current = true;
-        currentNotePeakRef.current = 0;
-        lastAudioVolume.current = 0;
-        if (startTimeRef.current === 0) startTimeRef.current = Date.now();
-
-        const loop = () => {
-            if (!isGameActiveRef.current) return;
-
-            const vol = calculateVolume(analyser, dataArray);
-            const SENSITIVITY = 15;
-            const isSharpRise = (vol - lastAudioVolume.current) > SENSITIVITY;
-
-            // コンボ切れ判定
-            if (comboRef.current > 0 && Date.now() - lastHitTimeRef.current > BEAT_INTERVAL_MS * COMBO_BREAK_BEATS) {
-                breakCombo();
-            }
-
-            if (vol > micThreshold) {
-                if (isArmedRef.current && isSharpRise) {
-                    const now = Date.now();
-                    const timeSinceLastBeat = now - lastBeatTimeRef.current;
-                    const phase = (timeSinceLastBeat % BEAT_INTERVAL_MS) / BEAT_INTERVAL_MS;
-                    const distToQuarter = Math.min(phase, 1.0 - phase) * BEAT_INTERVAL_MS;
-                    const distToEighth = Math.abs(phase - 0.5) * BEAT_INTERVAL_MS;
-                    if (distToQuarter < HIT_WINDOW_MS || distToEighth < HIT_WINDOW_MS) {
-                        attemptHit(Math.min(distToQuarter, distToEighth));
-                        isArmedRef.current = false;
-                        currentNotePeakRef.current = vol;
-                    }
-                }
-                if (!isArmedRef.current) {
-                    if (vol > currentNotePeakRef.current) {
-                        currentNotePeakRef.current = vol;
-                    }
-                    if (vol < currentNotePeakRef.current * 0.7) {
-                        isArmedRef.current = true;
-                        currentNotePeakRef.current = 0;
-                    }
-                }
-            } else {
-                isArmedRef.current = true;
-                currentNotePeakRef.current = 0;
-            }
-
-            lastAudioVolume.current = vol;
-            animationFrameRef.current = requestAnimationFrame(loop);
-        };
-        loop();
-    } catch (err) {
-        console.error("Game Audio Init Error");
-        setError("マイクの開始に失敗しました。せっていで「タップ」入力にすると遊べます。");
-    }
-  };
-
-  // --- Game State Management ---
-  const resetGame = useCallback(() => {
-    setScore(0);
-    setSubscribers(0);
-    scoreRef.current = 0;
-    subsRef.current = 0;
-    setTimeLeft(MODE_DURATIONS[gameMode]);
-    timeLeftRef.current = MODE_DURATIONS[gameMode];
-    setCountdown(COUNTDOWN_SECONDS);
-    setParticles([]);
-    setHitWords([]);
-    setScorePops([]);
-    setCombo(0); setMaxCombo(0); setFever(false);
-    comboRef.current = 0; feverRef.current = false;
-    setClearShown(false);
-    setLastRareLabel(null);
-    setEnding(null);
-    setCutIn(null);
-    if (cutInTimerRef.current) { clearTimeout(cutInTimerRef.current); cutInTimerRef.current = null; }
-    finishingRef.current = false;
-    endingDoneRef.current = false;
-    gainStageRef.current = 0;
-    crowdStageRef.current = 0;
-    judgeRef.current = { perfect: 0, great: 0, good: 0 };
-    perfectStreakRef.current = 0;
-    setJudge(null);
-    quotaStageRef.current = 1; setQuotaStage(1);
-    strongFxRef.current = 0;
-    beatCountRef.current = -1;
-    seedRef.current = 1 + Math.floor(Math.random() * 100000);
-    viewersRef.current = 50; setViewers(50);
-    buzzUntilRef.current = 0;
-    restBlockRef.current = null;
-    setLaneIdx(0);
-    setStageMood('dance');
-    try {
-      const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(`rhythm_na_subs_${gameMode}`) || '[]');
-      setGhostHits(prev.length ? Math.max(...prev.map((e) => e.hitCount || 0)) : 0);
-    } catch { setGhostHits(0); }
-    setBanner(null);
-    setClearStamp(false);
-    setRevealT(0);
-    isNewRecordRef.current = false;
-    runRef.current = {
-      mode: gameMode, hits: 0, subscribers: 0, maxCombo: 0, goldClicks: 0, diamondClicks: 0, rareSeen: 0, ultraSeen: 0,
-      feverCount: 0, pauses: 0, cutIns: 0, shiashiaPokes: 0, cleared: false, perfect: false, badHits: 0, restsKept: 0, cutoff: false,
-    };
-    setError(null);
-    lastTranscription.current = '';
-    isGameActiveRef.current = false;
-    lastBeatTimeRef.current = 0;
-    startTimeRef.current = 0;
-    pauseStartTimeRef.current = 0;
-    lastHitTimeRef.current = 0;
-
-    if (gameTimer.current) clearInterval(gameTimer.current);
-    cleanupAudio();
-    stopMicAnalysis(false);
-    if(sessionPromise.current) {
-        sessionPromise.current.then(session => session.close());
-        sessionPromise.current = null;
-    }
-    if (bgmRef.current) {
-        bgmRef.current.pause();
-        bgmRef.current.currentTime = 0;
-    }
-  }, [cleanupAudio, stopMicAnalysis, gameMode]);
-
-  const handleTranscription = useCallback((message: LiveServerMessage) => {
-    if (message.serverContent?.turnComplete) {
-      lastTranscription.current = '';
-    }
-  }, []);
-
-  const connectToGemini = useCallback(async () => {
-    try {
-        const stream = await getAudioStream();
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-        sessionPromise.current = ai.live.connect({
-            model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            callbacks: {
-                onopen: () => {
-                    const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-                    const source = inputAudioContext.createMediaStreamSource(stream);
-                    const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
-                    scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
-                        const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
-                        const l = inputData.length;
-                        const int16 = new Int16Array(l);
-                        for (let i = 0; i < l; i++) {
-                            int16[i] = inputData[i] * 32768;
-                        }
-                        const pcmBlob = {
-                            data: encode(new Uint8Array(int16.buffer)),
-                            mimeType: 'audio/pcm;rate=16000',
-                        };
-                        if (sessionPromise.current) {
-                            sessionPromise.current.then((session) => {
-                                session.sendRealtimeInput({ media: pcmBlob });
-                            });
-                        }
-                    };
-                    source.connect(scriptProcessor);
-                    scriptProcessor.connect(inputAudioContext.destination);
-                },
-                onmessage: handleTranscription,
-                onerror: (e: ErrorEvent) => {
-                    console.error('Gemini API Error');
-                },
-                onclose: () => {
-                    console.log('Gemini session closed.');
-                },
-            },
-            config: {
-                responseModalities: [Modality.AUDIO],
-                speechConfig: {
-                    voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } }
-                },
-                inputAudioTranscription: {},
-                systemInstruction: "You are a referee for a rhythm game. Just listen. Do not speak.",
-            },
-        });
-        await sessionPromise.current;
-    } catch (err) {
-        console.error("Failed to initialize Gemini session");
-        setError("AIサーバーへの接続に失敗しました。ネット環境を確認するか、時間をおいて試してください。");
-    }
-  }, [handleTranscription]);
-
-  const startAudio = () => {
-    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    } else if (audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume();
-    }
-    const playBeat = () => {
-        if (!audioContextRef.current) return;
-        const oscillator = audioContextRef.current.createOscillator();
-        const gainNode = audioContextRef.current.createGain();
-        oscillator.connect(gainNode);
-        gainNode.connect(audioContextRef.current.destination);
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(880, audioContextRef.current.currentTime);
-        const vol = 0.1 * volume;
-        gainNode.gain.setValueAtTime(vol, audioContextRef.current.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContextRef.current.currentTime + 0.1);
-        oscillator.start(audioContextRef.current.currentTime);
-        oscillator.stop(audioContextRef.current.currentTime + 0.1);
-        lastBeatTimeRef.current = Date.now();
-        beatCountRef.current += 1;
-    };
-    playBeat();
-    if (metronomeInterval.current) clearInterval(metronomeInterval.current);
-    metronomeInterval.current = window.setInterval(playBeat, BEAT_INTERVAL_MS);
-  };
-
-  useEffect(() => {
-    if (gameState === 'COUNTDOWN') {
-      if (countdown > 0) {
-        const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
-        return () => clearTimeout(timer);
-      } else {
-        setGameState('PLAYING');
-      }
-    }
-  }, [gameState, countdown]);
-
-  // ===================== ゲーム終了 → エンディング =====================
-  const finishGame = (cutoff = false) => {
-    if (finishingRef.current) return;
-    finishingRef.current = true;
-    isGameActiveRef.current = false;
-    if (gameTimer.current) { clearInterval(gameTimer.current); gameTimer.current = null; }
-    runRef.current.cutoff = cutoff;
-    const mode = gameModeRef.current;
-    const hits = scoreRef.current;
-    const beats = (MODE_DURATIONS[mode] * 1000) / BEAT_INTERVAL_MS;
-    const run: RunStats = {
-      ...runRef.current,
-      mode,
-      hits,
-      subscribers: subsRef.current,
-      maxCombo: Math.max(runRef.current.maxCombo, comboRef.current),
-      cleared: hits >= CLEAR_THRESHOLDS[mode],
-      perfect: hits >= beats * 0.9,
-    };
-    runRef.current = run;
-    const e = pickEnding(run, seenEndingsRef.current);
-    const isNew = !seenEndingsRef.current[e.id];
-    seenEndingsRef.current = { ...seenEndingsRef.current, [e.id]: seenEndingsRef.current[e.id] || Date.now() };
-    saveSeenEndings(seenEndingsRef.current);
-    setSeenEndings(seenEndingsRef.current);
-    setEnding(e);
-    setEndingIsNew(isNew);
-    setCutIn(null);
-    setGameState('ENDING');
-  };
-
-  const handleEndingDone = () => {
-    if (!ending || endingDoneRef.current) return;
-    endingDoneRef.current = true;
-    // これまでの最高記録と比べる（保存する前に）
-    try {
-      const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(`rhythm_na_subs_${gameModeRef.current}`) || '[]');
-      prevBestRef.current = prev.length ? Math.max(...prev.map((e) => e.score)) : 0;
-    } catch { prevBestRef.current = 0; }
-    isNewRecordRef.current = subsRef.current > prevBestRef.current && subsRef.current > 0;
-    saveScore(subsRef.current, scoreRef.current, ending.id);
-    bumpLife((l) => ({ plays: l.plays + 1, totalHits: l.totalHits + scoreRef.current }));
-    checkAchievements(true);
-    setGameState('FINISHED');
-  };
-
-  useEffect(() => {
-    // Menu BGM Logic
-    if (gameState === 'READY') {
-        const playMusic = () => {
-            if (menuBgmRef.current && menuBgmRef.current.paused) {
-                menuBgmRef.current.play().catch(() => {});
-            }
-        };
-        if (menuBgmRef.current) {
-            menuBgmRef.current.play().catch(() => {
-                window.addEventListener('click', playMusic, { once: true });
-                window.addEventListener('touchstart', playMusic, { once: true });
-                window.addEventListener('keydown', playMusic, { once: true });
-            });
-        }
-        return () => {
-            window.removeEventListener('click', playMusic);
-            window.removeEventListener('touchstart', playMusic);
-            window.removeEventListener('keydown', playMusic);
-        };
-    } else {
-        if (menuBgmRef.current) {
-            menuBgmRef.current.pause();
-            menuBgmRef.current.currentTime = 0;
-        }
-    }
-
-    if (gameState === 'PLAYING') {
-      isGameActiveRef.current = true;
-      if (pauseStartTimeRef.current > 0) {
-          const pausedDuration = Date.now() - pauseStartTimeRef.current;
-          startTimeRef.current += pausedDuration;
-          lastHitTimeRef.current += pausedDuration;
-          pauseStartTimeRef.current = 0;
-      }
-      startAudio();
-      if (bgmRef.current) {
-          bgmRef.current.currentTime = 0;
-          bgmRef.current.volume = volume;
-          bgmRef.current.play().catch(e => console.warn("BGM play failed", e));
-      }
-      if (inputModeRef.current === 'tap') startTapLoop(); else startGameAudioAnalysis();
-      if (gameTimer.current) clearInterval(gameTimer.current);
-      gameTimer.current = window.setInterval(() => {
-        timeLeftRef.current = Math.max(0, timeLeftRef.current - 1);
-        setTimeLeft(timeLeftRef.current);
-        if (timeLeftRef.current <= 0) {
-          clearInterval(gameTimer.current!);
-          gameTimer.current = null;
-          isGameActiveRef.current = false;
-          finishGame();
-        }
-      }, 1000);
-
-    } else if (gameState === 'PAUSED') {
-       isGameActiveRef.current = false;
-       pauseStartTimeRef.current = Date.now();
-       runRef.current.pauses++;
-       if (bgmRef.current) bgmRef.current.pause();
-       if (gameTimer.current) { clearInterval(gameTimer.current); gameTimer.current = null; }
-       if (metronomeInterval.current) { clearInterval(metronomeInterval.current); metronomeInterval.current = null; }
-       stopMicAnalysis(true);
-       setTimeout(() => checkAchievements(), 10);
-
-    } else if (gameState === 'COUNTDOWN') {
-        if (bgmRef.current) {
-            bgmRef.current.volume = 0;
-            if (bgmRef.current.paused) {
-                 bgmRef.current.play().catch(e => console.warn("Silent warmup failed", e));
-            }
-        }
-    } else {
-      // READY / ENDING / FINISHED
-      isGameActiveRef.current = false;
-      if (bgmRef.current) {
-          bgmRef.current.pause();
-          bgmRef.current.currentTime = 0;
-      }
-      cleanupAudio();
-      stopMicAnalysis(false);
-    }
-    return () => {};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameState]);
-
-  // 判定文字は短く消す
-  useEffect(() => {
-    if (!judge) return;
-    const t = setTimeout(() => setJudge((j) => (j && j.id === judge.id ? null : j)), 550);
-    return () => clearTimeout(t);
-  }, [judge]);
-
-  // ビートに合わせて縮むリング（8分ごと）＋ 譜面・視聴者の更新
-  useEffect(() => {
-    if (gameState !== 'PLAYING') return;
     let raf = 0;
-    let last = Date.now();
-    let lastE = -2;
     const loop = () => {
       raf = requestAnimationFrame(loop);
-      const now = Date.now();
-      const dt = Math.min(0.05, (now - last) / 1000); last = now;
-      const el = beatRingRef.current;
-      const half = BEAT_INTERVAL_MS / 2;
-      const since = Math.max(0, now - (lastBeatTimeRef.current || 0));
-      const u = (since % half) / half;              // 0 → 1 で円に重なる
-      if (el) {
-        const sc = 1.9 - 0.9 * u;
-        el.style.transform = `scale(${sc.toFixed(3)})`;
-        el.style.opacity = `${0.25 + 0.65 * u}`;
-      }
-      if (!isGameActiveRef.current) return;
-
-      // --- 譜面の位置 ---
-      const e = eighthAt(now);
-      if (e !== lastE) { lastE = e; setLaneIdx(Math.max(0, e)); }
-      if (laneRef.current) laneRef.current.style.transform = `translateX(${(-u * LANE_CELL).toFixed(1)}px)`;
-      const kind: EighthKind = kindAt(e, seedRef.current);
-
-      // --- 黙れ区間：守れたらボーナス ---
-      if (kind === 'rest') {
-        const end = restEndAt(e, seedRef.current);
-        if (!restBlockRef.current || restBlockRef.current.end !== end) restBlockRef.current = { end, violated: false };
-      } else if (restBlockRef.current && e > restBlockRef.current.end) {
-        if (!restBlockRef.current.violated) {
-          runRef.current.restsKept++;
-          setViewersClamped(viewersRef.current + 15);
-          showJudge('我慢ボーナス', 'text-emerald-500');
-        }
-        restBlockRef.current = null;
-      }
-
-      // --- 視聴者の離脱：言わないでいると減る（黙れ区間は減らない） ---
-      if (kind !== 'rest' && e >= 2) {
-        const idle = now - lastHitTimeRef.current;
-        if (idle > BEAT_INTERVAL_MS * 1.2) {
-          const rate = idle > BEAT_INTERVAL_MS * 3 ? 20 : 9;
-          setViewersClamped(viewersRef.current - rate * dt);
-          if (viewersRef.current <= 0) { finishGame(true); return; }
-        }
+      if (bar.current) {
+        bar.current.style.width = `${mic.level}%`;
+        bar.current.style.background = mic.level > mic.threshold ? '#4ade80' : '#38bdf8';
       }
     };
     loop();
     return () => cancelAnimationFrame(raf);
+  }, [mic]);
+  return (
+    <div className="relative h-7 bg-gray-200 rounded-full border-4 border-white overflow-hidden shadow-inner">
+      <div className="absolute top-0 bottom-0 w-1 bg-yellow-400 z-10" style={{ left: `${threshold}%` }} />
+      <div ref={bar} className="absolute top-0 left-0 bottom-0 rounded-l-full" style={{ width: 0 }} />
+    </div>
+  );
+};
+
+/** 観客（登録者が増えるほど増える） */
+const Crowd: React.FC<{ subs: number; buzz: boolean }> = ({ subs, buzz }) => {
+  const rows = [subs >= 1e3, subs >= 1e5, subs >= 1e7];
+  const col = buzz ? ['bg-pink-200', 'bg-pink-300', 'bg-pink-400'] : ['bg-gray-200', 'bg-gray-300', 'bg-gray-400'];
+  return (
+    <div className="absolute bottom-0 left-0 w-full h-1/2 pointer-events-none z-[1] overflow-hidden">
+      {[8, 7, 6].map((n, r) => (
+        <div key={r} className={`absolute left-[-10%] w-[120%] h-full flex justify-around items-end transition-transform duration-700 ${rows[r] ? 'translate-y-0' : 'translate-y-full'}`} style={{ bottom: -50 + r * 20 }}>
+          {Array.from({ length: n }).map((_, i) => (
+            <div key={i} className={`${col[r]} rounded-t-full mx-1 origin-bottom`} style={{ width: 96 + r * 32, height: 128 + r * 32, animation: `crowd-jump ${0.6 - r * 0.1}s infinite`, animationDelay: `${i * 0.1}s` }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ============================================================
+ * 本体
+ * ============================================================ */
+const Game: React.FC = () => {
+  const [gameState, setGameState] = useState<GameState>('READY');
+  const gameStateRef = useRef<GameState>('READY');
+  gameStateRef.current = gameState;
+  const [mode, setMode] = useState<GameMode>('30s');
+  const [settings, setSettingsState] = useState<Settings>(() => loadJSON(LS_KEYS.settings, DEFAULT_SETTINGS));
+  const setSettings = (p: Partial<Settings>) => setSettingsState((s) => { const n = { ...s, ...p }; saveJSON(LS_KEYS.settings, n); return n; });
+  const [offsets, setOffsetsState] = useState<Offsets>(() => loadJSON(LS_KEYS.offsets, { mic: null, tap: null } as Offsets));
+  const setOffset = (k: 'mic' | 'tap', v: number | null) => setOffsetsState((o) => { const n = { ...o, [k]: v }; saveJSON(LS_KEYS.offsets, n); return n; });
+  const offsetsRef = useRef(offsets); offsetsRef.current = offsets;
+  const settingsRef = useRef(settings); settingsRef.current = settings;
+  const input: 'mic' | 'tap' = TAP_ONLY ? 'tap' : settings.input;
+  const [skipRules, setSkipRules] = useState(() => { try { return localStorage.getItem(LS_KEYS.skipRules) === '1'; } catch { return false; } });
+  const [bgmUrl, setBgmUrl] = useState(DEFAULT_BGM);
+  const [customUrl, setCustomUrl] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [vp, setVp] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 800, h: typeof window !== 'undefined' ? window.innerHeight : 600 });
+  const isMobile = vp.w < 768;
+
+  // --- 永続データ ---
+  const [unlocked, setUnlocked] = useState<Record<string, number>>(() => loadUnlocked());
+  const unlockedRef = useRef(unlocked); unlockedRef.current = unlocked;
+  const [seenEndings, setSeenEndings] = useState<Record<string, number>>(() => loadSeenEndings());
+  const lifeRef = useRef<LifetimeStats>(loadLifetime());
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [showBook, setShowBook] = useState(false);
+  const [highScores, setHighScores] = useState<ScoreEntry[]>([]);
+
+  // --- 音 ---
+  const playerRef = useRef<SongPlayer | null>(null);
+  const [songReady, setSongReady] = useState(false);
+  const micRef = useRef<MicDetector>(new MicDetector());
+  const [micOn, setMicOn] = useState(false);
+  const [micTesting, setMicTesting] = useState(false);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const menuBgmRef = useRef<HTMLAudioElement>(null);
+
+  // --- プレイ中（毎フレーム触るものは ref） ---
+  const engineRef = useRef<JudgeEngine | null>(null);
+  const notesRef = useRef<NoteState[]>([]);
+  const burnsRef = useRef<BurnState[]>([]);
+  const flagsRef = useRef({ mirror: false, hidden: false, nu: false, buzz: false, lastHit: 0, lastJudge: '' });
+  // 背景の「な」は飾り（クリックでは何も起きない。special「な」は別）
+  const runRef = useRef<RunStats>(emptyRun('30s'));
+  const chartRef = useRef(buildChart('30s'));
+  const subsRef = useRef(0);
+  const peakSubsRef = useRef(0);
+  const comboRef = useRef(0);
+  const viewersRef = useRef(VIEWERS.start);
+  const strikesRef = useRef(0);
+  const buzzUntilRef = useRef(-1);
+  const effectsRef = useRef<{ id: ItemId; until: number }[]>([]);
+  const milestoneIdxRef = useRef(0);
+  const nextSpecialRef = useRef(7);
+  const announcedRef = useRef<Set<number>>(new Set());
+  const finishingRef = useRef(false);
+  const pauseAtRef = useRef(0);
+  const hitRef = useRef(0);
+  const cutQueueRef = useRef<CutInData[]>([]);
+  const cutTimerRef = useRef<number | null>(null);
+  const cutCurRef = useRef<CutInData | null>(null);
+  const runUnlockedRef = useRef<string[]>([]);
+  const isNewRecordRef = useRef(false);
+  const prevBestRef = useRef(0);
+
+  // --- プレイ中（画面に出すもの） ---
+  const [subs, setSubs] = useState(0);
+  const [combo, setCombo] = useState(0);
+  const [viewers, setViewers] = useState(VIEWERS.start);
+  const [strikes, setStrikes] = useState(0);
+  const [judge, setJudge] = useState<{ id: number; text: string; cls: string } | null>(null);
+  const [countdown, setCountdown] = useState<string | null>(null);
+  const [timePct, setTimePct] = useState(1);
+  const [buzz, setBuzz] = useState(false);
+  const [commentMood, setCommentMood] = useState<CommentMood>('normal');
+  const [cutIn, setCutIn] = useState<CutInData | null>(null);
+  const [tempMood, setTempMood] = useState<ShiashiaMood | null>(null);
+  const [specials, setSpecials] = useState<{ id: number; top: number; dur: number }[]>([]);
+  const [itemCard, setItemCard] = useState<{ id: number; def: ItemDef; until: number; total: number } | null>(null);
+  const [activeFx, setActiveFx] = useState<ItemId[]>([]);
+  const [particles, setParticles] = useState<NaParticle[]>([]);
+  const [shake, setShake] = useState('');
+  const [ending, setEnding] = useState<Ending | null>(null);
+  const [endingIsNew, setEndingIsNew] = useState(false);
+  const [revealT, setRevealT] = useState(0);
+  const [banFlash, setBanFlash] = useState(false);
+
+  const quota = QUOTA[mode];
+  const chaos = Math.min(1, Math.log10(subs + 1) / 8);
+
+  /* ---------------- 共通 ---------------- */
+  useEffect(() => {
+    const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const pushToasts = (ids: string[]) => {
+    if (!ids.length) return;
+    const now = Date.now();
+    const items = ids.map((id, i) => ({ id: now + i, achievement: achievementById(id)! })).filter((x) => x.achievement);
+    setToasts((p) => [...p, ...items]);
+    items.forEach((it) => setTimeout(() => setToasts((p) => p.filter((t) => t.id !== it.id)), 4200));
+  };
+  /** 実績の判定。プレイ中は画面に出さず、結果画面でまとめて見せる */
+  const checkAchievements = (run: Partial<RunStats> | null, quiet: boolean) => {
+    const newly = evaluate(run, lifeRef.current, Object.keys(seenEnds()).length, TOTAL_ENDINGS, unlockedRef.current);
+    if (!newly.length) return newly;
+    const now = Date.now();
+    const next = { ...unlockedRef.current };
+    newly.forEach((id) => { next[id] = now; });
+    unlockedRef.current = next;
+    saveUnlocked(next);
+    setUnlocked(next);
+    if (!quiet) pushToasts(newly);
+    return newly;
+  };
+  const seenEnds = () => loadSeenEndings();
+  const bumpLife = (p: Partial<LifetimeStats>) => { lifeRef.current = { ...lifeRef.current, ...p }; saveLifetime(lifeRef.current); };
+
+  const loadScores = useCallback((m: GameMode) => {
+    try { setHighScores(JSON.parse(localStorage.getItem(LS_KEYS.scores(m)) || '[]')); } catch { setHighScores([]); }
+  }, []);
+  useEffect(() => { loadScores(mode); }, [mode, loadScores]);
+
+  // マイクの設定を反映
+  useEffect(() => { micRef.current.threshold = settings.threshold; }, [settings.threshold]);
+
+  const refreshDevices = useCallback(async () => {
+    try { setDevices((await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput')); } catch { /* noop */ }
+  }, []);
+  useEffect(() => {
+    if (TAP_ONLY || !navigator.mediaDevices) return;
+    refreshDevices();
+    navigator.mediaDevices.addEventListener?.('devicechange', refreshDevices);
+    return () => navigator.mediaDevices.removeEventListener?.('devicechange', refreshDevices);
+  }, [refreshDevices]);
+
+  const ensureMic = async () => {
+    if (TAP_ONLY) return false;
+    if (micOn) return true;
+    try {
+      await micRef.current.start(settingsRef.current.deviceId || undefined);
+      setMicOn(true);
+      refreshDevices();
+      return true;
+    } catch {
+      setError('マイクが使えませんでした。設定で「タップ」に切り替えると遊べます。');
+      return false;
+    }
+  };
+  const stopMic = () => { micRef.current.stop(); setMicOn(false); setMicTesting(false); };
+
+  // メニュー BGM
+  useEffect(() => {
+    const el = menuBgmRef.current;
+    if (!el) return;
+    el.volume = settings.volume * 0.8;
+    if (gameState === 'READY') {
+      const play = () => { el.play().catch(() => {}); };
+      el.play().catch(() => {
+        window.addEventListener('pointerdown', play, { once: true });
+        window.addEventListener('keydown', play, { once: true });
+      });
+      return () => { window.removeEventListener('pointerdown', play); window.removeEventListener('keydown', play); };
+    }
+    el.pause();
+    if (gameState === 'PLAYING') el.currentTime = 0;
+  }, [gameState, settings.volume]);
+
+  /* ---------------- 演出ヘルパー ---------------- */
+  const showJudge = (text: string, cls: string) => setJudge({ id: performance.now(), text, cls });
+  useEffect(() => {
+    if (!judge) return;
+    const id = judge.id;
+    const t = setTimeout(() => setJudge((j) => (j && j.id === id ? null : j)), 520);
+    return () => clearTimeout(t);
+  }, [judge]);
+  const doShake = (cls: string, ms: number) => { setShake(cls); setTimeout(() => setShake(''), ms); };
+  const flashMood = (m: ShiashiaMood, ms: number) => { setTempMood(m); setTimeout(() => setTempMood((x) => (x === m ? null : x)), ms); };
+
+  const spawnBackgroundNa = () => {
+    const ps = createParticles(pickVariant(rollRarity(flagsRef.current.buzz)), 'normal');
+    if (flagsRef.current.nu) ps.forEach((p) => { p.text = p.text.replace(/な/g, 'ぬ'); });
+    setParticles((prev) => [...prev, ...ps].slice(-70));
+  };
+  useEffect(() => {
+    const iv = setInterval(() => setParticles((prev) => {
+      const now = Date.now();
+      const f = prev.filter((p) => now - Math.floor(p.id / 100) < p.life + 1500);
+      return f.length !== prev.length ? f : prev;
+    }), 600);
+    return () => clearInterval(iv);
+  }, []);
+
+  /* ---------------- カットイン ---------------- */
+  const playNextCut = () => {
+    if (cutCurRef.current || !cutQueueRef.current.length) return;
+    const d = cutQueueRef.current.shift()!;
+    cutCurRef.current = d;
+    setCutIn(d);
+    cutTimerRef.current = window.setTimeout(() => {
+      cutCurRef.current = null;
+      setCutIn(null);
+      cutTimerRef.current = window.setTimeout(playNextCut, 280);
+    }, d.durationMs);
+  };
+  const queueCut = (d: Omit<CutInData, 'id'>, urgent = false) => {
+    const data = { ...d, id: performance.now() + Math.random() };
+    if (urgent) {
+      if (cutTimerRef.current) clearTimeout(cutTimerRef.current);
+      if (cutCurRef.current && cutCurRef.current.event !== 'burn' && cutCurRef.current.event !== 'ban') cutQueueRef.current.unshift(cutCurRef.current);
+      cutCurRef.current = null;
+      cutQueueRef.current.unshift(data);
+    } else {
+      cutQueueRef.current.push(data);
+    }
+    playNextCut();
+  };
+  const clearCuts = () => {
+    if (cutTimerRef.current) clearTimeout(cutTimerRef.current);
+    cutQueueRef.current = []; cutCurRef.current = null; setCutIn(null);
+  };
+
+  /* ---------------- 視聴者・登録者 ---------------- */
+  const setViewersV = (v: number) => {
+    viewersRef.current = Math.max(0, Math.min(100, v));
+    setViewers(Math.round(viewersRef.current));
+  };
+  const addSubs = (n: number) => {
+    subsRef.current = Math.max(0, subsRef.current + n);
+    if (subsRef.current > peakSubsRef.current) peakSubsRef.current = subsRef.current;
+    setSubs(subsRef.current);
+    // 節目のカットイン
+    while (milestoneIdxRef.current < MILESTONES.length && subsRef.current >= MILESTONES[milestoneIdxRef.current].subs) {
+      const m = MILESTONES[milestoneIdxRef.current++];
+      queueCut({ event: m.event, title: m.title, sub: m.sub, shield: m.shield, quota: m.subs === QUOTA[runRef.current.mode], durationMs: 2900 });
+      playJingle(playerRef.current?.ctx ?? null, m.subs === QUOTA[runRef.current.mode] ? 'clear' : 'milestone', settingsRef.current.volume);
+    }
+  };
+  const startBuzz = (t: number) => {
+    buzzUntilRef.current = t + BUZZ_EIGHTHS * EIGHTH;
+    flagsRef.current.buzz = true;
+    setBuzz(true);
+    runRef.current.buzzes++;
+    setViewersV(VIEWERS.buzzReset);
+    showJudge('バズった！ 登録者2倍', 'text-amber-500');
+    playJingle(playerRef.current?.ctx ?? null, 'milestone', settingsRef.current.volume);
+  };
+  const checkViewers = (t: number) => {
+    if (viewersRef.current >= 100 && !flagsRef.current.buzz) startBuzz(t);
+    if (viewersRef.current <= 0) finishGame('cutoff');
+  };
+
+  /* ---------------- 入力 ---------------- */
+  const handleInput = (src: 'mic' | 'tap') => {
+    if (gameStateRef.current !== 'PLAYING' || finishingRef.current) return;
+    const p = playerRef.current, e = engineRef.current;
+    if (!p || !e) return;
+    const t = p.time();
+    if (t < chartRef.current.firstT - 0.6) return;     // カウント中は数えない
+    const off = (src === 'mic' ? offsetsRef.current.mic : offsetsRef.current.tap) ?? 0;
+    const tc = t - off * p.getRate();
+    const r = e.input(tc);
+    const run = runRef.current;
+    if (r.type === 'hit') {
+      const j: Judge = r.judge;
+      comboRef.current++;
+      setCombo(comboRef.current);
+      run.hits++; run[j]++;
+      if (comboRef.current > run.maxCombo) run.maxCombo = comboRef.current;
+      const fx = effectsRef.current;
+      const mul = (flagsRef.current.buzz ? 2 : 1) * (fx.some((x) => x.id === 'superchat') ? 3 : 1) * (flagsRef.current.nu ? 0.7 : 1);
+      addSubs(gainFor(r.note.t, j, comboRef.current, viewersRef.current, mul));
+      setViewersV(viewersRef.current + VIEWERS.hit[j]);
+      hitRef.current = performance.now();
+      flagsRef.current.lastHit = hitRef.current;
+      showJudge(j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GREAT' : 'GOOD', j === 'perfect' ? 'text-amber-400' : j === 'great' ? 'text-pink-500' : 'text-sky-500');
+      if (Math.random() < 0.18 + chaos * 0.6) spawnBackgroundNa();
+      checkViewers(t);
+    } else if (r.type === 'extra') {
+      comboRef.current = 0; setCombo(0);
+      run.extras++;
+      setViewersV(viewersRef.current + VIEWERS.extra);
+      showJudge('空振り', 'text-slate-400');
+      checkViewers(t);
+    } else if (r.type === 'fuel') {
+      comboRef.current = 0; setCombo(0);
+      addSubs(-subsRef.current * FUEL_LOSS);
+      setViewersV(viewersRef.current + VIEWERS.fuel);
+      hitRef.current = performance.now();
+      showJudge('火に油', 'text-red-500');
+      doShake('shake', 350);
+      flashMood('shock', 700);
+      playJingle(playerRef.current?.ctx ?? null, 'buzz', settingsRef.current.volume);
+      if (r.first) {
+        run.fuels++;
+        strikesRef.current++;
+        setStrikes(strikesRef.current);
+        if (strikesRef.current >= BAN_STRIKES) { finishGame('ban'); return; }
+      }
+      checkViewers(t);
+    }
+  };
+  const handleInputRef = useRef(handleInput);
+  handleInputRef.current = handleInput;
+
+  useEffect(() => {
+    micRef.current.onOnset = () => handleInputRef.current('mic');
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (gameStateRef.current === 'PLAYING') {
+        if (e.code === 'Escape') { e.preventDefault(); pauseGame(); return; }
+        if (e.repeat) return;
+        if ((e.code === 'Space' || e.code === 'Enter' || e.key.toLowerCase() === 'n') && (TAP_ONLY || settingsRef.current.input === 'tap')) {
+          e.preventDefault(); handleInputRef.current('tap');
+        }
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ---------------- special「な」 ---------------- */
+  const takeItem = (id: number, ev: React.PointerEvent) => {
+    ev.stopPropagation();
+    setSpecials((s) => s.filter((x) => x.id !== id));
+    const p = playerRef.current;
+    if (!p || gameStateRef.current !== 'PLAYING') return;
+    const def = rollItem();
+    const run = runRef.current;
+    run.items++;
+    if (!lifeRef.current.itemsSeen.includes(def.id)) bumpLife({ itemsSeen: [...lifeRef.current.itemsSeen, def.id] });
+    playJingle(p.ctx, 'item', settingsRef.current.volume);
+    const now = performance.now();
+    const until = now + def.seconds * 1000;
+    switch (def.id) {
+      case 'plus1000': addSubs(1000); break;
+      case 'osusume': if (!flagsRef.current.buzz) startBuzz(p.time()); break;
+      case 'kirinuki': setViewersV(viewersRef.current + 30); checkViewers(p.time()); break;
+      case 'bpmUp': p.setRate(1.2); break;
+      case 'bpmDown': p.setRate(0.8); break;
+      case 'godMic': if (engineRef.current) engineRef.current.winMul = 1.6; break;
+      case 'mirror': flagsRef.current.mirror = true; break;
+      case 'nu': flagsRef.current.nu = true; break;
+      case 'thumbnail': flagsRef.current.hidden = true; break;
+      default: break;
+    }
+    if (def.seconds > 0) {
+      // 同じ種類が出たら延長、BPM は後から出た方が勝つ
+      effectsRef.current = effectsRef.current.filter((x) => x.id !== def.id && !((def.id === 'bpmUp' || def.id === 'bpmDown') && (x.id === 'bpmUp' || x.id === 'bpmDown')));
+      effectsRef.current.push({ id: def.id, until });
+      setActiveFx(effectsRef.current.map((x) => x.id));
+    }
+    setItemCard({ id: now, def, until: def.seconds > 0 ? until : now + 1800, total: def.seconds > 0 ? def.seconds * 1000 : 1800 });
+  };
+  const endEffect = (id: ItemId) => {
+    const p = playerRef.current;
+    switch (id) {
+      case 'bpmUp': case 'bpmDown': p?.setRate(1); break;
+      case 'godMic': if (engineRef.current) engineRef.current.winMul = 1; break;
+      case 'mirror': flagsRef.current.mirror = false; break;
+      case 'nu': flagsRef.current.nu = false; break;
+      case 'thumbnail': flagsRef.current.hidden = false; break;
+      default: break;
+    }
+  };
+
+  /* ---------------- 流れ ---------------- */
+  const prepareSong = () => {
+    if (!playerRef.current) playerRef.current = new SongPlayer();
+    const p = playerRef.current;
+    p.ctx.resume().catch(() => {});
+    setSongReady(false);
+    p.load(bgmUrl).then(() => setSongReady(true)).catch(() => { setError('曲の読み込みに失敗しました。'); setSongReady(false); });
+  };
+
+  const handleStart = async () => {
+    setError(null);
+    prepareSong();
+    if (input === 'mic') { const ok = await ensureMic(); if (!ok) return; }
+    setMicTesting(false);
+    if (offsetsRef.current[input] == null) setGameState('CALIBRATE');
+    else setGameState('RULES');
+  };
+
+  const startPlay = async () => {
+    const p = playerRef.current;
+    if (!p) return;
+    const ch = buildChart(mode);
+    chartRef.current = ch;
+    const eng = new JudgeEngine(ch.notes, ch.burns);
+    engineRef.current = eng;
+    notesRef.current = eng.notes;
+    burnsRef.current = eng.burns;
+    runRef.current = emptyRun(mode);
+    flagsRef.current = { mirror: false, hidden: false, nu: false, buzz: false, lastHit: 0, lastJudge: '' };
+    subsRef.current = 0; peakSubsRef.current = 0; comboRef.current = 0; strikesRef.current = 0;
+    buzzUntilRef.current = -1; effectsRef.current = []; milestoneIdxRef.current = 0;
+    nextSpecialRef.current = 6.5 + Math.random() * 2;
+    announcedRef.current = new Set(); finishingRef.current = false; runUnlockedRef.current = [];
+    setSubs(0); setCombo(0); setViewersV(VIEWERS.start); setStrikes(0); setBuzz(false); setActiveFx([]); setItemCard(null);
+    setSpecials([]); setParticles([]); setEnding(null); setTempMood(null); setBanFlash(false); setTimePct(1); setCommentMood('normal');
+    clearCuts();
+    try {
+      const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(LS_KEYS.scores(mode)) || '[]');
+      prevBestRef.current = prev.length ? Math.max(...prev.map((e) => e.score)) : 0;
+    } catch { prevBestRef.current = 0; }
+    p.setVolume(settingsRef.current.volume);
+    p.clicks = settingsRef.current.clicks;
+    p.stop();
+    await p.start(0);
+    setGameState('PLAYING');
+  };
+
+  // 説明を出さない設定なら、曲が読み込めたらすぐ始める
+  useEffect(() => {
+    if (gameState === 'RULES' && skipRules && songReady) startPlay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameState, skipRules, songReady]);
+
+  const pauseGame = async () => {
+    if (gameStateRef.current !== 'PLAYING') return;
+    pauseAtRef.current = performance.now();
+    runRef.current.pauses++;
+    setGameState('PAUSED');
+    await playerRef.current?.pause();
+  };
+  const resumeGame = async () => {
+    const d = performance.now() - pauseAtRef.current;
+    effectsRef.current.forEach((x) => { x.until += d; });
+    setItemCard((c) => (c ? { ...c, until: c.until + d } : c));
+    await playerRef.current?.resume();
+    setGameState('PLAYING');
+  };
+  useEffect(() => {
+    const onVis = () => { if (document.hidden) pauseGame(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const quitToTitle = () => {
+    finishingRef.current = true;
+    playerRef.current?.stop();
+    playerRef.current?.resume();
+    clearCuts();
+    if (input === 'mic') stopMic();
+    setGameState('READY');
+  };
+
+  const finishGame = (reason: 'done' | 'cutoff' | 'ban') => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    const run = runRef.current;
+    run.subs = Math.floor(subsRef.current);
+    run.cutoff = reason === 'cutoff';
+    run.ban = reason === 'ban';
+    run.burnsTotal = burnsRef.current.filter((b) => b.ended).length;
+    run.cleared = reason === 'done' && run.subs >= run.quota;
+    run.finished = true;
+
+    const go = () => {
+      playerRef.current?.stop();
+      if (input === 'mic') stopMic();
+      clearCuts();
+      // エンディング
+      const e = pickEnding(run);
+      const seen = loadSeenEndings();
+      const isNew = !seen[e.id];
+      const nextSeen = { ...seen, [e.id]: seen[e.id] || Date.now() };
+      saveSeenEndings(nextSeen);
+      setSeenEndings(nextSeen);
+      // 記録
+      bumpLife({ plays: lifeRef.current.plays + 1, totalHits: lifeRef.current.totalHits + run.hits });
+      const key = LS_KEYS.scores(run.mode);
+      let scores: ScoreEntry[] = [];
+      try { scores = JSON.parse(localStorage.getItem(key) || '[]'); } catch { /* noop */ }
+      isNewRecordRef.current = run.subs > prevBestRef.current && run.subs > 0;
+      scores.push({ score: run.subs, hitCount: run.hits, date: Date.now(), endingId: e.id });
+      scores.sort((a, b) => b.score - a.score);
+      scores = scores.slice(0, 5);
+      saveJSON(key, scores);
+      setHighScores(scores);
+      runUnlockedRef.current = checkAchievements({ ...run, subs: Math.max(run.subs, Math.floor(peakSubsRef.current)) }, true);
+      setEnding(e);
+      setEndingIsNew(isNew);
+      setGameState('ENDING');
+    };
+
+    if (reason === 'ban') {
+      setBanFlash(true);
+      queueCut({ event: 'ban', title: 'BANをくらった', sub: '警告 3/3　チャンネル削除', durationMs: 2600 }, true);
+      playJingle(playerRef.current?.ctx ?? null, 'ban', settingsRef.current.volume);
+      playerRef.current?.setRate(0.6);
+      setTimeout(go, 2700);
+    } else if (reason === 'cutoff') {
+      flashMood('sad', 2000);
+      showJudge('視聴者 0人', 'text-slate-500');
+      playJingle(playerRef.current?.ctx ?? null, 'fail', settingsRef.current.volume);
+      setTimeout(go, 1300);
+    } else {
+      setTimeout(go, 400);
+    }
+  };
+
+  /* ---------------- メインループ ---------------- */
+  useEffect(() => {
+    if (gameState !== 'PLAYING') return;
+    let raf = 0;
+    let lastUi = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const p = playerRef.current, e = engineRef.current;
+      if (!p || !e || finishingRef.current) return;
+      const t = p.time();
+      p.scheduleClicks();
+      const off = offsetsRef.current[TAP_ONLY ? 'tap' : settingsRef.current.input] ?? 0;
+      const tc = t - off * p.getRate();
+      const ch = chartRef.current;
+      const run = runRef.current;
+
+      for (const ev of e.tick(tc)) {
+        if (ev.type === 'miss') {
+          comboRef.current = 0; setCombo(0);
+          run.misses++;
+          setViewersV(viewersRef.current + VIEWERS.miss);
+          showJudge('MISS', 'text-slate-400');
+          checkViewers(t);
+          if (finishingRef.current) return;
+        } else if (ev.type === 'burnEnd') {
+          if (!ev.burn.fueled) {
+            run.burnsKept++;
+            setViewersV(viewersRef.current + VIEWERS.calmed);
+            showJudge('鎮火', 'text-emerald-500');
+            checkViewers(t);
+          }
+        }
+      }
+
+      // 炎上の予告カットイン（帯が円に届く少し前）
+      for (const b of e.burns) {
+        if (!announcedRef.current.has(b.id) && t >= b.t0 - 0.85) {
+          announcedRef.current.add(b.id);
+          const dur = Math.max(1700, ((b.t1 - t) / p.getRate()) * 1000);
+          queueCut({ event: 'burn', title: '炎上した！', sub: '黙れ！ 声を出すと火に油', durationMs: dur }, true);
+        }
+      }
+
+      // バズの終わり
+      if (flagsRef.current.buzz && t >= buzzUntilRef.current) { flagsRef.current.buzz = false; setBuzz(false); }
+
+      // アイテム効果の終わり
+      const now = performance.now();
+      if (effectsRef.current.some((x) => x.until <= now)) {
+        effectsRef.current.filter((x) => x.until <= now).forEach((x) => endEffect(x.id));
+        effectsRef.current = effectsRef.current.filter((x) => x.until > now);
+        setActiveFx(effectsRef.current.map((x) => x.id));
+      }
+
+      // special「な」
+      if (t >= nextSpecialRef.current && t < ch.endT - 4) {
+        nextSpecialRef.current = t + 11 + Math.random() * 7;
+        const id = now;
+        const dur = 5200;
+        setSpecials((s) => [...s, { id, top: 20 + Math.random() * 18, dur }]);
+        setTimeout(() => setSpecials((s) => s.filter((x) => x.id !== id)), dur + 100);
+      }
+
+      // 画面の更新（重くならないよう 1 秒に 12 回）
+      if (now - lastUi > 80) {
+        lastUi = now;
+        const left = ch.firstT - t;
+        const cd = left > 2 * BEAT * 3 ? '準備して' : left > 0 ? String(Math.ceil(left / (2 * BEAT))) : left > -0.45 ? 'な！' : null;
+        setCountdown((c) => (c === cd ? c : cd));
+        const pct = Math.max(0, Math.min(1, (ch.endT - t) / (ch.endT - ch.firstT)));
+        setTimePct(pct);
+        const inBurn = e.burns.some((b) => t >= b.t0 - 0.85 && t <= b.t1);
+        const m: CommentMood = inBurn ? 'burn' : flagsRef.current.nu ? 'nu' : flagsRef.current.buzz ? 'hype' : 'normal';
+        setCommentMood((x) => (x === m ? x : m));
+      }
+
+      if (t >= ch.endT) finishGame('done');
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState]);
 
   // 結果画面の演出タイマー
@@ -1251,631 +722,467 @@ const Game: React.FC = () => {
     setRevealT(0);
     const iv = setInterval(() => setRevealT(Date.now() - t0), 40);
     const cleared = runRef.current.cleared;
-    const j1 = setTimeout(() => playJingle(cleared ? 'clear' : 'fail'), 350);
-    const j2 = setTimeout(() => { if (isNewRecordRef.current) playJingle('record'); }, 2600);
+    const j1 = setTimeout(() => playJingle(null, cleared ? 'clear' : 'fail', settingsRef.current.volume), 350);
+    const j2 = setTimeout(() => { if (isNewRecordRef.current) playJingle(null, 'record', settingsRef.current.volume); }, 2600);
     const stop = setTimeout(() => clearInterval(iv), 6000);
     return () => { clearInterval(iv); clearTimeout(j1); clearTimeout(j2); clearTimeout(stop); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState]);
 
-  // 「な」の寿命管理
-  useEffect(() => {
-    const interval = setInterval(() => {
-        setParticles(prev => {
-            const now = Date.now();
-            const filtered = prev.filter(p => now - Math.floor(p.id / 100) < p.life + 1500);
-            return filtered.length !== prev.length ? filtered : prev;
-        });
-    }, 500);
-    return () => clearInterval(interval);
+  // しあしあをつつく
+  const handlePoke = () => {
+    bumpLife({ totalPokes: lifeRef.current.totalPokes + 1 });
+    if (gameStateRef.current === 'PLAYING') runRef.current.pokes++;
+    else checkAchievements(null, false);
+  };
+
+  const getBeat = useCallback(() => {
+    const p = playerRef.current;
+    if (!p || !p.started) return null;
+    return (p.time() - 0.36) / BEAT;
   }, []);
+  const getTime = useCallback(() => playerRef.current?.time() ?? 0, []);
 
-  useEffect(() => {
-    return () => {
-      cleanupAudio();
-      stopMicAnalysis(false);
-      if (gameTimer.current) clearInterval(gameTimer.current);
-      if(sessionPromise.current) {
-          sessionPromise.current.then(session => session.close());
-      }
-      if (bgmSource.startsWith('blob:')) {
-          URL.revokeObjectURL(bgmSource);
-      }
-    };
-  }, [cleanupAudio, stopMicAnalysis, bgmSource]);
+  /* ============================================================
+   * 画面
+   * ============================================================ */
+  const stageVisible = gameState === 'RULES' || gameState === 'PLAYING' || gameState === 'PAUSED';
+  const stageSize = isMobile ? 150 : 230;
+  const atCut = !!cutIn && gameState === 'PLAYING';
+  const stageMood: ShiashiaMood = atCut ? EVENT_MOOD[cutIn!.event] : tempMood ?? (gameState === 'RULES' ? 'idle' : 'dance');
+  const stageTransform = (() => {
+    if (!atCut) return 'translate(0px, 0px) scale(1)';
+    const left = isMobile ? 0 : 24;
+    const cx = left + stageSize / 2, cy = vp.h - stageSize / 2;
+    const tx = vp.w * (isMobile ? 0.19 : 0.2) - cx;
+    const ty = vp.h * 0.31 - cy;
+    const s = Math.max(1, Math.min(2.2, (vp.h * 0.36) / stageSize));
+    return `translate(${tx}px, ${ty}px) scale(${s})`;
+  })();
 
-  const handleStart = async () => {
-    resetGame();
-    if (bgmRef.current) {
-        try {
-            bgmRef.current.volume = 0;
-            bgmRef.current.currentTime = 0;
-            await bgmRef.current.play();
-        } catch(e) {
-            console.warn("BGM Access Error", e);
-            setError("BGMの再生に失敗しました。URLを確認してください。");
-        }
-    }
-    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (audioContextRef.current.state === 'suspended') {
-        await audioContextRef.current.resume();
-    }
-    if (process.env.API_KEY && inputModeRef.current === 'mic') connectToGemini();
-    setGameState('COUNTDOWN');
-  };
-
-  const handlePlayAgain = () => {
-    resetGame();
-    loadScores();
-    setGameState('READY');
-  };
-
-  const handleQuit = () => {
-      resetGame();
-      setGameState('READY');
-  };
-
-  const handlePause = () => setGameState('PAUSED');
-  const handleResume = () => setGameState('PLAYING');
-
-  const handleTitleClick = () => {
-    bumpLife((l) => ({ titleClicks: l.titleClicks + 1 }));
-    const n = lifeRef.current.titleClicks;
-    addHitWord(n >= 10 ? 'もうやめて' : n >= 5 ? 'な？' : 'な', 'text-pink-500', false);
-    spawnNa(n >= 10 ? 'rare' : undefined);
-    checkAchievements();
-  };
-
-  // ===================== 描画 =====================
-  const renderContent = () => {
-    const threshold = CLEAR_THRESHOLDS[gameMode];
-    const isCleared = score >= threshold;
-
-    const HUD = (
-        <div className="absolute top-0 w-full flex flex-col p-4 pointer-events-none z-20 pl-20">
-            <div className="flex justify-between items-start w-full gap-4">
-                <div className="flex-1 max-w-sm">
-                     <div className="bg-white/90 backdrop-blur rounded-full p-2 border-4 border-pink-400 shadow-md flex items-center gap-3">
-                        <div className="text-pink-500 font-black text-lg px-2">のこり</div>
-                        <div className="flex-1 h-6 bg-pink-100 rounded-full overflow-hidden border-2 border-pink-200">
-                            <div className="h-full bg-pink-400 transition-all duration-1000 linear" style={{ width: `${(timeLeft / MODE_DURATIONS[gameMode]) * 100}%` }}></div>
-                        </div>
-                        <div className="text-2xl font-black text-slate-700 w-16 text-right">{timeLeft}</div>
-                     </div>
-                </div>
-                <div className="flex-1 max-w-sm">
-                    <div className={`bg-white/90 backdrop-blur rounded-full p-2 border-4 shadow-md flex items-center gap-3 ${isCleared ? 'border-yellow-400 animate-pulse ring-4 ring-yellow-200' : 'border-cyan-400'}`}>
-                        <div className={`${isCleared ? 'text-yellow-500' : 'text-cyan-500'} font-black text-lg px-2 whitespace-nowrap`}>
-                            {quotaStage === 1 ? 'ノルマ' : `ノルマ${quotaStage}`}
-                        </div>
-                        <div className="flex-1 h-6 bg-gray-100 rounded-full overflow-hidden border-2 border-gray-200 relative">
-                            {(() => {
-                              const prevT = quotaStage === 1 ? 0 : quotaTarget(quotaStage - 1, gameMode);
-                              const curT = quotaTarget(quotaStage, gameMode);
-                              const pct = Math.min(100, Math.max(0, ((score - prevT) / (curT - prevT)) * 100));
-                              const elapsed = MODE_DURATIONS[gameMode] - timeLeft;
-                              const ghost = ghostHits > 0 ? (ghostHits * elapsed) / MODE_DURATIONS[gameMode] : 0;
-                              const gpct = ghost > prevT ? Math.min(100, ((ghost - prevT) / (curT - prevT)) * 100) : -1;
-                              return (<>
-                                <div className={`h-full transition-all duration-200 ease-out ${isCleared ? 'bg-gradient-to-r from-yellow-300 via-orange-300 to-yellow-300 animate-[scroll-bg_1s_linear_infinite] bg-[length:200%_100%]' : 'bg-cyan-400'}`} style={{ width: `${pct}%` }}></div>
-                                {gpct >= 0 && (
-                                  <div className="absolute top-0 bottom-0 w-[3px] bg-slate-700 transition-all duration-1000 linear" style={{ left: `${gpct}%` }} title="自己ベストのペース">
-                                    <span className="absolute -top-0.5 left-1 text-[9px] font-bold text-slate-600 whitespace-nowrap leading-none">ベスト</span>
-                                  </div>
-                                )}
-                              </>);
-                            })()}
-                        </div>
-                        <div className="text-2xl font-black text-slate-700 w-24 text-right">
-                            {score}<span className="text-sm text-gray-400">/{quotaTarget(quotaStage, gameMode)}</span>
-                        </div>
-                    </div>
-                </div>
+  const renderReady = () => (
+    <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10">
+      <div className="min-h-full flex flex-col items-center justify-center p-4 py-8 md:py-4">
+        <div className="relative mb-5 flex flex-col items-center text-center z-20">
+          <div className="mb-2 bg-yellow-300 text-slate-800 px-4 py-1 rounded-full font-black text-xs md:text-sm border-2 md:border-4 border-white shadow-md -rotate-2">底辺チューバーからの脱却</div>
+          <div className="flex items-center gap-2">
+            {!isMobile && <div className="-mr-6"><Shiashia3D mood="dance" intensity={0.3} size={190} onPoke={handlePoke} /></div>}
+            <div className="flex flex-col items-center -rotate-1 py-2 select-none">
+              <div className="flex items-end justify-center flex-wrap gap-x-2">
+                <span className="text-6xl sm:text-8xl md:text-[8rem] font-black text-pink-500 leading-none drop-shadow-xl" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>名</span>
+                <span className="text-2xl sm:text-4xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>を</span>
+                <span className="text-4xl sm:text-6xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2.5px white', paintOrder: 'stroke fill' }}>たくさん</span>
+                <span className="text-3xl sm:text-5xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>伝えれる</span>
+              </div>
+              <span className="text-3xl sm:text-5xl md:text-7xl font-black text-slate-800 mt-1" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>画期的ツール</span>
             </div>
-
-            {/* Subscribers Score (Center) */}
-            <div className="flex justify-center mt-4">
-                <div className={`bg-white/90 backdrop-blur-sm rounded-3xl px-8 py-2 border-b-8 shadow-xl text-center transform transition-transform ${fever ? 'border-pink-400 scale-105' : 'border-slate-200'}`}>
-                    <div className="text-xs font-bold text-slate-400 tracking-wider mb-1">チャンネル登録者数</div>
-                    <div className="text-6xl md:text-7xl font-black text-slate-800 tracking-tighter leading-none flex items-baseline gap-2">
-                         {subscribers.toLocaleString()}
-                         <span className="text-2xl text-slate-500 font-bold">人</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* コンボ & フィーバー */}
-            <div className="flex justify-center mt-2 gap-3 items-center h-12">
-                {combo >= 3 && (
-                    <div key={combo} className={`font-black text-3xl md:text-4xl animate-impact ${fever ? 'text-orange-500' : 'text-pink-500'} drop-shadow-[3px_3px_0_#fff]`} style={{ WebkitTextStroke: '1px #fff' }}>
-                        {combo} <span className="text-base">COMBO</span>
-                    </div>
-                )}
-                {fever && (
-                    <div className="fever-text bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500 text-white font-black px-5 py-1 rounded-full border-4 border-white shadow-lg text-lg md:text-2xl">
-                        FEVER　レアな「な」が出やすい
-                    </div>
-                )}
-            </div>
-            {lastRareLabel && (
-                <div key={lastRareLabel} className="self-center mt-1 bg-slate-800/80 text-amber-300 text-xs font-bold px-3 py-1 rounded-full animate-[pop_0.3s]">{lastRareLabel}</div>
-            )}
-
-            {/* 視聴者ゲージ（0 で配信終了） */}
-            <div className="self-center mt-1 w-64 md:w-80">
-                <div className={`bg-white/90 backdrop-blur rounded-full p-1.5 border-4 shadow-md flex items-center gap-2 ${viewers <= 20 ? 'border-red-500 animate-pulse' : 'border-slate-300'}`}>
-                    <div className={`font-black text-xs px-2 whitespace-nowrap ${viewers <= 20 ? 'text-red-500' : 'text-slate-500'}`}>{viewers <= 20 ? '離脱寸前' : '視聴者'}</div>
-                    <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
-                        <div className={`h-full transition-all duration-150 ${viewers <= 20 ? 'bg-red-500' : viewers >= 80 ? 'bg-emerald-400' : 'bg-slate-500'}`} style={{ width: `${viewers}%` }} />
-                    </div>
-                    <div className="text-sm font-black text-slate-700 w-8 text-right tabular-nums">{viewers}</div>
-                </div>
-            </div>
+          </div>
+          <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/50 px-3 py-1 rounded-full">的なもの</div>
+          {isMobile && <div className="mt-1"><Shiashia3D mood="dance" intensity={0.3} size={140} onPoke={handlePoke} /></div>}
         </div>
-    );
 
-    const BeatIndicator = (
-        <div className="absolute top-[54%] left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center gap-2">
-            {/* 譜面レーン：左端が「いま」。白＝言う、灰＝言わない（裏拍）、赤＝黙れ */}
-            {(() => {
-              const barNow = barAt(Math.floor(laneIdx / BAR_LEN), seedRef.current);
-              const barNext = barAt(Math.floor(laneIdx / BAR_LEN) + 1, seedRef.current);
-              const posInBar = laneIdx % BAR_LEN;
-              const label = barNow.type !== 'free' ? BAR_LABEL[barNow.type] : (BAR_LEN - posInBar <= 6 && barNext.type !== 'free' ? `次：${BAR_LABEL[barNext.type]}` : '');
-              return (
-                <div className="flex flex-col items-center gap-1 pointer-events-none">
-                  <div className={`h-5 text-xs font-black px-3 rounded-full ${label ? (barNow.type === 'rest' || barNext.type === 'rest' ? 'bg-red-500 text-white' : 'bg-slate-700 text-white') : ''}`}>{label}</div>
-                  <div className="relative overflow-hidden" style={{ width: LANE_CELL * (LANE_CELLS - 1), height: 36 }}>
-                    <div ref={laneRef} className="absolute top-0 left-0 flex items-center h-full will-change-transform">
-                      {Array.from({ length: LANE_CELLS + 1 }).map((_, k) => {
-                        const e2 = laneIdx + k;
-                        const kd = kindAt(e2, seedRef.current);
-                        const onBeat = e2 % 2 === 0;
-                        return (
-                          <div key={e2} className="flex items-center justify-center shrink-0" style={{ width: LANE_CELL }}>
-                            {kd === 'rest' ? (
-                              <div className="w-7 h-7 rounded-md bg-red-500 border-2 border-white text-white text-[11px] font-black flex items-center justify-center shadow">黙</div>
-                            ) : kd === 'off' ? (
-                              <div className="w-3 h-3 rounded-full border-2 border-slate-400 bg-transparent" />
-                            ) : (
-                              <div className={`${onBeat ? 'w-5 h-5' : 'w-3.5 h-3.5'} rounded-full bg-white border-2 border-pink-400 shadow`} />
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="absolute top-0 bottom-0 left-0 w-[3px] bg-pink-500 rounded-full" />
+        <div className="flex flex-col lg:flex-row gap-4 w-full max-w-4xl items-stretch justify-center">
+          <div className="flex-1 flex flex-col gap-3 min-w-0">
+            <div className="bg-white/85 backdrop-blur rounded-2xl p-3 shadow-[0_4px_0_rgba(0,0,0,0.1)] border-4 border-white flex flex-col gap-2">
+              <div className="text-cyan-500 font-bold text-center text-sm">モードをえらんでね</div>
+              <div className="grid grid-cols-3 gap-2">
+                {(['10s', '30s', 'FULL'] as GameMode[]).map((m) => (
+                  <button key={m} onClick={() => setMode(m)}
+                    className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center gap-0.5 ${mode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706] -translate-y-px' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
+                    <span className="font-black text-sm md:text-base">{MODE_LABEL[m]}</span>
+                    <span className="text-[10px] font-bold">ノルマ {fmtSubs(QUOTA[m])}人</span>
+                  </button>
+                ))}
+              </div>
+              <div className="text-[11px] text-slate-500 text-center font-bold">{MODE_DESC[mode]}</div>
+            </div>
+
+            <button onClick={handleStart} className="group relative w-full focus:outline-none transition-all hover:scale-[1.02] active:scale-95 duration-200 min-h-[110px] md:min-h-[150px]">
+              <div className="absolute inset-0 bg-pink-300 rounded-[2rem] translate-y-2" />
+              <div className="absolute inset-0 bg-gradient-to-b from-pink-400 to-pink-500 rounded-[2rem] border-4 border-white shadow-inner flex flex-col items-center justify-center overflow-hidden">
+                <div className="absolute top-[-20%] left-[-10%] w-32 h-32 bg-white/20 rotate-45" />
+                <span className="text-4xl md:text-5xl font-black text-white drop-shadow-md z-10">始める！</span>
+                <div className="bg-white/30 rounded-full px-5 py-1.5 mt-3 z-10">
+                  <span className="text-base md:text-xl font-bold text-white">{MODE_LABEL[mode]}で 登録者{fmtSubs(QUOTA[mode])}人 を目指す</span>
+                </div>
+              </div>
+            </button>
+
+            <button onClick={() => setShowBook(true)} className="w-full bg-white/85 backdrop-blur rounded-2xl p-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.1)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between">
+              <span className="font-black text-slate-700 text-lg">ずかん</span>
+              <span className="text-xs font-bold text-slate-400">実績 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length} · エンディング {Object.keys(seenEndings).length}/{TOTAL_ENDINGS}</span>
+            </button>
+          </div>
+
+          {/* 設定 */}
+          <div className="flex-1 min-w-0">
+            <div className="h-full bg-sky-200/90 backdrop-blur rounded-[2rem] border-4 md:border-8 border-white p-4 text-slate-700 flex flex-col gap-3 shadow-lg">
+              <div className="bg-white text-sky-500 font-black px-4 py-1 rounded-full self-center shadow-sm text-lg border-2 border-sky-100">せってい</div>
+
+              <div className="bg-white/50 p-3 rounded-xl">
+                <div className="flex justify-between mb-1 font-bold text-sky-600 text-sm"><span>おんりょう</span><span>{Math.round(settings.volume * 100)}%</span></div>
+                <input id="vol" type="range" min="0" max="1" step="0.05" value={settings.volume} onChange={(e) => setSettings({ volume: parseFloat(e.target.value) })} className="w-full" />
+                <label className="flex items-center gap-2 mt-2 text-xs font-bold text-sky-700" htmlFor="clicks">
+                  <input id="clicks" type="checkbox" checked={settings.clicks} onChange={(e) => setSettings({ clicks: e.target.checked })} /> 拍にクリック音を入れる
+                </label>
+              </div>
+
+              {!TAP_ONLY && (
+                <div className="bg-white/50 p-3 rounded-xl">
+                  <div className="font-bold text-sky-600 mb-2 text-sm">にゅうりょく</div>
+                  <div className="flex gap-2">
+                    {([['mic', '声で「な」'], ['tap', 'タップ / スペース']] as const).map(([m, label]) => (
+                      <button key={m} onClick={() => setSettings({ input: m })}
+                        className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${settings.input === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706]' : 'bg-white text-slate-400'}`}>{label}</button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1.5 leading-snug">声は「な」でなくても、声が出たら反応します。</div>
+                </div>
+              )}
+              {TAP_ONLY && (
+                <div className="bg-white/50 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">この公開版はタップ / スペースキーで「な」を伝えます。<br />声で遊ぶには GitHub のプロジェクトを起動してください。</div>
+              )}
+
+              {!TAP_ONLY && settings.input === 'mic' && (
+                <div className="bg-white/60 p-3 rounded-xl flex flex-col gap-2 border-2 border-white">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sky-600 text-sm">マイクテスト</span>
+                    <button onClick={async () => { if (micTesting) { stopMic(); } else if (await ensureMic()) setMicTesting(true); }}
+                      className={`px-3 py-1 text-xs font-bold rounded-full border-2 ${micTesting ? 'bg-green-400 text-white border-green-200' : 'bg-white text-gray-400 border-gray-200'}`}>{micTesting ? 'ON' : 'OFF'}</button>
+                  </div>
+                  <select className="w-full text-xs p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white" value={settings.deviceId} onChange={(e) => { setSettings({ deviceId: e.target.value }); stopMic(); }}>
+                    <option value="">いつものマイク</option>
+                    {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || `マイク ${d.deviceId.slice(0, 5)}`}</option>)}
+                  </select>
+                  <LevelMeter mic={micRef.current} threshold={settings.threshold} />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">はんのうライン</span>
+                    <input id="thr" type="range" min="5" max="90" value={settings.threshold} onChange={(e) => setSettings({ threshold: parseInt(e.target.value) })} className="flex-1" />
                   </div>
                 </div>
-              );
-            })()}
-            {/* 判定 */}
-            <div className="h-10 flex items-end justify-center pointer-events-none">
-              {judge && (
-                <div key={judge.id} className={`font-black text-2xl md:text-3xl animate-impact ${judge.cls} drop-shadow-[2px_2px_0_#fff]`} style={{ WebkitTextStroke: '1px #fff' }}>{judge.text}</div>
               )}
-            </div>
-            <div
-                onPointerDown={inputMode === 'tap' ? (e) => { e.preventDefault(); handleTap(); } : undefined}
-                className={`w-64 h-64 rounded-full border-8 border-white flex items-center justify-center backdrop-blur-sm transition-transform duration-75 ${fever ? 'bg-orange-200/40' : 'bg-pink-200/30'} ${isHitAnimating ? 'scale-110' : 'scale-100'} ${inputMode === 'tap' ? 'cursor-pointer active:scale-95 touch-none select-none' : ''}`}
-            >
-                <div className={`relative w-48 h-48 bg-gradient-to-b ${fever ? 'from-orange-400 to-pink-500' : 'from-pink-400 to-pink-500'} rounded-full flex items-center justify-center shadow-[0_8px_0_rgba(219,39,119,0.2)] border-4 border-white transition-all duration-75 ${isHitAnimating ? 'brightness-110' : ''}`}>
-                     {/* 縮むリング：円に重なった瞬間が「な」のタイミング */}
-                     <div ref={beatRingRef} className="absolute inset-0 rounded-full border-4 border-white/90 pointer-events-none" style={{ transform: 'scale(1.9)' }} />
-                     <span className="text-6xl font-black text-white drop-shadow-md select-none">な！</span>
-                </div>
-            </div>
-            {inputMode === 'tap' && (
-                <div className="bg-white/80 text-slate-500 text-xs font-bold px-3 py-1 rounded-full border-2 border-white shadow pointer-events-none">
-                    ビートに合わせてタップ（PC：スペースキー）
-                </div>
-            )}
-        </div>
-    );
 
-    // ゲーム中のしあしあ（左下）
-    const ShiashiaStage = (
-        <div className="absolute bottom-0 left-0 z-30 md:left-6">
-            <Shiashia3D beatRef={lastBeatTimeRef} hitRef={hitRef} mood={stageMood} intensity={Math.min(1, combo / 40)} size={isMobile ? 150 : 240} onPoke={handlePoke} />
-        </div>
-    );
-
-    if (gameState === 'PAUSED') {
-        return (
-             <>
-                <div className="absolute inset-0 pointer-events-none opacity-50 filter blur-sm">
-                   {HUD}
-                   {BeatIndicator}
-                </div>
-                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-                    <div className="bg-white/90 p-8 rounded-[3rem] border-8 border-yellow-300 shadow-2xl flex flex-col items-center gap-6 animate-[pop_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)] min-w-[320px]">
-                        <h2 className="text-4xl font-black text-slate-700 mb-2">一 時 停 止</h2>
-                        <button onClick={handleResume} className="w-64 py-4 text-xl font-bold text-white bg-pink-500 rounded-full border-4 border-white shadow-lg hover:scale-105 active:scale-95 transition-all">引き続きプレイ</button>
-                        <button onClick={handleStart} className="w-64 py-4 text-xl font-bold text-slate-600 bg-yellow-300 rounded-full border-4 border-white shadow-lg hover:scale-105 active:scale-95 transition-all">初めから</button>
-                        <button onClick={handleQuit} className="w-64 py-4 text-xl font-bold text-slate-500 bg-gray-200 rounded-full border-4 border-white shadow-lg hover:scale-105 active:scale-95 transition-all">終了</button>
-                    </div>
-                </div>
-             </>
-        );
-    }
-
-    switch(gameState) {
-      case 'READY':
-        return (
-          <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10 scrollbar-thin scrollbar-thumb-pink-200 scrollbar-track-transparent">
-            <div className="min-h-full flex flex-col items-center justify-center p-4 py-8 md:py-4">
-
-            {/* Title Section */}
-            <div className="relative mb-6 md:mb-8 flex flex-col items-center text-center z-20">
-                <div className="mb-2 bg-yellow-300 text-slate-800 px-4 py-1 rounded-full font-black text-xs md:text-sm border-2 md:border-4 border-white shadow-md transform -rotate-2">
-                    底辺チューバーからの脱却
+              <div className="bg-white/50 p-3 rounded-xl flex flex-col gap-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-sky-600 text-sm">タイミング補正</span>
+                  <button onClick={async () => { setError(null); if (input === 'mic' && !(await ensureMic())) return; setGameState('CALIBRATE'); }} className="px-3 py-1 text-xs font-black rounded-full bg-white text-sky-600 border-2 border-sky-200">合わせる</button>
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* タイトル横のしあしあ（PC） */}
-                    {!isMobile && (
-                        <div className="-mr-6">
-                            <Shiashia3D beatRef={lastBeatTimeRef} hitRef={hitRef} mood="dance" intensity={0.3} size={190} onPoke={handlePoke} />
-                        </div>
-                    )}
-                    <div className="flex flex-col items-center transform -rotate-1 hover:scale-105 transition-transform duration-300 cursor-pointer py-2 select-none" onClick={handleTitleClick}>
-                        <div className="flex items-end justify-center flex-wrap gap-x-2">
-                            <span className="text-6xl sm:text-8xl md:text-[8rem] font-black text-pink-500 leading-none drop-shadow-xl" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>名</span>
-                            <span className="text-2xl sm:text-4xl md:text-4xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>を</span>
-                            <span className="text-4xl sm:text-6xl md:text-6xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2.5px white', paintOrder: 'stroke fill' }}>たくさん</span>
-                            <span className="text-3xl sm:text-5xl md:text-5xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>伝えれる</span>
-                        </div>
-                        <div className="flex items-baseline justify-center mt-1">
-                            <span className="text-3xl sm:text-5xl md:text-7xl font-black text-slate-800" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>画期的ツール</span>
-                        </div>
-                    </div>
+                  <input id="off" type="range" min="-150" max="350" step="5" value={Math.round((offsets[input] ?? 0) * 1000)} onChange={(e) => setOffset(input, parseInt(e.target.value) / 1000)} className="flex-1" />
+                  <span className="text-xs font-black text-slate-600 w-16 text-right tabular-nums">{offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
                 </div>
-                <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-2 tracking-widest bg-white/50 px-3 py-1 rounded-full">的なもの</div>
+                <div className="text-[10px] text-slate-500 leading-snug">「おそい」と感じたら右へ。初めて遊ぶときは自動で合わせます。</div>
+              </div>
 
-                {/* スマホ用しあしあ */}
-                {isMobile && (
-                    <div className="mt-1">
-                        <Shiashia3D beatRef={lastBeatTimeRef} hitRef={hitRef} mood="dance" intensity={0.3} size={140} onPoke={handlePoke} />
-                    </div>
-                )}
-            </div>
-
-            <div className="flex flex-col lg:flex-row gap-4 w-full max-w-4xl items-stretch justify-center">
-                {/* LEFT: Start & Mode Selection */}
-                <div className="flex-1 flex flex-col gap-4 order-1">
-                     <div className="bg-white/80 backdrop-blur rounded-2xl p-3 shadow-[0_4px_0_rgba(0,0,0,0.1)] flex flex-col gap-2 border-4 border-white">
-                         <div className="text-cyan-500 font-bold text-center text-sm mb-1">モードをえらんでね</div>
-                         <div className="flex gap-2">
-                            {(Object.keys(MODE_DURATIONS) as GameMode[]).map((mode) => (
-                                <button key={mode} onClick={() => { setGameMode(mode); gameModeRef.current = mode; setTimeout(loadScores, 0); }}
-                                    className={`flex-1 py-2 font-bold text-xs md:text-base rounded-xl transition-all transform ${gameMode === mode ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706] translate-y-[-1px]' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}>
-                                    {mode === 'FULL' ? 'フル (73秒)' : mode === '10s' ? '10秒' : '30秒'}
-                                </button>
-                            ))}
-                         </div>
-                     </div>
-
-                     <button onClick={handleStart} className="group relative flex-1 w-full focus:outline-none transform transition-all hover:scale-[1.02] active:scale-95 duration-200 min-h-[100px] md:min-h-[160px]">
-                        <div className="absolute inset-0 bg-pink-300 rounded-[2rem] transform translate-y-2"></div>
-                        <div className="absolute inset-0 bg-gradient-to-b from-pink-400 to-pink-500 rounded-[2rem] border-4 border-white shadow-inner flex flex-col items-center justify-center overflow-hidden">
-                            <div className="absolute top-[-20%] left-[-10%] w-32 h-32 bg-white/20 rotate-45 transform"></div>
-                            <div className="absolute bottom-[-20%] right-[-10%] w-32 h-32 bg-white/20 rotate-12 transform"></div>
-                            <span className="text-4xl md:text-5xl font-black text-white drop-shadow-md z-10">始める！</span>
-                            <div className="bg-white/30 rounded-full px-6 py-2 mt-4 md:mt-6 z-10">
-                                <span className="text-lg md:text-2xl font-bold text-white">
-                                    {gameMode === 'FULL' ? '73秒名を伝える' : gameMode === '10s' ? '10秒名を伝える' : '30秒名を伝える'}
-                                </span>
-                            </div>
-                        </div>
-                    </button>
-
-                     {/* ずかんボタン */}
-                     <button onClick={() => setShowBook(true)} className="w-full bg-white/80 backdrop-blur rounded-2xl p-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.1)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-between">
-                         <span className="font-black text-slate-700 text-lg">ずかん</span>
-                         <span className="text-xs font-bold text-slate-400">
-                             実績 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length} · エンディング {Object.keys(seenEndings).length}/{TOTAL_ENDINGS}
-                         </span>
-                     </button>
-                </div>
-
-                {/* RIGHT: Settings Panel */}
-                <div className="flex-1 order-2">
-                     <div className="h-full bg-sky-200/90 backdrop-blur rounded-[2rem] border-4 md:border-8 border-white p-4 text-slate-700 flex flex-col justify-center gap-4 shadow-lg relative overflow-hidden">
-                         <div className="absolute top-[-20px] left-[-20px] w-20 h-20 bg-sky-300 rounded-full opacity-50"></div>
-                         <div className="bg-white text-sky-500 font-black px-4 py-1 rounded-full inline-block self-center mb-2 shadow-sm text-lg border-2 border-sky-100">せってい</div>
-
-                         <div className="bg-white/50 p-3 rounded-xl">
-                             <div className="flex justify-between mb-1 font-bold text-sky-600 text-sm">
-                                 <span>おんりょう</span>
-                                 <span>{Math.round(volume * 100)}%</span>
-                             </div>
-                             <input type="range" min="0" max="1" step="0.1" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full accent-yellow-400" />
-                         </div>
-
-                         <div className="bg-white/50 p-3 rounded-xl">
-                             <div className="font-bold text-sky-600 mb-1 text-sm">BGMをえらぶ</div>
-                             <input type="file" accept="audio/*" onChange={handleBgmSelect}
-                                 className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-sky-50 file:text-sky-700 hover:file:bg-sky-100 cursor-pointer mb-2" />
-                             <input type="text" placeholder="またはURLを入力 (GitHub Rawなど)" value={customUrl} onChange={handleUrlChange}
-                                 className="w-full text-xs p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white focus:outline-none focus:border-sky-400" />
-                             <div className="text-[10px] text-slate-400 mt-1 leading-tight">※Github等のURLを直接指定できます</div>
-                         </div>
-
-                         {/* 入力モード */}
-                         {!TAP_ONLY && (
-                         <div className="bg-white/50 p-3 rounded-xl">
-                             <div className="font-bold text-sky-600 mb-2 text-sm">にゅうりょく</div>
-                             <div className="flex gap-2">
-                                 {([['mic', '声で「な」'], ['tap', 'タップ / スペース']] as const).map(([m, label]) => (
-                                     <button key={m} onClick={() => setInputMode(m)}
-                                         className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${inputMode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706]' : 'bg-white text-slate-400'}`}>
-                                         {label}
-                                     </button>
-                                 ))}
-                             </div>
-                         </div>
-                         )}
-                         {TAP_ONLY && (
-                         <div className="bg-white/50 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">
-                             この公開版はタップ / スペースキーで「な」を伝えます。<br/>
-                             （声で遊ぶには GitHub のプロジェクトをローカルで起動）
-                         </div>
-                         )}
-
-                         {!TAP_ONLY && (
-                         <div className={`bg-white/60 p-3 rounded-xl flex-1 flex flex-col justify-center border-2 border-white gap-2 ${inputMode === 'tap' ? 'opacity-50' : ''}`}>
-                             <div className="flex justify-between items-center">
-                                 <span className="font-bold text-sky-600 text-sm">マイクテスト</span>
-                                 <button onClick={toggleMicTest} className={`px-3 py-1 text-xs font-bold rounded-full border-2 transition-colors ${isMicTesting ? 'bg-green-400 text-white border-green-200' : 'bg-white text-gray-400 border-gray-200'}`}>
-                                     {isMicTesting ? 'ON' : 'OFF'}
-                                 </button>
-                             </div>
-                             <div>
-                                 <select className="w-full text-xs p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white focus:outline-none focus:border-sky-400 max-w-full truncate" value={selectedDeviceId} onChange={(e) => setSelectedDeviceId(e.target.value)}>
-                                     {audioDevices.length === 0 && <option value="">マイクをさがしています...</option>}
-                                     {audioDevices.map(device => (
-                                         <option key={device.deviceId} value={device.deviceId}>{device.label || `マイク ${device.deviceId.slice(0, 5)}...`}</option>
-                                     ))}
-                                 </select>
-                             </div>
-                             <div className="relative h-8 bg-gray-200 rounded-full border-4 border-white overflow-hidden shadow-inner">
-                                 <div className="absolute top-0 bottom-0 w-1 bg-yellow-400 z-20" style={{ left: `${micThreshold}%` }}></div>
-                                 <div className={`absolute top-0 left-0 bottom-0 transition-all duration-100 ease-out rounded-l-full ${inputLevel > micThreshold ? 'bg-green-400' : 'bg-sky-400'}`} style={{ width: `${inputLevel}%` }}></div>
-                             </div>
-                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-500 font-bold whitespace-nowrap">はんのうライン</span>
-                                <input type="range" min="0" max="100" value={micThreshold} onChange={(e) => setMicThreshold(parseInt(e.target.value))} className="flex-1 h-2 opacity-80" />
-                             </div>
-                         </div>
-                         )}
-                     </div>
-                </div>
-            </div>
-
-            {error && <div className="mt-4 bg-red-400 text-white font-bold p-3 rounded-xl border-4 border-white animate-bounce shadow-lg max-w-lg text-center text-sm break-all">{error}</div>}
-
+              <div className="bg-white/50 p-3 rounded-xl">
+                <div className="font-bold text-sky-600 mb-1 text-sm">BGMをえらぶ</div>
+                <input type="file" accept="audio/*" onChange={(e) => { const f = e.target.files?.[0]; if (f) { setBgmUrl(URL.createObjectURL(f)); setCustomUrl(''); } }}
+                  className="w-full text-xs text-slate-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-sky-50 file:text-sky-700 mb-2" />
+                <input type="text" placeholder="またはURLを入力" value={customUrl} onChange={(e) => { setCustomUrl(e.target.value); setBgmUrl(e.target.value || DEFAULT_BGM); }}
+                  className="w-full text-xs p-2 rounded-lg border-2 border-sky-200 text-slate-600 bg-white" />
+                <div className="text-[10px] text-slate-500 mt-1 leading-tight">譜面は標準の曲に合わせてあります。別の曲だと音符と曲が合いません。</div>
+              </div>
             </div>
           </div>
-        );
-      case 'COUNTDOWN':
+        </div>
+        {error && <div className="mt-4 bg-red-400 text-white font-bold p-3 rounded-xl border-4 border-white shadow-lg max-w-lg text-center text-sm">{error}</div>}
+      </div>
+    </div>
+  );
+
+  const renderPlaying = () => {
+    const ratio = subs / quota;
+    const hasFx = (id: ItemId) => activeFx.includes(id);
+    return (
+      <>
+        {/* 上：時間の細いバー */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-pink-100 z-40"><div className="h-full bg-pink-400 transition-[width] duration-100" style={{ width: `${timePct * 100}%` }} /></div>
+
+        <button data-noinput onPointerDown={(e) => e.stopPropagation()} onClick={pauseGame}
+          className="absolute top-3 left-3 z-50 bg-white/90 text-slate-500 hover:bg-yellow-300 hover:text-white border-4 border-slate-200 rounded-full w-12 h-12 flex items-center justify-center shadow-md" aria-label="一時停止">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>
+        </button>
+
+        {/* 上：登録者（＝ノルマ）。いちばん大事なものだけ */}
+        <div className="absolute top-3 left-0 right-0 z-30 flex flex-col items-center pointer-events-none px-16">
+          <div className={`bg-white/90 backdrop-blur rounded-3xl px-5 md:px-8 pt-1.5 pb-2 border-b-8 shadow-xl text-center ${buzz ? 'border-amber-400' : ratio >= 1 ? 'border-yellow-300' : 'border-slate-200'}`}>
+            <div className="text-[10px] md:text-xs font-bold text-slate-400 tracking-wider">チャンネル登録者数</div>
+            <SubsCounter value={subs} big />
+          </div>
+          <div className="mt-2 w-[min(520px,82vw)]">
+            <div className="flex justify-between text-[10px] md:text-xs font-black px-1">
+              <span className={ratio >= 1 ? 'text-amber-500' : 'text-cyan-600'}>{ratio >= 1 ? 'ノルマ達成' : 'ノルマ'} {fmtSubs(quota)}人</span>
+              <span className="text-slate-500 tabular-nums">{ratio >= 1 ? `${ratio.toFixed(1)}倍` : `${Math.floor(ratio * 100)}%`}</span>
+            </div>
+            <div className="h-3.5 bg-white/90 rounded-full overflow-hidden border-2 border-white shadow">
+              <div className={`h-full transition-[width] duration-200 ${ratio >= 1 ? 'bg-gradient-to-r from-yellow-300 via-orange-400 to-pink-500' : 'bg-cyan-400'}`} style={{ width: `${Math.min(100, ratio * 100)}%` }} />
+            </div>
+          </div>
+        </div>
+
+        {/* 右上：視聴者と警告 */}
+        <div className="absolute top-3 right-3 z-40 flex flex-col items-end gap-1.5 pointer-events-none">
+          <div className={`bg-white/90 rounded-2xl px-2.5 py-1.5 border-4 shadow-md w-28 md:w-40 ${viewers <= 20 ? 'border-red-500 animate-pulse' : buzz ? 'border-amber-400' : 'border-slate-200'}`}>
+            <div className="flex justify-between text-[10px] font-black">
+              <span className={viewers <= 20 ? 'text-red-500' : 'text-slate-500'}>{viewers <= 20 ? '離脱寸前' : '視聴者'}</span>
+              <span className="text-slate-600 tabular-nums">{viewers}</span>
+            </div>
+            <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mt-0.5">
+              <div className={`h-full transition-[width] duration-150 ${viewers <= 20 ? 'bg-red-500' : viewers >= 85 ? 'bg-amber-400' : 'bg-slate-500'}`} style={{ width: `${viewers}%` }} />
+            </div>
+          </div>
+          <div className="flex items-center gap-1 bg-white/90 rounded-full px-2 py-0.5 border-2 border-slate-200">
+            <span className="text-[10px] font-black text-slate-500">警告</span>
+            {Array.from({ length: BAN_STRIKES }).map((_, i) => <span key={i} className={`w-2.5 h-2.5 rounded-full ${i < strikes ? 'bg-red-500' : 'bg-slate-200'}`} />)}
+          </div>
+        </div>
+
+        {/* アイテム効果 */}
+        {itemCard && performance.now() < itemCard.until + 400 && (
+          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: isMobile ? '22%' : '24%' }}>
+            <div className={`bg-gradient-to-r ${ITEM_COLOR[itemCard.def.kind]} text-white rounded-2xl px-4 py-2 border-4 border-white shadow-xl text-center min-w-[220px]`}>
+              <div className="text-[10px] font-black tracking-widest opacity-80">special「な」</div>
+              <div className="font-black text-lg md:text-2xl leading-tight">{itemCard.def.name}</div>
+              <div className="text-[11px] font-bold opacity-90">{itemCard.def.desc}</div>
+              <div className="h-1.5 bg-white/30 rounded-full mt-1.5 overflow-hidden"><div className="h-full bg-white item-bar" style={{ animationDuration: `${itemCard.total}ms` }} /></div>
+            </div>
+          </div>
+        )}
+
+        {/* 判定・コンボ（レーンのすぐ上） */}
+        <div className="absolute left-0 right-0 z-30 pointer-events-none flex items-end justify-center gap-4" style={{ top: 'calc(54% - 92px)', height: 44 }}>
+          {combo >= 3 && (
+            <div className="flex items-baseline gap-1 bg-white/80 rounded-full px-3 py-0.5">
+              <span className="font-black text-2xl text-slate-800 tabular-nums">{combo}</span>
+              <span className="text-[10px] font-black text-slate-500">COMBO</span>
+              <span className="text-xs font-black text-pink-500 ml-1 tabular-nums">×{(comboMul(combo) * viewerMul(viewers) * (buzz ? 2 : 1)).toFixed(1)}</span>
+            </div>
+          )}
+          {judge && <div key={judge.id} className={`judge-pop font-black text-2xl md:text-3xl ${judge.cls}`} style={{ WebkitTextStroke: '4px #fff', paintOrder: 'stroke fill' }}>{judge.text}</div>}
+        </div>
+
+        {/* 譜面 */}
+        <div className="absolute left-0 right-0 z-20" style={{ top: 'calc(54% - 52px)' }}>
+          <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} />
+          <div className="flex justify-center gap-2 mt-1 pointer-events-none">
+            {activeFx.length > 0 && activeFx.map((id) => (
+              <span key={id} className="text-[10px] font-black text-white bg-slate-800/80 rounded-full px-2 py-0.5">
+                {id === 'bpmUp' ? 'BPM UP' : id === 'bpmDown' ? 'BPM DOWN' : id === 'mirror' ? 'ミラー' : id === 'nu' ? '「ぬ」' : id === 'thumbnail' ? 'サムネ詐欺' : id === 'godMic' ? '神マイク' : id === 'superchat' ? 'スパチャ×3' : ''}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* カウントダウン（曲のイントロで数える） */}
+        {countdown && (
+          <div className="absolute inset-x-0 z-40 pointer-events-none flex justify-center" style={{ top: 'calc(54% + 70px)' }}>
+            <div key={countdown} className="animate-impact font-black text-white text-5xl md:text-7xl" style={{ WebkitTextStroke: '6px #ec4899', paintOrder: 'stroke fill' }}>{countdown}</div>
+          </div>
+        )}
+
+        {/* special「な」 */}
+        {specials.map((s) => (
+          <button key={s.id} data-noinput onPointerDown={(e) => takeItem(s.id, e)}
+            className="special-fly absolute z-[55] w-20 h-20 md:w-24 md:h-24 rounded-full flex flex-col items-center justify-center text-white font-black border-4 border-white shadow-2xl"
+            style={{ top: `${s.top}%`, left: '100%', ['--dur' as any]: `${s.dur}ms`, background: 'conic-gradient(from 0deg,#f472b6,#a78bfa,#38bdf8,#4ade80,#facc15,#f472b6)' }}
+            aria-label="special な">
+            <span className="text-3xl md:text-4xl leading-none" style={{ WebkitTextStroke: '3px #7c3aed', paintOrder: 'stroke fill' }}>{hasFx('nu') ? 'ぬ' : 'な'}</span>
+            <span className="text-[8px] md:text-[10px] tracking-widest bg-violet-700/80 rounded-full px-1.5 mt-0.5">special</span>
+          </button>
+        ))}
+      </>
+    );
+  };
+
+  const renderFinished = () => {
+    const run = runRef.current;
+    const show = (ms: number) => revealT >= ms;
+    const countK = Math.min(1, Math.max(0, (revealT - 900) / 1500));
+    const shownSubs = Math.round(run.subs * (1 - Math.pow(1 - countK, 3)));
+    const ratio = run.subs / run.quota;
+    const pRate = run.hits > 0 ? run.perfect / run.hits : 0;
+    const bad = run.ban || run.cutoff;
+    const rank = bad ? 'D' : ratio >= 2 && pRate >= 0.7 ? 'S' : ratio >= 1 ? 'A' : ratio >= 0.6 ? 'B' : ratio >= 0.3 ? 'C' : 'D';
+    const rankColor = rank === 'S' ? 'text-amber-400' : rank === 'A' ? 'text-pink-500' : rank === 'B' ? 'text-sky-500' : 'text-slate-500';
+    const newly = runUnlockedRef.current.map((id) => achievementById(id)).filter(Boolean);
+    const Row = ({ k, v, at }: { k: string; v: React.ReactNode; at: number }) => (
+      <div className="bg-gray-100 rounded-xl px-4 py-1.5 w-full flex justify-between gap-2 text-sm">
+        <span className="font-bold text-gray-500">{k}</span><span className="font-black text-slate-700 text-right">{show(at) ? v : '-'}</span>
+      </div>
+    );
+    return (
+      <div className="w-full h-full overflow-y-auto relative z-20">
+        <div className="min-h-full flex flex-col items-center w-full max-w-4xl mx-auto px-4 py-6 justify-center text-center">
+          <h2 className="text-6xl md:text-8xl font-black text-pink-500 drop-shadow-[4px_4px_0_#fff] mb-1 animate-impact">おしまい！</h2>
+          <div className="h-16 md:h-20 flex items-center justify-center">
+            {show(350) && (
+              <div className={`stamp-in font-black text-3xl md:text-5xl px-5 py-1 border-[6px] rounded-2xl -rotate-6 ${run.cleared ? 'text-red-500 border-red-500 bg-white/85' : 'text-slate-500 border-slate-500 bg-white/75'}`}>
+                {run.ban ? 'BAN' : run.cutoff ? '配信終了' : run.cleared ? 'ノルマ達成' : 'ノルマ未達'}
+              </div>
+            )}
+          </div>
+          {ending && show(600) && (
+            <div className="mb-3 flex flex-col items-center gap-2 animate-impact">
+              <div className="bg-slate-800 text-white rounded-2xl px-5 py-2 border-4 border-white shadow-lg flex items-center gap-3">
+                <div className="text-left">
+                  <div className="text-[10px] tracking-widest text-white/60">ENDING No.{String(ending.no).padStart(2, '0')}</div>
+                  <div className="font-black text-lg md:text-xl">{ending.title}</div>
+                </div>
+                {endingIsNew && <span className="bg-yellow-300 text-slate-800 font-black px-2 py-1 rounded-full text-xs -rotate-6">NEW!</span>}
+              </div>
+              <p className="text-sm md:text-xl font-black text-red-500 bg-yellow-200 px-5 py-2 rounded-full border-4 border-white shadow-lg">{ending.oneLiner}</p>
+            </div>
+          )}
+
+          <div className="flex flex-col md:flex-row gap-5 items-center md:items-start w-full justify-center">
+            <div className="relative bg-white/85 backdrop-blur-md p-5 md:p-7 rounded-[2.5rem] border-8 border-yellow-300 shadow-xl flex flex-col items-center gap-1.5 w-full max-w-sm">
+              {show(2400) && (
+                <div className="stamp-in absolute -top-6 -right-4 w-20 h-20 rounded-full bg-white border-[6px] border-slate-800 flex flex-col items-center justify-center shadow-xl rotate-12">
+                  <span className="text-[9px] font-bold text-slate-500 tracking-widest">RANK</span>
+                  <span className={`text-4xl font-black leading-none ${rankColor}`}>{rank}</span>
+                </div>
+              )}
+              {isNewRecordRef.current && show(2600) && (
+                <div className="stamp-in absolute -top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white font-black text-sm px-4 py-1 rounded-full border-4 border-white shadow-lg -rotate-3 whitespace-nowrap">NEW RECORD</div>
+              )}
+              <p className="text-lg text-yellow-500 font-bold">チャンネル登録者数</p>
+              <p className="text-5xl md:text-6xl font-black text-slate-700 tabular-nums">{fmtSubs(show(900) ? shownSubs : 0)}<span className="text-2xl">人</span></p>
+              <p className="text-xs font-bold text-slate-400 tabular-nums">{show(900) ? shownSubs.toLocaleString('ja-JP') : 0}人　/ ノルマ {fmtSubs(run.quota)}人（{ratio >= 1 ? `${ratio.toFixed(1)}倍` : `${Math.floor(ratio * 100)}%`}）</p>
+              <div className="w-full flex flex-col gap-1.5 mt-2">
+                <Row at={1300} k="PERFECT / GREAT / GOOD" v={`${run.perfect} / ${run.great} / ${run.good}`} />
+                <Row at={1500} k="MISS / 空振り" v={`${run.misses} / ${run.extras}`} />
+                <Row at={1700} k="最大コンボ" v={run.maxCombo} />
+                <Row at={1900} k="炎上" v={`鎮火 ${run.burnsKept} / ${run.burnsTotal}　火に油 ${run.fuels}`} />
+                <Row at={2100} k="バズ / special「な」" v={`${run.buzzes}回 / ${run.items}回`} />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 w-full max-w-sm">
+              {newly.length > 0 && show(2800) && (
+                <div className="bg-white/90 rounded-[2rem] border-4 border-white shadow-lg p-4 text-left animate-[pop_0.3s]">
+                  <div className="font-black text-slate-700 mb-2">今回 解除した実績</div>
+                  <ul className="flex flex-col gap-1.5">
+                    {newly.map((a) => (
+                      <li key={a!.id} className="flex items-center gap-2">
+                        <span className="w-8 h-8 shrink-0 rounded-lg bg-slate-800 text-white text-sm font-black flex items-center justify-center">{a!.icon}</span>
+                        <span className="min-w-0"><span className="block font-black text-sm text-slate-800 truncate">{a!.title}</span><span className="block text-[10px] text-slate-500 truncate">{a!.description}</span></span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="bg-sky-100/90 p-5 rounded-[2rem] border-4 border-white shadow-lg">
+                <div className="bg-sky-400 text-white text-lg font-black py-1.5 px-5 rounded-full inline-block mb-3">ランキング（{MODE_LABEL[run.mode]}）</div>
+                <ul className="space-y-1.5">
+                  {highScores.map((e, i) => (
+                    <li key={i} className={`flex justify-between items-center px-4 py-1.5 rounded-xl text-left ${i === 0 ? 'bg-yellow-100 text-yellow-700 font-black border-2 border-yellow-200' : 'bg-white/60 text-slate-600 font-bold'}`}>
+                      <span>#{i + 1}　{fmtSubs(e.score)}人</span>
+                      <span className="text-[10px] text-slate-400 truncate ml-2">{ENDINGS.find((x) => x.id === e.endingId)?.title ?? ''}</span>
+                    </li>
+                  ))}
+                  {highScores.length === 0 && <li className="text-gray-400 py-3">まだきろくがないよ</li>}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-7 flex flex-col sm:flex-row gap-3 items-center">
+            <button onClick={async () => { setGameState('READY'); }} className="bg-white text-slate-600 font-black px-7 py-3 rounded-full border-4 border-slate-200 shadow">タイトルへ</button>
+            <button onClick={async () => { prepareSong(); if (input === 'mic' && !(await ensureMic())) return; setGameState('RULES'); }} className="relative">
+              <span className="absolute inset-0 translate-y-2 bg-pink-300 rounded-full" />
+              <span className="relative inline-block border-4 border-white px-10 py-3 text-2xl font-black text-white bg-pink-500 rounded-full shadow-lg">もういちど</span>
+            </button>
+            <button onClick={() => setShowBook(true)} className="bg-white text-slate-700 font-black px-7 py-3 rounded-full border-4 border-yellow-300 shadow">ずかん</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    switch (gameState) {
+      case 'READY': return renderReady();
+      case 'CALIBRATE':
         return (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-[12rem] md:text-[16rem] font-black text-white drop-shadow-[0_8px_0_rgba(236,72,153,1)] animate-impact" style={{WebkitTextStroke: '4px #ec4899'}}>
-              {countdown > 0 ? countdown : 'スタート!'}
-            </div>
-          </div>
+          <Calibration input={input} mic={input === 'mic' ? micRef.current : null} volume={settings.volume}
+            onDone={(off) => {
+              setOffset(input, off);
+              bumpLife({ calibrated: true });
+              checkAchievements(null, false);
+              micRef.current.onOnset = () => handleInputRef.current('mic');
+              setGameState(playerRef.current ? 'RULES' : 'READY');
+            }}
+            onCancel={() => {
+              if (offsetsRef.current[input] == null) setOffset(input, 0);
+              micRef.current.onOnset = () => handleInputRef.current('mic');
+              setGameState(playerRef.current ? 'RULES' : 'READY');
+            }} />
         );
-      case 'PLAYING':
+      case 'RULES':
+        return (
+          <RulesCard mode={mode} input={input} ready={songReady} offsetMs={offsets[input] == null ? null : Math.round(offsets[input]! * 1000)}
+            skip={skipRules} onSkipChange={(v) => { setSkipRules(v); try { localStorage.setItem(LS_KEYS.skipRules, v ? '1' : '0'); } catch { /* noop */ } }}
+            onStart={startPlay} onCalibrate={() => setGameState('CALIBRATE')} onBack={() => { if (input === 'mic') stopMic(); setGameState('READY'); }} />
+        );
+      case 'PLAYING': return renderPlaying();
+      case 'PAUSED':
         return (
           <>
-            <button onClick={handlePause} className="absolute top-4 left-4 z-50 bg-white/90 text-slate-500 hover:bg-yellow-300 hover:text-white border-4 border-slate-200 hover:border-white rounded-full p-3 font-bold shadow-md transition-all active:scale-95" aria-label="一時停止">
-                <span className="block w-8 h-8 flex items-center justify-center">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>
-                    </svg>
-                </span>
-            </button>
-            {HUD}
-            {BeatIndicator}
-            {ShiashiaStage}
+            <div className="absolute inset-0 pointer-events-none opacity-60 blur-sm">{renderPlaying()}</div>
+            <div className="absolute inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+              <div className="bg-white/95 p-7 rounded-[3rem] border-8 border-yellow-300 shadow-2xl flex flex-col items-center gap-4 animate-[pop_0.3s_cubic-bezier(0.175,0.885,0.32,1.275)] min-w-[300px]">
+                <h2 className="text-4xl font-black text-slate-700 mb-1">一 時 停 止</h2>
+                <button onClick={resumeGame} className="w-60 py-3.5 text-xl font-bold text-white bg-pink-500 rounded-full border-4 border-white shadow-lg">続ける</button>
+                <button onClick={() => { finishingRef.current = true; clearCuts(); startPlay(); }} className="w-60 py-3.5 text-xl font-bold text-slate-600 bg-yellow-300 rounded-full border-4 border-white shadow-lg">初めから</button>
+                <button onClick={quitToTitle} className="w-60 py-3.5 text-xl font-bold text-slate-500 bg-gray-200 rounded-full border-4 border-white shadow-lg">やめる</button>
+              </div>
+            </div>
           </>
         );
       case 'ENDING':
-        return ending ? (
-          <EndingScene ending={ending} beatRef={lastBeatTimeRef} hitRef={hitRef} isNew={endingIsNew} onDone={handleEndingDone} />
-        ) : null;
-      case 'FINISHED': {
-        // --- 達成感のある結果発表：順番に出す ---
-        const show = (ms: number) => revealT >= ms;
-        const countK = Math.min(1, Math.max(0, (revealT - 900) / 1400));
-        const eased = 1 - Math.pow(1 - countK, 3);
-        const shownSubs = Math.round(subscribers * eased);
-        const ratio = score / threshold;
-        const stagesDone = quotaStage - 1;
-        const jc = judgeRef.current;
-        const acc = score > 0 ? jc.perfect / score : 0;
-        const rank = (stagesDone >= 3 || (stagesDone >= 2 && acc >= 0.5)) ? 'S' : stagesDone >= 1 ? 'A' : ratio >= 0.7 ? 'B' : ratio >= 0.4 ? 'C' : 'D';
-        const rankColor = rank === 'S' ? 'text-amber-400' : rank === 'A' ? 'text-pink-500' : rank === 'B' ? 'text-sky-500' : 'text-slate-500';
-        const isNewRecord = isNewRecordRef.current;
-        return (
-          <div className="w-full h-full overflow-y-auto relative z-20">
-          <div className="min-h-full text-center flex flex-col items-center w-full max-w-4xl mx-auto px-4 py-6 relative justify-center">
-            {isCleared && (
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-full z-0 pointer-events-none">
-                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-red-500 to-orange-500 rounded-full opacity-20 animate-pulse blur-3xl"></div>
-                </div>
-            )}
-
-            <h2 className="text-6xl md:text-9xl font-black text-pink-500 drop-shadow-[4px_4px_0_#fff] mb-2 animate-impact tracking-tight z-10">おしまい！</h2>
-
-            {/* 判定スタンプ：ドン */}
-            <div className="h-20 md:h-24 flex items-center justify-center z-10">
-              {show(350) && (
-                <div key="stamp" className={`stamp-in font-black text-4xl md:text-6xl px-6 py-1 border-[6px] rounded-2xl -rotate-6 ${isCleared ? 'text-red-500 border-red-500 bg-white/80' : 'text-slate-500 border-slate-500 bg-white/70'}`}>
-                  {isCleared ? 'ノルマ達成' : 'ノルマ未達'}
-                </div>
-              )}
-            </div>
-
-            {/* 到達エンディング＋一言 */}
-            {ending && show(600) && (
-                <div className="mb-3 z-10 flex flex-col items-center gap-2 animate-impact">
-                    <div className="bg-slate-800 text-white rounded-2xl px-5 py-2 border-4 border-white shadow-lg flex items-center gap-3">
-                        <div className="text-left">
-                            <div className="text-[10px] tracking-widest text-white/60">ENDING No.{String(ending.no).padStart(2, '0')}</div>
-                            <div className="font-black text-lg md:text-xl">{ending.title}</div>
-                        </div>
-                        {endingIsNew && <span className="bg-yellow-300 text-slate-800 font-black px-2 py-1 rounded-full text-xs -rotate-6">NEW!</span>}
-                    </div>
-                    <p className="text-base md:text-2xl font-black text-red-500 bg-yellow-200 px-6 py-2 rounded-full border-4 border-white shadow-lg">{ending.oneLiner}</p>
-                </div>
-            )}
-
-            <div className="flex flex-col md:flex-row gap-6 items-center w-full justify-center z-10">
-                <div className="relative bg-white/80 backdrop-blur-md p-6 md:p-8 rounded-[3rem] border-8 border-yellow-300 shadow-xl flex flex-col items-center transform rotate-[-2deg] min-w-[300px]">
-                    {/* ランク */}
-                    {show(2300) && (
-                      <div className={`stamp-in absolute -top-6 -right-6 w-20 h-20 md:w-24 md:h-24 rounded-full bg-white border-[6px] border-slate-800 flex flex-col items-center justify-center shadow-xl rotate-12`}>
-                        <span className="text-[9px] font-bold text-slate-500 tracking-widest">RANK</span>
-                        <span className={`text-4xl md:text-5xl font-black leading-none ${rankColor}`}>{rank}</span>
-                      </div>
-                    )}
-                    {/* 新記録 */}
-                    {isNewRecord && show(2600) && (
-                      <div className="stamp-in absolute -top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white font-black text-sm md:text-base px-4 py-1 rounded-full border-4 border-white shadow-lg -rotate-3 whitespace-nowrap">
-                        NEW RECORD
-                      </div>
-                    )}
-                    <p className="text-xl text-yellow-500 font-bold mb-2">チャンネル登録者数</p>
-                    <p className={`text-5xl md:text-6xl font-black text-slate-700 tabular-nums ${countK >= 1 ? 'animate-impact' : ''}`}>{show(900) ? shownSubs.toLocaleString() : 0} <span className="text-2xl">人</span></p>
-                    {isNewRecord && show(2600) && prevBestRef.current > 0 && (
-                      <p className="text-xs font-bold text-red-500 mt-1">これまでの記録 {prevBestRef.current.toLocaleString()}人 を更新</p>
-                    )}
-                    <div className="mt-4 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
-                         <span className="font-bold text-gray-500">伝えた回数</span>
-                         <span className="font-black text-slate-700">{show(1200) ? score : 0}回 <span className="text-xs text-gray-400">/ ノルマ {threshold}</span></span>
-                    </div>
-                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
-                         <span className="font-bold text-gray-500">最大コンボ</span>
-                         <span className="font-black text-pink-500">{show(1500) ? maxCombo : 0}</span>
-                    </div>
-                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between">
-                         <span className="font-bold text-gray-500">ノルマ達成</span>
-                         <span className="font-black text-slate-700">{show(1700) ? (stagesDone > 0 ? `${stagesDone}段階` : 'なし') : '-'}</span>
-                    </div>
-                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-sm">
-                         <span className="font-bold text-gray-500">黙れ区間</span>
-                         <span className="font-black text-slate-700">{show(1800) ? `守った ${runRef.current.restsKept} / うるさい ${runRef.current.badHits}` : '-'}</span>
-                    </div>
-                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-sm">
-                         <span className="font-bold text-gray-500">PERFECT率</span>
-                         <span className="font-black text-amber-500">{show(1900) ? `${Math.round(acc * 100)}%` : '-'} <span className="text-xs text-gray-400">P{jc.perfect} G{jc.great} 可{jc.good}</span></span>
-                    </div>
-                    <div className="mt-2 bg-gray-100 rounded-xl px-4 py-2 w-full flex justify-between text-xs md:text-sm">
-                         <span className="font-bold text-gray-500">金 {runRef.current.goldClicks} · ダイヤ {runRef.current.diamondClicks} · フィーバー {runRef.current.feverCount}</span>
-                         <span className="font-bold text-gray-500">レア {runRef.current.rareSeen} / 超 {runRef.current.ultraSeen}</span>
-                    </div>
-                </div>
-
-                <div className="bg-sky-100/90 p-6 rounded-[2rem] border-4 border-white shadow-lg w-full max-w-sm transform rotate-[2deg]">
-                    <div className="bg-sky-400 text-white text-xl font-black py-2 px-6 rounded-full inline-block mb-4 shadow-sm">ランキング (人数)</div>
-                    <ul className="space-y-2">
-                        {highScores.map((entry, i) => {
-                            const mine = isNewRecord && i === 0 && entry.score === subscribers;
-                            return (
-                            <li key={i} className={`flex justify-between items-center px-4 py-2 rounded-xl ${i === 0 ? 'bg-yellow-100 text-yellow-600 font-black border-2 border-yellow-200' : 'bg-white/50 text-slate-600 font-bold'} ${mine ? 'ring-4 ring-red-300' : ''}`}>
-                                <div className="flex flex-col">
-                                    <div className="flex items-center gap-2">
-                                        <span>#{i + 1}</span>
-                                        <span className="text-lg">{entry.score.toLocaleString()}人</span>
-                                        {mine && <span className="text-[10px] bg-red-500 text-white px-2 py-0.5 rounded-full">NEW</span>}
-                                    </div>
-                                    <span className="text-xs text-slate-400 ml-6">({entry.hitCount || 0}回{entry.endingId ? ` · ${ENDINGS.find((e) => e.id === entry.endingId)?.title ?? ''}` : ''})</span>
-                                </div>
-                            </li>
-                            );
-                        })}
-                        {highScores.length === 0 && <li className="text-gray-400 text-center py-4">まだきろくがないよ</li>}
-                    </ul>
-                </div>
-            </div>
-
-            <div className="mt-8 flex flex-col sm:flex-row gap-4 items-center z-10">
-                <button onClick={handlePlayAgain} className="group relative inline-block focus:outline-none transform transition-transform hover:scale-105 active:scale-95">
-                  <span className="absolute inset-0 translate-y-2 bg-pink-300 rounded-full"></span>
-                  <span className="relative inline-block border-4 border-white px-12 py-4 text-2xl font-black text-white bg-pink-500 rounded-full shadow-lg group-hover:-translate-y-1 transition-transform">もういちどあそぶ</span>
-                </button>
-                <button onClick={() => setShowBook(true)} className="bg-white text-slate-700 font-black px-8 py-3 rounded-full border-4 border-yellow-300 shadow-lg hover:scale-105 active:scale-95 transition-transform">ずかんを見る</button>
-            </div>
-          </div>
-          </div>
-        );
-      }
+        return ending ? <EndingScene ending={ending} isNew={endingIsNew} onDone={() => setGameState('FINISHED')} /> : null;
+      case 'FINISHED': return renderFinished();
     }
   };
 
-  const bgClass = fever && gameState === 'PLAYING' ? 'bg-fever' : 'bg-polka';
+  const playing = gameState === 'PLAYING';
+  const bgClass = buzz && playing ? 'bg-fever' : 'bg-polka';
 
   return (
-    <div className={`w-full h-full flex items-center justify-center relative overflow-hidden ${bgClass} font-sans selection:bg-pink-200 selection:text-pink-900 ${shakeClass} ${worldInvert ? 'world-invert' : ''}`}>
-        <audio ref={bgmRef} loop preload="auto" src={bgmSource}
-            onCanPlay={() => { setError(null); }}
-            onError={() => { console.warn("BGM Load Error:", bgmSource); setError("BGMの読み込みに失敗しました: " + bgmSource); }}
-        />
-        <audio ref={menuBgmRef} loop preload="auto" src={menuBgmUrl} onError={() => console.warn("Menu BGM not found")} />
+    <div
+      className={`w-full h-full flex items-center justify-center relative overflow-hidden ${bgClass} select-none ${shake}`}
+      style={{ touchAction: playing ? 'none' : undefined }}
+      onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); handleInputRef.current('tap'); } : undefined}
+    >
+      <audio ref={menuBgmRef} loop preload="auto" src={MENU_BGM} />
 
-        {gameState !== 'ENDING' && <Crowd progress={Math.min(score / CLEAR_THRESHOLDS[gameMode], 1)} fever={fever} />}
-        <NaEffects particles={particles} onClickSpecial={handleSpecialClick} />
+      {(playing || gameState === 'PAUSED') && <Crowd subs={subs} buzz={buzz} />}
+      {(playing || gameState === 'PAUSED') && <CommentStream active={playing} level={chaos} mood={commentMood} />}
+      {buzz && playing && <div className="fever-glow absolute inset-0 z-[2] pointer-events-none" />}
+      <NaEffects particles={particles} onClickSpecial={() => {}} />
 
-        {/* ヒット文字 / スコアポップ */}
-        {hitWords.map((w) => (
-            <div key={w.id} className={`hit-word absolute z-30 pointer-events-none font-black text-3xl md:text-5xl ${w.color} drop-shadow-[3px_3px_0_#fff]`} style={{ left: w.left, top: w.top, WebkitTextStroke: '1px #fff' }}>{w.text}</div>
-        ))}
-        {scorePops.map((s) => (
-            <div key={s.id} className="score-pop absolute top-[36%] z-30 pointer-events-none font-black text-2xl md:text-3xl text-emerald-500 drop-shadow-[2px_2px_0_#fff]" style={{ left: s.left }}>{s.text}</div>
-        ))}
+      {renderContent()}
 
-        {fever && gameState === 'PLAYING' && <div className="fever-glow absolute inset-0 z-[1] pointer-events-none" />}
+      {/* しあしあ（説明〜プレイ中は 1 体だけ。カットインのときは画面の左上へ飛んでくる） */}
+      {stageVisible && (
+        <div data-noinput onPointerDown={(e) => e.stopPropagation()}
+          className="absolute bottom-0 left-0 md:left-6 pointer-events-auto"
+          style={{
+            zIndex: atCut ? 62 : 25,
+            transform: stageTransform,
+            transformOrigin: '50% 50%',
+            transition: atCut ? 'transform 700ms cubic-bezier(0.34, 1.45, 0.64, 1)' : 'transform 520ms cubic-bezier(0.65, 0, 0.35, 1)',
+            opacity: gameState === 'RULES' && !isMobile ? 1 : undefined,
+          }}>
+          <Shiashia3D getBeat={getBeat} hitRef={hitRef} mood={stageMood} intensity={Math.min(1, combo / 40)} size={stageSize}
+            onPoke={handlePoke} withPartner partner={atCut && cutIn?.event === 'collab'} />
+        </div>
+      )}
 
-        {/* 途中の節目の帯 */}
-        {banner && gameState === 'PLAYING' && (
-          <div key={banner.id} className="absolute inset-x-0 top-[62%] z-[45] pointer-events-none flex justify-center" style={{ ['--dur' as any]: '1.7s' }}>
-            <div className="cutin-text bg-slate-800/90 text-white rounded-full px-6 py-2 border-4 border-white shadow-xl flex items-baseline gap-3">
-              <span className="font-black text-lg md:text-2xl">{banner.title}</span>
-              {banner.sub && <span className="text-xs md:text-sm font-bold text-yellow-300">{banner.sub}</span>}
-            </div>
-          </div>
-        )}
+      {playing && <EventCutIn data={cutIn} />}
+      {banFlash && playing && <div className="absolute inset-0 z-[58] bg-red-700/40 pointer-events-none flash-white" />}
 
-        {/* ノルマ達成スタンプ */}
-        {clearStamp && (
-          <div className="absolute inset-0 z-[58] pointer-events-none flex items-center justify-center">
-            <div className="absolute inset-0 bg-yellow-200/40 flash-white" />
-            <div className="stamp-in text-white font-black text-6xl md:text-[9rem] leading-none -rotate-6 drop-shadow-[8px_8px_0_rgba(190,24,93,0.5)]" style={{ WebkitTextStroke: '4px #be185d', paintOrder: 'stroke fill' }}>
-              ノルマ達成
-            </div>
-            <div className="absolute bottom-[22%] stamp-in bg-white text-pink-600 font-black text-lg md:text-2xl px-6 py-2 rounded-full border-4 border-pink-500 shadow-xl" style={{ animationDelay: '0.3s' }}>
-              まだ終わらない。伝え続けろ
-            </div>
-          </div>
-        )}
-
-        {/* 結果画面の紙吹雪 */}
-        {gameState === 'FINISHED' && runRef.current.cleared && revealT > 300 && (
-          <div className="absolute inset-0 z-[25] pointer-events-none overflow-hidden">
-            {Array.from({ length: 70 }).map((_, i) => (
-              <div key={i} className="absolute top-0 confetti" style={{ left: `${(i * 37) % 100}%`, width: 6 + (i % 4) * 2, height: 10 + (i % 3) * 4, background: ['#fbbf24', '#f472b6', '#38bdf8', '#4ade80', '#fff'][i % 5], animationDelay: `${(i % 10) * 0.25}s`, ['--dur' as any]: `${2.5 + (i % 5) * 0.5}s` }} />
-            ))}
-          </div>
-        )}
-        {flash && <div className="absolute inset-0 bg-white z-[55] flash-white pointer-events-none" />}
-
-        {renderContent()}
-
-        <CutIn cutIn={cutIn} beatRef={lastBeatTimeRef} hitRef={hitRef} />
-        <AchievementToasts toasts={toasts} />
-        {showBook && <CollectionBook unlocked={unlocked} seenEndings={seenEndings} seenVariants={seenVariants} onClose={() => setShowBook(false)} />}
+      {gameState !== 'PLAYING' && <AchievementToasts toasts={toasts} />}
+      {showBook && <CollectionBook unlocked={unlocked} seenEndings={seenEndings} itemsSeen={lifeRef.current.itemsSeen} onClose={() => setShowBook(false)} />}
     </div>
   );
 };

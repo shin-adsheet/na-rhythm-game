@@ -11,8 +11,6 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
         'process.env.ASSET_BASE': JSON.stringify(env.ASSET_BASE || ''),
         'process.env.TAP_ONLY': JSON.stringify(env.TAP_ONLY || '')
       },
