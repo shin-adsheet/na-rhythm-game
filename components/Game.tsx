@@ -30,10 +30,16 @@ import CollectionBook from './CollectionBook';
 const TAP_ONLY = !!process.env.TAP_ONLY;           // 公開版（マイクが使えない環境）
 const ASSET_BASE = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
 const DEFAULT_BGM = ASSET_BASE + 'bgm/bgm.mp3';
-const MENU_BGM = ASSET_BASE + 'bgm/top_chip.mp3';   // タイトル曲「な 2」のチップチューン・アレンジ
+/** タイトル（OP）の曲。設定で切り替えられる */
+type MenuBgm = 'chip' | 'chip1' | 'original';
+const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
+  { id: 'chip', label: 'チップチューン', file: 'bgm/top_chip.mp3' },
+  { id: 'chip1', label: '前のチップ', file: 'bgm/top_chip_v1.mp3' },
+  { id: 'original', label: '原曲', file: 'bgm/top.mp3' },
+];
 
-interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean }
-const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true };
+interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm }
+const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip' };
 const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 type Offsets = { mic: number | null; tap: number | null };
@@ -296,7 +302,7 @@ const Game: React.FC = () => {
     }
     el.pause();
     if (gameState === 'PLAYING') el.currentTime = 0;
-  }, [gameState, settings.volume]);
+  }, [gameState, settings.volume, settings.menuBgm]);
 
   /* ---------------- 演出ヘルパー ---------------- */
   const showJudge = (text: string, cls: string) => setJudge({ id: performance.now(), text, cls });
@@ -892,6 +898,19 @@ const Game: React.FC = () => {
               </div>
             </button>
 
+            {/* OP の曲の切り替え */}
+            <div className="bg-white/90 rounded-2xl px-3 py-2 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] flex items-center gap-2">
+              <span className="text-xs font-black text-slate-500 shrink-0">OPの曲</span>
+              <div className="flex-1 grid grid-cols-3 gap-1">
+                {MENU_BGMS.map((b) => (
+                  <button key={b.id} onClick={() => setSettings({ menuBgm: b.id })}
+                    className={`py-1.5 rounded-lg text-[11px] sm:text-xs font-black transition-all ${settings.menuBgm === b.id ? 'bg-pink-500 text-white shadow-[0_2px_0_#be185d]' : 'bg-slate-100 text-slate-500'}`}>
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setShowBook(true)} className="bg-white/90 rounded-2xl py-3 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex flex-col items-center">
                 <span className="font-black text-slate-700">ずかん</span>
@@ -1193,7 +1212,7 @@ const Game: React.FC = () => {
       style={{ touchAction: playing ? 'none' : undefined }}
       onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); handleInputRef.current('tap'); } : undefined}
     >
-      <audio ref={menuBgmRef} loop preload="auto" src={MENU_BGM} />
+      <audio ref={menuBgmRef} loop preload="auto" src={ASSET_BASE + (MENU_BGMS.find((x) => x.id === settings.menuBgm) || MENU_BGMS[0]).file} />
 
       {(playing || gameState === 'PAUSED') && <Crowd subs={subs} buzz={buzz} />}
       {(playing || gameState === 'PAUSED') && <CommentStream active={playing} level={chaos} mood={commentMood} />}
