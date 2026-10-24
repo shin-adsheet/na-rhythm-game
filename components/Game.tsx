@@ -16,6 +16,7 @@ import NaEffects from './NaEffects';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import ShiashiaSeated, { STORY } from './ShiashiaSeated';
 import Track from './Track';
+import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO } from '../utils/arcade';
 import EventCutIn, { CutInData } from './EventCutIn';
 import CommentStream, { CommentMood } from './CommentStream';
 import Calibration from './Calibration';
@@ -38,15 +39,15 @@ const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
   { id: 'original', label: '原曲', file: 'bgm/top.mp3' },
 ];
 
-interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm }
-const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip' };
+interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean }
+const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true };
 const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 type Offsets = { mic: number | null; tap: number | null };
 
 const emptyRun = (mode: GameMode): RunStats => ({
   mode, subs: 0, quota: QUOTA[mode], cleared: false, hits: 0, perfect: 0, great: 0, good: 0, misses: 0, extras: 0,
-  fuels: 0, burnsKept: 0, burnsTotal: 0, maxCombo: 0, buzzes: 0, items: 0, pokes: 0, pauses: 0, cutoff: false, ban: false, finished: false,
+  fuels: 0, burnsKept: 0, burnsTotal: 0, maxCombo: 0, buzzes: 0, items: 0, pokes: 0, pauses: 0, cutoff: false, ban: false, finished: false, stylesSeen: 0, styleClean: 0,
 });
 
 const EVENT_MOOD: Record<string, ShiashiaMood> = {
@@ -218,6 +219,11 @@ const Game: React.FC = () => {
   const [banFlash, setBanFlash] = useState(false);
   const [storyIdx, setStoryIdx] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  // 画面チェンジ（譜面の見た目が音ゲー風に切り替わる）
+  const scheduleRef = useRef<StyleSeg[]>([{ t: -1e9, style: 'lane' }]);
+  const segDirtyRef = useRef<Set<number>>(new Set());
+  const [trackStyle, setTrackStyle] = useState<TrackStyle>('lane');
+  const [styleBanner, setStyleBanner] = useState<{ id: number; style: TrackStyle } | null>(null);
   const settingsBoxRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (showSettings) setTimeout(() => settingsBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }, [showSettings]);
 
@@ -528,6 +534,9 @@ const Game: React.FC = () => {
     if (!p) return;
     const ch = buildChart(mode);
     chartRef.current = ch;
+    scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false);
+    segDirtyRef.current = new Set();
+    setTrackStyle('lane'); setStyleBanner(null);
     const eng = new JudgeEngine(ch.notes, ch.burns);
     engineRef.current = eng;
     notesRef.current = eng.notes;
@@ -598,6 +607,22 @@ const Game: React.FC = () => {
     run.burnsTotal = burnsRef.current.filter((b) => b.ended).length;
     run.cleared = reason === 'done' && run.subs >= run.quota;
     run.finished = true;
+    // 画面チェンジ：見た種類と、ノーミスで乗り切った区間の数
+    {
+      const segs = scheduleRef.current;
+      const tEnd = reason === 'done' ? Infinity : (playerRef.current?.time() ?? 0);
+      const endT = chartRef.current?.endT ?? 0;
+      const seen = new Set<TrackStyle>();
+      let clean = 0;
+      for (let i = 1; i < segs.length; i++) {
+        if (segs[i].t > tEnd) break;
+        seen.add(segs[i].style);
+        const segEnd = segs[i + 1]?.t ?? endT;
+        if (segEnd <= tEnd && !segDirtyRef.current.has(i)) clean++;
+      }
+      run.stylesSeen = seen.size;
+      run.styleClean = clean;
+    }
 
     const go = () => {
       playerRef.current?.stop();
@@ -663,6 +688,7 @@ const Game: React.FC = () => {
         if (ev.type === 'miss') {
           comboRef.current = 0; setCombo(0);
           run.misses++;
+          segDirtyRef.current.add(segIndexAt(scheduleRef.current, ev.note.t));
           setViewersV(viewersRef.current + VIEWERS.miss);
           showJudge('MISS', 'text-slate-400');
           checkViewers(t);
@@ -717,6 +743,13 @@ const Game: React.FC = () => {
         const inBurn = e.burns.some((b) => t >= b.t0 - 0.85 && t <= b.t1);
         const m: CommentMood = inBurn ? 'burn' : flagsRef.current.nu ? 'nu' : flagsRef.current.buzz ? 'hype' : 'normal';
         setCommentMood((x) => (x === m ? x : m));
+        // 画面チェンジ：今の見た目と、切り替えのお知らせ
+        const segs = scheduleRef.current;
+        const k = segIndexAt(segs, t);
+        setTrackStyle((x) => (x === segs[k].style ? x : segs[k].style));
+        const nx = segs[k + 1];
+        const bn = nx && nx.t - t < 1.3 ? { id: k + 1, style: nx.style } : k > 0 && t - segs[k].t < 0.8 ? { id: k, style: segs[k].style } : null;
+        setStyleBanner((x) => (x?.id === bn?.id ? x : bn));
       }
 
       if (t >= ch.endT) finishGame('done');
@@ -777,6 +810,9 @@ const Game: React.FC = () => {
         <input id="vol" type="range" min="0" max="1" step="0.05" value={settings.volume} onChange={(e) => setSettings({ volume: parseFloat(e.target.value) })} className="w-full" />
         <label className="flex items-center gap-2 mt-2 text-xs font-bold text-sky-700" htmlFor="clicks">
           <input id="clicks" type="checkbox" checked={settings.clicks} onChange={(e) => setSettings({ clicks: e.target.checked })} /> 拍にクリック音を入れる
+        </label>
+        <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="arcade">
+          <input id="arcade" type="checkbox" checked={settings.arcade !== false} onChange={(e) => setSettings({ arcade: e.target.checked })} /> 画面チェンジ（譜面がいろんな音ゲー風に切り替わる）
         </label>
       </div>
 
@@ -931,6 +967,8 @@ const Game: React.FC = () => {
 
   const renderPlaying = () => {
     const ratio = subs / quota;
+    const trackH = Math.round(Math.min(420, vp.h * 0.5));
+    const laneStyle = trackStyle === 'lane';
     const hasFx = (id: ItemId) => activeFx.includes(id);
     return (
       <>
@@ -1008,7 +1046,7 @@ const Game: React.FC = () => {
         )}
 
         {/* 判定・コンボ（レーンのすぐ上） */}
-        <div className="absolute left-0 right-0 z-30 pointer-events-none flex items-end justify-center gap-4" style={{ top: 'calc(54% - 92px)', height: 44 }}>
+        <div className="absolute left-0 right-0 z-30 pointer-events-none flex items-end justify-center gap-4" style={{ top: laneStyle ? 'calc(54% - 92px)' : `calc(54% - ${trackH / 2 + 12}px)`, height: 44 }}>
           {combo >= 3 && (
             <div className="flex items-baseline gap-1 bg-white/80 rounded-full px-3 py-0.5">
               <span className="font-black text-2xl text-slate-800 tabular-nums">{combo}</span>
@@ -1020,8 +1058,22 @@ const Game: React.FC = () => {
         </div>
 
         {/* 譜面 */}
-        <div className="absolute left-0 right-0 z-20" style={{ top: 'calc(54% - 52px)' }}>
-          <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} />
+        <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
+          <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} />
+        </div>
+        {/* 画面チェンジのお知らせ（譜面の下に出す。譜面は隠さない） */}
+        {styleBanner && (
+          <div key={styleBanner.id} className="absolute left-0 right-0 z-30 pointer-events-none flex justify-center px-3" style={{ top: `calc(54% + ${laneStyle ? 62 : trackH / 2 - 6}px)` }}>
+            <div className="mode-change flex items-center gap-3 bg-slate-900/90 text-white rounded-xl pl-2 pr-4 py-1.5 border-2 border-white/70 shadow-xl">
+              <span className="text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
+              <span className="flex flex-col leading-tight">
+                <span className="font-black text-lg">{STYLE_INFO[styleBanner.style].label}</span>
+                <span className="text-[10px] font-bold text-white/75">{STYLE_INFO[styleBanner.style].hint}「{activeFx.includes('nu') ? 'ぬ' : 'な'}」</span>
+              </span>
+            </div>
+          </div>
+        )}
+        <div className="absolute left-0 right-0 z-20" style={{ top: laneStyle ? 'calc(54% + 58px)' : `calc(54% + ${trackH / 2 + 4}px)`, display: styleBanner ? 'none' : undefined }}>
           <div className="flex justify-center gap-2 mt-1 pointer-events-none">
             {activeFx.length > 0 && activeFx.map((id) => (
               <span key={id} className="text-[10px] font-black text-white bg-slate-800/80 rounded-full px-2 py-0.5">

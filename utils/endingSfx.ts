@@ -160,6 +160,53 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       chord(at(0.55), 2.6, [N(57), N(61), N(64), N(69)], 'sawtooth', 0.035, 0.05);
       break;
     }
+    // ---------- 突拍子のないエンディング ----------
+    case 'invasion': {
+      // 警報 → 円盤のうなり → レーザー
+      for (let k = 0; k < 4; k++) tone(sec(0.2 + k * 0.7), 0.65, 600, 950, 'sawtooth', 0.06, 0.05);
+      for (let i = 0; i < 4; i++) {
+        const o = tone(sec(1.0 + i * 0.25), D - 1.2 - i * 0.25, 180 + i * 37, 180 + i * 37, 'sine', 0.05, 0.8);
+        const l = ctx.createOscillator(), lg = ctx.createGain(); l.frequency.value = 4 + i; lg.gain.value = 30; l.connect(lg); lg.connect(o.frequency); l.start(sec(1.0)); l.stop(sec(D));
+      }
+      for (let s = at(0.3) - T0; s < at(0.6) - T0; s += 0.18 + Math.random() * 0.2) tone(sec(s), 0.16, 1800, 220, 'square', 0.06);
+      chord(at(0.62), 2.2, [N(69), N(73), N(76)], 'triangle', 0.06, 0.1);
+      break;
+    }
+    case 'meteor': {
+      const hit = at(0.66);
+      tone(at(0.4), hit - at(0.4), 2400, 260, 'sine', 0.12, 0.3);                 // ヒューーー
+      swell(at(0.4), hit - at(0.4), 0.3, 'bandpass', 300, 2500);
+      tone(hit, 2.2, 70, 24, 'sine', 0.95, 0.002);
+      noise(hit, 3.0, 0.85, 'lowpass', 2200, 90, 0.002);
+      noise(hit, 0.3, 0.5, 'highpass', 2500, 2500, 0.001);
+      crackles(hit + 0.2, hit + 2.2, 14, 0.12);
+      break;
+    }
+    case 'quake': {
+      swell(sec(0.6), at(0.6) - sec(0.6), 0.45, 'lowpass', 60, 260);
+      tone(sec(0.6), at(0.6) - sec(0.6), 28, 46, 'sine', 0.35, 1.5);
+      for (let s = at(0.42) - T0; s < at(0.6) - T0; s += 0.12 + Math.random() * 0.15) noise(sec(s), 0.06, 0.25, 'highpass', 1200 + Math.random() * 2000);
+      const sp = at(0.6);
+      tone(sp, 2.4, 60, 22, 'sine', 0.9, 0.003);
+      noise(sp, 2.8, 0.7, 'lowpass', 1500, 70, 0.002);
+      noise(sp + 0.3, 2.5, 0.2, 'bandpass', 300, 120, 0.4);   // マグマ
+      break;
+    }
+    case 'peace': {
+      const prog = [[60, 64, 67, 72], [65, 69, 72, 77], [62, 65, 69, 74], [67, 71, 74, 79]];
+      prog.forEach((c, i) => chord(sec(0.4 + i * 1.8), 2.2, c.map(N), 'sine', 0.05, 0.5));
+      for (let i = 0; i < 12; i++) { const s0 = 1 + Math.random() * (D - 1.5); const f = 2400 + Math.random() * 1200; tone(sec(s0), 0.08, f, f * 1.4, 'sine', 0.05, 0.005); tone(sec(s0 + 0.1), 0.07, f * 1.1, f * 1.5, 'sine', 0.04, 0.005); }
+      tone(at(0.75), 2.5, N(96), N(96), 'sine', 0.08);
+      break;
+    }
+    case 'arcade': {
+      tone(sec(0.3), 0.08, N(83), N(83), 'square', 0.12); tone(sec(0.38), 0.45, N(88), N(88), 'square', 0.12);   // コイン
+      const mel = [72, 76, 79, 84, 79, 84, 88, 91];
+      mel.forEach((m, i) => tone(sec(1.2 + i * 0.12), 0.11, N(m), N(m), 'square', 0.08));
+      for (let s = 2.4; s < D - 0.3; s += 0.24) { tone(sec(s), 0.09, N(48 + ((Math.floor(s / 0.24) % 4 === 3) ? 7 : 0)), undefined, 'triangle', 0.12); if (Math.floor(s / 0.24) % 2) noise(sec(s), 0.03, 0.08, 'highpass', 6000); }
+      for (let s = 2.4; s < D - 0.3; s += 0.12) tone(sec(s), 0.06, N([60, 64, 67, 72][Math.floor(s / 0.12) % 4] + 12), undefined, 'square', 0.035);
+      break;
+    }
     // ---------- しょぼいエンディング（10秒・30秒） ----------
     case 'bulb': {
       for (let s = 0.4; s < at(0.55) - T0; s += 0.18 + Math.random() * 0.3) tone(sec(s), 0.08, 120, 120, 'sawtooth', 0.04);

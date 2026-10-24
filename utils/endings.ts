@@ -54,6 +54,13 @@ export const ENDINGS: Ending[] = [
     oneLiner: '（あなたに逆らう人がいなくなり、世界独裁国家になりました）',
   },
   {
+    id: 'peace', no: 0, title: '世界平和エンド', subtitle: '争いのない星',
+    scene: 'peace', rarity: 'ultra', kind: 'clear', durationMs: 8000,
+    hint: 'フルで、空振りなし・火に油なしで炎上を全部乗り切ってクリアする',
+    lines: ['一度も、火に油を注がなかった。', '一度も、余計なことを言わなかった。', '争いは「な」の前に、消えてなくなった。', '世界は、平和になった。'],
+    oneLiner: '（あなたの名は、世界を平和にしました）',
+  },
+  {
     id: 'nafy', no: 7, title: 'すべてが「な」エンド', subtitle: '言語崩壊',
     scene: 'nafy', rarity: 'rare', kind: 'clear', durationMs: 7500,
     hint: 'フルで、PERFECT を 85% 以上でクリアする',
@@ -66,6 +73,20 @@ export const ENDINGS: Ending[] = [
     hint: 'フルで、炎上をすべて黙って乗り切り、ノルマの 2 倍でクリアする',
     lines: ['底辺チューバーは、もういない。', 'その名は教科書に載り、', '子供たちは今日も「な」を練習する。', '伝説は、ここから始まった。'],
     oneLiner: '（あなたの名は、伝説になりました）',
+  },
+  {
+    id: 'arcade', no: 0, title: '世界ゲーセン化エンド', subtitle: 'INSERT COIN',
+    scene: 'arcade', rarity: 'rare', kind: 'clear', durationMs: 8000,
+    hint: 'フルで、画面チェンジの区間を 5 つノーミスで乗り切ってクリアする',
+    lines: ['どんな画面になっても、名を伝え続けた。', '街じゅうの看板が、音ゲーの筐体になった。', '学校の机も、駅の改札も。', '世界は、ゲームセンターになった。'],
+    oneLiner: '（あなたの名は、世界中のゲームセンターに伝わりました）',
+  },
+  {
+    id: 'quake', no: 0, title: '地球まっぷたつエンド', subtitle: '震度「な」',
+    scene: 'quake', rarity: 'rare', kind: 'clear', durationMs: 8000,
+    hint: 'フルで、100 コンボ以上つないでクリアする',
+    lines: ['名を、とぎれずに伝え続けた。', '視聴者が、いっせいに跳びはねた。', 'ゴゴゴゴゴゴ……', '地球は、まっぷたつに割れた。'],
+    oneLiner: '（あなたの名で盛り上がりすぎて、地球が割れました）',
   },
   {
     id: 'fire', no: 9, title: '大炎上エンド', subtitle: 'バズりの代償',
@@ -87,6 +108,13 @@ export const ENDINGS: Ending[] = [
     hint: 'フルで、special「な」を 4 回使って、クリアする',
     lines: ['special「な」の光が、空まで届いた。', '「ナ星ノ者ダ。オマエノ発音ハ完璧ダ」', 'しあしあは連れ去られた。', '宇宙規模で名が伝わる日も近い。'],
     oneLiner: '（あなたの名は、宇宙人に伝わりました）',
+  },
+  {
+    id: 'invasion', no: 0, title: '宇宙人襲来エンド', subtitle: '地球、包囲される',
+    scene: 'invasion', rarity: 'uncommon', kind: 'clear', durationMs: 8000,
+    hint: 'フルで、20 回以上バズってクリアする',
+    lines: ['バズりすぎた電波が、宇宙まで届いた。', '空を埋めつくす、円盤の大群。', '「ナ星ヨリ来タ。名ヲ、モット聞カセロ」', '地球は「な」を差し出して、和平を結んだ。'],
+    oneLiner: '（あなたの名は、宇宙人の大群を呼びました）',
   },
   {
     id: 'rocket', no: 12, title: '宇宙進出エンド', subtitle: '地球では足りない',
@@ -117,6 +145,13 @@ export const ENDINGS: Ending[] = [
     hint: 'フルで、ノルマの 80% まで行って、届かない',
     lines: ['あと少しのところで、一匹の猫が現れた。', '猫「な」', '完璧なリズムだった。', 'チャンネルは猫のものになった。'],
     oneLiner: '（あなたの名は、猫に取られました）',
+  },
+  {
+    id: 'meteor', no: 0, title: '隕石エンド', subtitle: '結果はうやむや',
+    scene: 'meteor', rarity: 'uncommon', kind: 'fail', durationMs: 7500,
+    hint: 'フルで、30 コンボ以上つないだのに、ノルマに届かない',
+    lines: ['いい流れだった。', 'でも、ノルマには届かなかった。', 'そのとき、空が赤く光った。', '……結果は、隕石でうやむやになった。'],
+    oneLiner: '（あなたの名が伝わりきる前に、隕石が落ちてきました）',
   },
   {
     id: 'bottom', no: 16, title: '底辺のままエンド', subtitle: 'また明日',
@@ -228,16 +263,21 @@ export function pickEnding(r: RunStats): Ending {
     if (r.mode === 'FULL' && r.misses === 0 && r.extras === 0 && r.fuels === 0) return byId('glitch');
     if (ratio >= 5) return byId('god');
     if (ratio >= 3 && r.fuels === 0) return byId('dictator');
+    if (r.extras === 0 && r.fuels === 0 && r.burnsTotal > 0 && r.burnsKept === r.burnsTotal) return byId('peace');
     if (pRate >= 0.85) return byId('nafy');
     if (r.burnsTotal > 0 && r.burnsKept === r.burnsTotal && ratio >= 2) return byId('legend');
+    if (r.styleClean >= 5) return byId('arcade');
+    if (r.maxCombo >= 100) return byId('quake');
     if (r.fuels >= 2) return byId('fire');
     if (r.pokes >= 10) return byId('mirror');
     if (r.items >= 4) return byId('alien');
+    if (r.buzzes >= 20) return byId('invasion');
     if (ratio >= 2) return byId('rocket');
     return byId('explode');
   }
   if (r.pauses >= 3) return byId('timeloop');
   if (ratio >= 0.8) return byId('cat');
+  if (r.maxCombo >= 30) return byId('meteor');
   if (ratio >= 0.3) return byId('bottom');
   return byId('sleep');
 }

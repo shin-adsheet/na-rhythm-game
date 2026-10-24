@@ -276,6 +276,53 @@ const AlmostBar: React.FC<{ w: number; p: number; buzzer: boolean }> = ({ w, p, 
   );
 };
 
+
+/* ---- 突拍子のないエンディング用の小道具 ---- */
+const MiniUfo: React.FC<{ w: number; sign?: boolean }> = ({ w, sign }) => (
+  <svg viewBox="0 0 100 50" style={{ width: w, height: w / 2 }} aria-hidden="true">
+    <ellipse cx="50" cy="20" rx="18" ry="14" fill="#a5f3fc" stroke="#0e7490" strokeWidth="3" />
+    <ellipse cx="50" cy="31" rx="46" ry="11" fill="#94a3b8" stroke="#1e293b" strokeWidth="3" />
+    {[-30, -15, 0, 15, 30].map((x) => <circle key={x} cx={50 + x} cy="36" r="3" fill="#fde047" />)}
+    {sign && <text x="50" y="25" fontSize="14" fontWeight="900" fill="#be185d" textAnchor="middle">な</text>}
+  </svg>
+);
+const City: React.FC = () => (
+  <svg viewBox="0 0 400 100" preserveAspectRatio="none" className="w-full h-full" aria-hidden="true">
+    <path d="M0 100 L0 60 L20 60 L20 40 L45 40 L45 70 L60 70 L60 25 L85 25 L85 55 L100 55 L100 35 L118 35 L118 15 L135 15 L135 50 L155 50 L155 30 L180 30 L180 62 L195 62 L195 20 L222 20 L222 45 L240 45 L240 58 L262 58 L262 28 L285 28 L285 52 L300 52 L300 38 L322 38 L322 65 L340 65 L340 22 L362 22 L362 48 L380 48 L380 58 L400 58 L400 100 Z" fill="#0f172a" />
+    {Array.from({ length: 40 }).map((_, i) => <rect key={i} x={(i * 37) % 390 + 5} y={30 + ((i * 53) % 60)} width="4" height="5" fill="#fde68a" opacity={(i * 7) % 3 ? 0.8 : 0.25} />)}
+  </svg>
+);
+const Dove: React.FC<{ w: number }> = ({ w }) => (
+  <svg viewBox="0 0 60 40" style={{ width: w, height: w * 0.66 }} aria-hidden="true">
+    <path d="M8 24 Q20 14 34 20 L50 12 L46 22 Q52 26 44 30 Q30 36 16 30 Z" fill="#fff" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round" />
+    <path d="M24 20 Q30 2 44 4 Q36 12 34 20 Z" fill="#f8fafc" stroke="#94a3b8" strokeWidth="2" strokeLinejoin="round" className="wing-flap" style={{ transformOrigin: '30px 20px' }} />
+    <circle cx="13" cy="23" r="1.6" fill="#334155" />
+    <path d="M6 24 L2 26 L7 26" fill="#fbbf24" />
+  </svg>
+);
+const Cabinet: React.FC<{ kind: number; w: number; hue: number }> = ({ kind, w, hue }) => {
+  const scr = (() => {
+    switch (kind % 6) {
+      case 0: return <>{[0, 1, 2, 3, 4].map((i) => <rect key={i} x={14 + i * 7} y={12 + ((i * 13) % 20)} width="6" height="3" fill="#7dd3fc" />)}<rect x="12" y="38" width="38" height="2" fill="#ef4444" /></>;
+      case 1: return <><circle cx="31" cy="27" r="14" fill="none" stroke="#fff" strokeWidth="2" /><circle cx="31" cy="27" r="4" fill="#f472b6" />{[0, 1, 2].map((i) => <circle key={i} cx={31 + Math.cos(i * 2.1) * 9} cy={27 + Math.sin(i * 2.1) * 9} r="2" fill="#7dd3fc" />)}</>;
+      case 2: return <>{Array.from({ length: 16 }).map((_, i) => <rect key={i} x={15 + (i % 4) * 8} y={11 + Math.floor(i / 4) * 8} width="6" height="6" rx="1" fill={i === 5 || i === 10 ? '#f472b6' : '#334155'} />)}</>;
+      case 3: return <><path d="M31 10 L20 42 L42 42 Z" fill="#312e81" stroke="#67e8f9" strokeWidth="1.5" /><rect x="26" y="30" width="6" height="3" fill="#f0abfc" /></>;
+      case 4: return <><rect x="10" y="22" width="42" height="12" fill="#292524" /><circle cx="17" cy="28" r="5" fill="#fef3c7" />{[28, 38, 46].map((x, i) => <circle key={x} cx={x} cy="28" r={i % 2 ? 3 : 4} fill={i % 2 ? '#3b82f6' : '#ef4444'} />)}</>;
+      default: return <>{[0, 1, 2, 3].map((i) => <path key={i} d={`M${16 + i * 9} 14 l4 5 h-2.5 v5 h-3 v-5 h-2.5 Z`} fill="#cbd5e1" />)}<path d="M25 34 l4 5 h-2.5 v5 h-3 v-5 h-2.5 Z" fill="#f43f5e" /></>;
+    }
+  })();
+  return (
+    <svg viewBox="0 0 62 110" style={{ width: w, height: w * 1.77 }} aria-hidden="true">
+      <rect x="4" y="2" width="54" height="14" rx="3" fill={`hsl(${hue} 90% 60%)`} className="twinkle" style={{ ['--dur' as any]: `${0.8 + (kind % 3) * 0.3}s` }} />
+      <path d="M2 16 L60 16 L60 60 L54 68 L54 108 L8 108 L8 68 L2 60 Z" fill="#1e1b4b" stroke={`hsl(${hue} 90% 60%)`} strokeWidth="2.5" strokeLinejoin="round" />
+      <rect x="8" y="8" width="46" height="40" rx="3" fill="#0b1020" transform="translate(0 12)" />
+      <g transform="translate(0 12)">{scr}</g>
+      <rect x="10" y="66" width="42" height="8" rx="2" fill="#334155" />
+      {[16, 26, 36, 46].map((x, i) => <circle key={x} cx={x} cy="70" r="2.6" fill={`hsl(${(hue + i * 60) % 360} 90% 65%)`} />)}
+    </svg>
+  );
+};
+
 const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, audioCtx = null }) => {
   const [elapsed, setElapsed] = useState(0);
   const sfxRef = useRef<EndingSfx | null>(null);
@@ -310,6 +357,7 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
   let wrapperClass = '';
   let linesTop = 'top-[25%] md:top-[30%]';
   let linesW = 'w-[92%]';
+  let linesPanel = '';   // 背景がうるさいときに、セリフの後ろに敷く
 
   switch (ending.scene) {
     case 'explode': {
@@ -578,6 +626,161 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
       break;
     }
 
+
+    /* ===== 突拍子のないエンディング ===== */
+    case 'invasion': {
+      bg = 'bg-gradient-to-b from-slate-950 via-indigo-950 to-violet-900';
+      mood = progress > 0.62 ? 'dance' : 'shock';
+      linesTop = 'top-[31%] md:top-[33%]';
+      const fleet = vw < 640 ? 7 : 11;
+      const uw = vw < 640 ? 54 : 80;
+      extra = (
+        <>
+          <Stars count={70} />
+          {progress > 0.3 && Array.from({ length: 5 }).map((_, i) => (
+            <div key={`b${i}`} className="beam absolute top-[20%] w-[3px] h-[70%] bg-gradient-to-b from-lime-300 to-transparent" style={{ left: `${12 + i * 19}%`, animationDelay: `${i * 0.07}s` }} />
+          ))}
+          {Array.from({ length: fleet }).map((_, i) => (
+            <div key={i} className="absolute fleet-in" style={{ left: `${(i + 0.5) * (100 / fleet)}%`, top: `${14 + (i % 2) * 6}%`, marginLeft: -uw / 2, animationDelay: `${i * 0.12}s` }}>
+              <div className="ufo-bob" style={{ animationDelay: `${i * 0.2}s` }}><MiniUfo w={uw} sign={progress > 0.62} /></div>
+            </div>
+          ))}
+          <div className="absolute bottom-0 left-0 right-0 h-[16%]"><City /></div>
+          {progress > 0.62 && <div className="absolute inset-0 bg-lime-200/10 ending-fade" />}
+        </>
+      );
+      break;
+    }
+    case 'meteor': {
+      const a = Math.max(0, Math.min(1, (progress - 0.4) / 0.26));   // 落ちてくる
+      const hit = progress > 0.66;
+      bg = hit ? (progress < 0.72 ? 'bg-orange-100' : 'bg-stone-600') : progress > 0.42 ? 'bg-gradient-to-b from-orange-900 via-red-700 to-orange-500' : 'bg-gradient-to-b from-slate-800 to-slate-600';
+      mood = hit ? 'shock' : progress > 0.42 ? 'shock' : 'sad';
+      wrapperClass = hit && progress < 0.85 ? 'shake-hard' : '';
+      const ms = 40 + 200 * a * a;
+      extra = (
+        <>
+          {!hit && progress > 0.4 && (
+            <div className="absolute" style={{ left: `${108 - 58 * a}%`, top: `${-12 + 80 * a}%`, width: ms, height: ms, marginLeft: -ms / 2, marginTop: -ms / 2 }}>
+              <div className="absolute rounded-full" style={{ right: '35%', bottom: '35%', width: ms * 2.6, height: ms * 0.7, transformOrigin: '100% 50%', transform: 'rotate(-54deg) translateX(40%)', background: 'linear-gradient(90deg, transparent, rgba(253,186,116,0.5), #fde047)', filter: 'blur(6px)' }} />
+              <div className="absolute inset-0 rounded-full" style={{ background: 'radial-gradient(circle at 35% 35%, #a8a29e, #57534e 55%, #292524)', boxShadow: '0 0 40px 12px rgba(249,115,22,0.8)' }} />
+            </div>
+          )}
+          {hit && progress < 0.74 && <div className="absolute inset-0 bg-white flash-white" />}
+          {hit && Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="absolute left-1/2 top-[70%] w-4 h-4 rounded-sm bg-stone-700 debris" style={{ ['--dx' as any]: `${Math.cos(i * 0.52) * 46}vw`, ['--dy' as any]: `${-20 - Math.abs(Math.sin(i * 0.52)) * 50}vh`, animationDelay: `${(i % 4) * 0.04}s` }} />
+          ))}
+          {hit && [0, 1, 2].map((i) => (
+            <div key={`d${i}`} className="absolute bottom-[-10%] rounded-full bg-stone-400/60 blur-xl smoke-up" style={{ left: `${10 + i * 30}%`, width: '45vw', height: '45vw', animationDelay: `${i * 0.3}s`, animationDuration: '3s' }} />
+          ))}
+        </>
+      );
+      break;
+    }
+    case 'quake': {
+      const split = Math.max(0, Math.min(1, (progress - 0.6) / 0.16));
+      const crack = Math.max(0, Math.min(1, (progress - 0.42) / 0.16));
+      bg = 'bg-black';
+      mood = progress > 0.42 ? 'shock' : 'dance';
+      wrapperClass = progress > 0.3 && progress < 0.8 ? 'shake-hard' : '';
+      charStyle = { transform: `translateX(${-split * 15}vw) rotate(${-split * 6}deg)` };
+      const world = (
+        <>
+          <div className="absolute inset-0 bg-gradient-to-b from-sky-400 via-sky-200 to-sky-100" />
+          <div className="absolute left-0 right-0 bottom-0 h-[30%] bg-gradient-to-b from-lime-500 via-amber-700 to-amber-900" />
+          <div className="absolute left-0 right-0 bottom-[27%] h-[8%] flex items-end justify-around px-1">
+            {Array.from({ length: vw < 640 ? 12 : 22 }).map((_, i) => (
+              <svg key={i} viewBox="0 0 20 34" className="w-[5%] min-w-[12px] max-w-[26px] h-auto" style={{ animation: `crowd-jump ${0.32 + (i % 3) * 0.06}s infinite`, animationDelay: `${(i % 5) * 0.05}s` }} aria-hidden="true">
+                <circle cx="10" cy="7" r="6" fill="#1e293b" /><rect x="4" y="14" width="12" height="18" rx="4" fill="#1e293b" />
+              </svg>
+            ))}
+          </div>
+        </>
+      );
+      extra = (
+        <>
+          <div className="absolute inset-0" style={{ clipPath: 'polygon(0 0, 50% 0, 50% 100%, 0 100%)', transform: `translateX(${-split * 15}vw) rotate(${-split * 6}deg)`, transformOrigin: '0% 100%' }}>{world}</div>
+          <div className="absolute inset-0" style={{ clipPath: 'polygon(50% 0, 100% 0, 100% 100%, 50% 100%)', transform: `translateX(${split * 15}vw) rotate(${split * 6}deg)`, transformOrigin: '100% 100%' }}>{world}</div>
+          {split > 0 && <div className="absolute bottom-0 left-1/2 h-[45%] -translate-x-1/2 bg-gradient-to-t from-orange-500 via-red-700 to-transparent blur-md" style={{ width: `${split * 24}vw` }} />}
+          {crack > 0 && split === 0 && (
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 w-full h-full" aria-hidden="true">
+              <polyline points="50,70 46,75 54,80 47,86 53,92 49,100" fill="none" stroke="#1c1917" strokeWidth="1.6" strokeDasharray="40" strokeDashoffset={40 * (1 - crack)} vectorEffect="non-scaling-stroke" style={{ strokeWidth: 5 }} />
+            </svg>
+          )}
+          {progress > 0.28 && progress < 0.62 && ['ゴ', 'ゴ', 'ゴ'].map((g, i) => (
+            <React.Fragment key={i}>
+              <div className="absolute left-[3%] text-4xl sm:text-6xl font-black text-stone-800/80 shake" style={{ top: `${36 + i * 11}%`, WebkitTextStroke: '2px #fff' }}>{g}</div>
+              <div className="absolute right-[3%] text-4xl sm:text-6xl font-black text-stone-800/80 shake" style={{ top: `${40 + i * 11}%`, WebkitTextStroke: '2px #fff' }}>{g}</div>
+            </React.Fragment>
+          ))}
+        </>
+      );
+      textColor = split > 0 ? 'text-white' : 'text-slate-800';
+      if (split > 0) linesPanel = 'bg-black/55 rounded-2xl px-3 py-2';
+      break;
+    }
+    case 'peace': {
+      bg = 'bg-gradient-to-b from-sky-200 via-sky-50 to-emerald-100';
+      mood = 'celebrate';
+      textColor = 'text-sky-900';
+      const k = Math.min(1, progress / 0.4);
+      extra = (
+        <>
+          <svg viewBox="0 0 200 100" className="absolute left-1/2 -translate-x-1/2 bottom-[11%] w-[118vw] max-w-[900px] h-auto" style={{ opacity: 0.6 * k }} aria-hidden="true">
+            {['#f87171', '#fb923c', '#facc15', '#4ade80', '#38bdf8', '#818cf8', '#c084fc'].map((c, i) => (
+              <path key={c} d={`M ${10 + i * 5} 100 A ${90 - i * 5} ${90 - i * 5} 0 0 1 ${190 - i * 5} 100`} fill="none" stroke={c} strokeWidth="5" />
+            ))}
+          </svg>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="absolute dove-fly" style={{ top: `${15 + (i * 13) % 40}%`, animationDelay: `${i * 0.9}s`, animationDuration: `${6 + (i % 3)}s` }}>
+              <Dove w={vw < 640 ? 44 : 64} />
+            </div>
+          ))}
+          <Confetti count={30} colors={['#ffffff', '#fbcfe8', '#bbf7d0', '#fef9c3']} />
+          <div className="absolute bottom-0 left-0 right-0 h-[13%] bg-gradient-to-b from-emerald-300 to-emerald-500" />
+          <div className="absolute bottom-[8%] left-0 right-0 flex justify-around items-end px-2">
+            {Array.from({ length: vw < 640 ? 9 : 16 }).map((_, i) => (
+              <svg key={i} viewBox="0 0 30 44" className="w-[7%] max-w-[40px] h-auto" style={{ animation: `crowd-jump ${0.9 + (i % 2) * 0.2}s infinite ease-in-out`, animationDelay: `${(i % 4) * 0.15}s` }} aria-hidden="true">
+                <circle cx="15" cy="9" r="7" fill={['#fda4af', '#fdba74', '#86efac', '#93c5fd', '#c4b5fd'][i % 5]} />
+                <rect x="9" y="17" width="12" height="20" rx="5" fill={['#fda4af', '#fdba74', '#86efac', '#93c5fd', '#c4b5fd'][i % 5]} />
+                <path d="M0 24 L9 22 M21 22 L30 24" stroke={['#fda4af', '#fdba74', '#86efac', '#93c5fd', '#c4b5fd'][i % 5]} strokeWidth="3.5" strokeLinecap="round" />
+              </svg>
+            ))}
+          </div>
+          {[...Array(14)].map((_, i) => (
+            <div key={`f${i}`} className="absolute rounded-full" style={{ bottom: `${2 + (i * 7) % 7}%`, left: `${(i * 37) % 100}%`, width: 10, height: 10, background: ['#f472b6', '#fde047', '#fff'][i % 3], boxShadow: '0 0 0 3px rgba(255,255,255,0.6)' }} />
+          ))}
+        </>
+      );
+      break;
+    }
+    case 'arcade': {
+      bg = 'bg-zinc-950';
+      mood = 'dance';
+      const cw = vw < 640 ? Math.min(64, vw * 0.17) : 96;
+      extra = (
+        <>
+          <div className="absolute left-0 right-0 bottom-0 h-[38%] overflow-hidden" style={{ perspective: '300px' }}>
+            <div className="absolute inset-x-[-50%] top-0 h-[200%] grid-scroll" style={{ transform: 'rotateX(62deg)', transformOrigin: '50% 0%', backgroundImage: 'linear-gradient(rgba(236,72,153,0.7) 2px, transparent 2px), linear-gradient(90deg, rgba(34,211,238,0.6) 2px, transparent 2px)', backgroundSize: '48px 48px' }} />
+          </div>
+          <div className="absolute top-[14%] left-0 right-0 flex justify-center">
+            <div className="text-2xl sm:text-4xl font-black tracking-widest text-pink-400 twinkle" style={{ textShadow: '0 0 12px #ec4899, 0 0 30px #ec4899', ['--dur' as any]: '0.9s' }}>INSERT COIN</div>
+          </div>
+          <div className="absolute bottom-[9%] left-0 right-0 flex justify-between items-end px-[3%]">
+            {Array.from({ length: vw < 640 ? 4 : 6 }).map((_, i, arr) => (
+              <div key={i} className="drop-in" style={{ animationDelay: `${0.3 + i * 0.15}s`, visibility: i === Math.floor(arr.length / 2) - 1 || i === Math.floor(arr.length / 2) ? 'hidden' : undefined }}>
+                <Cabinet kind={i} w={cw} hue={(i * 57 + 300) % 360} />
+              </div>
+            ))}
+          </div>
+          {progress > 0.55 && Array.from({ length: 24 }).map((_, i) => (
+            <div key={`p${i}`} className="absolute top-0 confetti" style={{ left: `${(i * 41) % 100}%`, width: 8, height: 8, background: ['#f472b6', '#22d3ee', '#facc15', '#a3e635'][i % 4], animationDelay: `${(i % 6) * 0.3}s`, ['--dur' as any]: `${2.5 + (i % 3)}s` }} />
+          ))}
+        </>
+      );
+      break;
+    }
+
     /* ===== しょぼいエンディング（10秒・30秒） ===== */
     case 'bulb': {
       const off = progress > 0.55;
@@ -685,7 +888,7 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
 
       {/* セリフ */}
       <div className={`absolute ${linesTop} left-0 right-0 flex justify-center pointer-events-none`}>
-        <div className={`${linesW} max-w-2xl text-center ${textColor}`}>
+        <div className={`${linesW} max-w-2xl text-center ${textColor} ${linesPanel}`}>
           {lines.map((l, i) => (
             <p key={i} className={`${ending.short ? 'text-base sm:text-lg md:text-2xl' : 'text-lg sm:text-xl md:text-3xl'} font-black leading-snug sm:leading-relaxed drop-shadow-[2px_2px_0_rgba(0,0,0,0.25)] mb-1 sm:mb-0`}>
               {l}{i === lines.length - 1 && <span className="tw-cursor">▌</span>}

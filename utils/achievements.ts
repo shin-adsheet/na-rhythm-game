@@ -55,6 +55,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   // --- おまけ ---
   { id: 'first_na', group: 'おまけ', title: 'はじめての「な」', description: '名を 1 回伝える', icon: '初', rarity: 'normal' },
   { id: 'calibrated', group: 'おまけ', title: '音声チェック', description: 'タイミング合わせをする', icon: '声', rarity: 'normal' },
+  { id: 'arcade_tour', group: 'おまけ', title: 'ゲーセンめぐり', description: '1 回のプレイで、画面チェンジを 8 種類ぜんぶ見る', icon: '筐', rarity: 'uncommon' },
   { id: 'poke_20', group: 'おまけ', title: 'つつきすぎ', description: 'しあしあを合計 20 回つつく', icon: '突', rarity: 'uncommon', secret: true },
   { id: 'silent', group: 'おまけ', title: '無言配信', description: '一度も名を伝えずに終わる', icon: '黙', rarity: 'uncommon', secret: true },
 ];
@@ -110,7 +111,7 @@ export function evaluate(
   c('item_1', (r.items ?? 0) >= 1); c('item_5', (r.items ?? 0) >= 5);
   c('item_all', life.itemsSeen.length >= ITEMS.length);
 
-  c('ending_3', endingsSeen >= 3); c('ending_8', endingsSeen >= 8); c('ending_all', endingsSeen >= totalEndings);
+  c('arcade_tour', run.stylesSeen >= 8); c('ending_3', endingsSeen >= 3); c('ending_8', endingsSeen >= 8); c('ending_all', endingsSeen >= totalEndings);
 
   c('first_na', (r.hits ?? 0) >= 1 || life.totalHits >= 1);
   c('calibrated', life.calibrated);

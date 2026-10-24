@@ -36,7 +36,7 @@ const RulesCard: React.FC<Props> = ({ mode, input, ready, offsetMs, skip, onSkip
               <span className="shrink-0 w-8 h-8 rounded-full bg-pink-500 text-white font-black flex items-center justify-center">1</span>
               <div className="min-w-0">
                 <div className="font-black text-slate-800">丸が「な！」の円に重なったら{input === 'mic' ? '「な」と言う' : 'タップ'}</div>
-                <div className="text-xs text-slate-500 leading-relaxed">1 つの丸に 1 回だけ。ズレが小さいほど PERFECT で登録者が多く増える。連打すると空振りで損。</div>
+                <div className="text-xs text-slate-500 leading-relaxed">1 つの丸に 1 回だけ。ズレが小さいほど PERFECT で登録者が多く増える。連打すると空振りで損。曲の途中で画面がいろんな音ゲー風に変わる（MODE CHANGE）けど、やることは同じ。</div>
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <span className="w-9 h-9 rounded-full bg-pink-500 border-4 border-white shadow text-white text-xs font-black flex items-center justify-center">な！</span>
                   <span className="text-slate-300 font-black">←</span>

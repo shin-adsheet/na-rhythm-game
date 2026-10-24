@@ -73,6 +73,7 @@ export type EndingScene =
   | 'explode' | 'rocket' | 'fire' | 'legend' | 'nafy' | 'god'
   | 'bottom' | 'silent' | 'cat' | 'sleep'
   | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff' | 'ban' | 'dictator'
+  | 'peace' | 'arcade' | 'quake' | 'invasion' | 'meteor'
   // 10秒・30秒用のしょぼいエンディング
   | 'bulb' | 'kairanban' | 'mom' | 'yurukyara' | 'boya' | 'snooze' | 'self' | 'almost';
 
@@ -114,4 +115,6 @@ export interface RunStats {
   cutoff: boolean;     // 視聴者 0 で配信終了
   ban: boolean;        // 警告 3 回で BAN
   finished: boolean;   // 曲の最後まで（または強制終了まで）たどり着いた
+  stylesSeen: number;  // 画面チェンジで見た種類
+  styleClean: number;  // 画面チェンジの区間をノーミスで乗り切った数
 }
