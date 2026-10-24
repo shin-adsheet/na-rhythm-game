@@ -1198,7 +1198,7 @@ const Game: React.FC = () => {
           </>
         );
       case 'ENDING':
-        return ending ? <EndingScene ending={ending} isNew={endingIsNew} onDone={() => setGameState('FINISHED')} /> : null;
+        return ending ? <EndingScene ending={ending} isNew={endingIsNew} volume={settings.volume} audioCtx={playerRef.current?.ctx ?? null} onDone={() => setGameState('FINISHED')} /> : null;
       case 'FINISHED': return renderFinished();
     }
   };

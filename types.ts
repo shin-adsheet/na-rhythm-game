@@ -72,7 +72,9 @@ export interface Achievement {
 export type EndingScene =
   | 'explode' | 'rocket' | 'fire' | 'legend' | 'nafy' | 'god'
   | 'bottom' | 'silent' | 'cat' | 'sleep'
-  | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff' | 'ban' | 'dictator';
+  | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff' | 'ban' | 'dictator'
+  // 10秒・30秒用のしょぼいエンディング
+  | 'bulb' | 'kairanban' | 'mom' | 'yurukyara' | 'boya' | 'snooze' | 'self' | 'almost';
 
 export interface Ending {
   id: string;
@@ -86,6 +88,7 @@ export interface Ending {
   lines: string[];      // タイプライターで出るテキスト
   oneLiner: string;     // 結果画面に出る一言（元の「（あなたの名を伝えすぎて、世界が爆発しました）」と同じ形式）
   durationMs: number;   // 演出時間
+  short?: boolean;      // 10秒・30秒モード専用（しょぼい）
 }
 
 /** 1プレイの結果（実績・エンディング判定に使う） */
