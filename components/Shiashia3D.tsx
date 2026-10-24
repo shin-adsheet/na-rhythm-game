@@ -1,3 +1,4 @@
+import { pixelRatioCap } from '../utils/perf';
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { buildELGirl } from './shia/model.js';
@@ -99,7 +100,7 @@ const Shiashia3D: React.FC<Props> = ({
 
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(pixelRatioCap(1.5));
     renderer.setSize(size, size);
     renderer.setClearColor(0x000000, 0);
     mount.appendChild(renderer.domElement);

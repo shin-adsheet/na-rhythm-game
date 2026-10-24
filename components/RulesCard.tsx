@@ -1,10 +1,11 @@
 import React from 'react';
-import { GameMode } from '../types';
-import { MODE_LABEL } from '../constants';
+import { GameMode, Difficulty } from '../types';
+import { MODE_LABEL, DIFF_LABEL } from '../constants';
 import { QUOTA, MILESTONES, fmtSubs, BAN_STRIKES } from '../utils/economy';
 
 interface Props {
   mode: GameMode;
+  difficulty: Difficulty;
   input: 'mic' | 'tap';
   ready: boolean;          // 曲の読み込みが終わったか
   offsetMs: number | null;
@@ -16,7 +17,7 @@ interface Props {
 }
 
 /** ゲーム開始前の説明（視聴者ゲージ・炎上・ノルマ） */
-const RulesCard: React.FC<Props> = ({ mode, input, ready, offsetMs, skip, onSkipChange, onStart, onCalibrate, onBack }) => {
+const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, skip, onSkipChange, onStart, onCalibrate, onBack }) => {
   const quota = QUOTA[mode];
   const ms = MILESTONES.find((m) => m.subs === quota);
   return (
@@ -24,7 +25,7 @@ const RulesCard: React.FC<Props> = ({ mode, input, ready, offsetMs, skip, onSkip
       <div className="min-h-full flex items-center justify-center p-4">
         <div className="rules-in bg-white/95 rounded-[2rem] border-8 border-yellow-300 shadow-2xl w-full max-w-lg p-5 md:p-6 flex flex-col gap-4">
           <div className="text-center">
-            <div className="text-xs font-black text-slate-400 tracking-widest">{MODE_LABEL[mode]}モード</div>
+            <div className="text-xs font-black text-slate-400 tracking-widest">{MODE_LABEL[mode]}モード・{DIFF_LABEL[difficulty]}</div>
             <div className="text-2xl md:text-3xl font-black text-slate-800 mt-1">
               ノルマ　<span className="text-pink-500">登録者 {fmtSubs(quota)}人</span>
             </div>
@@ -49,7 +50,7 @@ const RulesCard: React.FC<Props> = ({ mode, input, ready, offsetMs, skip, onSkip
             <li className="flex gap-3 items-start">
               <span className="shrink-0 w-8 h-8 rounded-full bg-red-600 text-white font-black flex items-center justify-center">2</span>
               <div className="min-w-0">
-                <div className="font-black text-slate-800">「炎上した！黙れ！」が来たら、黙る</div>
+                <div className="font-black text-slate-800">「炎上した！黙れ！」が来たら、黙る{mode === '10s' ? '（10秒モードにはない）' : ''}</div>
                 <div className="text-xs text-slate-500 leading-relaxed">赤い帯の間に声を出すと「火に油」。登録者が減って、警告が 1 つ。警告 {BAN_STRIKES} つで BAN（強制終了）。黙りきると鎮火して視聴者が戻る。</div>
                 <div className="mt-1.5 inline-flex items-center bg-red-600 text-white text-xs font-black px-3 py-1 rounded-lg">炎上 黙れ！</div>
               </div>

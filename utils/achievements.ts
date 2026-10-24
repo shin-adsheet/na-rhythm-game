@@ -43,7 +43,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'cutoff', group: '炎上', title: '過疎', description: '視聴者ゲージ 0 で配信終了', icon: '過', rarity: 'normal', secret: true },
   // --- バズ ---
   { id: 'buzz_1', group: 'バズ', title: 'バズった', description: '視聴者ゲージを満員にしてバズる', icon: '拡', rarity: 'normal' },
-  { id: 'buzz_3', group: 'バズ', title: '連続バズ', description: '1 回のプレイで 3 回バズる', icon: '爆', rarity: 'rare' },
+  { id: 'buzz_3', group: 'バズ', title: '連続バズ', description: '1 回のプレイで 3 回バズる', icon: '爆', rarity: 'uncommon' },
   // --- special「な」 ---
   { id: 'item_1', group: 'special', title: 'special「な」', description: 'special「な」を 1 回使う', icon: '特', rarity: 'normal' },
   { id: 'item_5', group: 'special', title: 'アイテム好き', description: '1 回のプレイで special「な」を 5 回使う', icon: '袋', rarity: 'uncommon' },
@@ -111,7 +111,7 @@ export function evaluate(
   c('item_1', (r.items ?? 0) >= 1); c('item_5', (r.items ?? 0) >= 5);
   c('item_all', life.itemsSeen.length >= ITEMS.length);
 
-  c('arcade_tour', run.stylesSeen >= 8); c('ending_3', endingsSeen >= 3); c('ending_8', endingsSeen >= 8); c('ending_all', endingsSeen >= totalEndings);
+  c('arcade_tour', (r.stylesSeen ?? 0) >= 8); c('ending_3', endingsSeen >= 3); c('ending_8', endingsSeen >= 8); c('ending_all', endingsSeen >= totalEndings);
 
   c('first_na', (r.hits ?? 0) >= 1 || life.totalHits >= 1);
   c('calibrated', life.calibrated);

@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { NoteState, BurnState } from '../utils/judge';
 import { BEAT } from '../utils/chart';
 import { StyleSeg, TrackStyle, laneOf, segIndexAt } from '../utils/arcade';
+import { pixelRatioCap } from '../utils/perf';
 
 /**
  * 譜面（canvas で描く。毎フレーム曲の時計から位置を計算するので、BPM が変わってもずれない）
@@ -20,6 +21,8 @@ interface Props {
 
 const FONT = "'Mochiy Pop One', sans-serif";
 const TRANSITION = 0.35;   // 切り替えのクロスフェード（秒）
+/** 音符が見えてから判定に来るまでの時間（秒）。どの画面でも同じにして、切り替えても目が慣れたままにする */
+const LEAD_ALL = 1.2;
 
 interface D {
   c: CanvasRenderingContext2D; W: number; H: number; t: number; f: Flags;
@@ -35,7 +38,7 @@ const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, schedul
     let raf = 0;
     let W = 0, H = 0, dpr = 1;
     const resize = () => {
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+      dpr = pixelRatioCap(2);
       W = cv.clientWidth; H = cv.clientHeight;
       cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     };
@@ -145,7 +148,7 @@ const beatsInView = (d: D, lead: number) => {
  * ============================================================ */
 function drawLane(d: D) {
   const { c, W, H, f, pulse } = d;
-  const LEAD = 1.35;
+  const LEAD = LEAD_ALL;
   const cy = H / 2;
   const jx = Math.max(64, W * 0.16);
   const span = W - jx - 16;
@@ -204,7 +207,7 @@ function drawLane(d: D) {
  * ============================================================ */
 function drawFall(d: D) {
   const { c, W, H, f, pulse } = d;
-  const LEAD = 1.0;
+  const LEAD = LEAD_ALL;
   const PW = Math.min(W * 0.66, 300), x0 = (W - PW) / 2, lw = PW / 7;
   const top = 6, jy = H * 0.82;
   const yAt = (u: number) => jy - u * (jy - top);
@@ -261,7 +264,7 @@ function drawFall(d: D) {
  * ============================================================ */
 function drawDrum(d: D) {
   const { c, W, H, pulse } = d;
-  const LEAD = 1.0;
+  const LEAD = LEAD_ALL;
   const cy = H / 2, bandH = Math.min(92, H - 12);
   const jx = Math.max(70, W * 0.17);
   const xAt = (u: number) => jx + u * (W - jx - 12);
@@ -308,7 +311,7 @@ function drawDrum(d: D) {
  * ============================================================ */
 function drawRing(d: D) {
   const { c, W, H, t, pulse } = d;
-  const LEAD = 0.9;
+  const LEAD = LEAD_ALL;
   const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.42, hub = Math.max(22, R * 0.17);
   const ang = (k: number) => -Math.PI / 2 + (k + 0.5) * (Math.PI / 4);
 
@@ -358,7 +361,7 @@ function drawRing(d: D) {
  * ============================================================ */
 function drawHighway(d: D) {
   const { c, W, H, f, pulse } = d;
-  const LEAD = 1.25;
+  const LEAD = LEAD_ALL;
   const cx = W / 2, vpY = H * 0.02, jy = H * 0.84, half = Math.min(W * 0.46, 210);
   const sOf = (u: number) => 1 / (1 + Math.max(-0.2, u) * 3);   // u=0 → 1（手前）、u=1 → 0.25（奥）
   const yOf = (s: number) => vpY + (jy - vpY) * s;
@@ -423,7 +426,7 @@ function drawHighway(d: D) {
  * ============================================================ */
 function drawPanel(d: D) {
   const { c, W, H, t, f } = d;
-  const LEAD = 0.7;
+  const LEAD = LEAD_ALL;
   const G = Math.min(W * 0.8, H * 0.94, 340), x0 = (W - G) / 2, y0 = (H - G) / 2, gap = 7, cs = (G - gap * 3) / 4;
   const cell = (k: number) => ({ x: x0 + (k % 4) * (cs + gap), y: y0 + Math.floor(k / 4) * (cs + gap) });
 
@@ -483,7 +486,7 @@ function arrowPath(c: CanvasRenderingContext2D, x: number, y: number, size: numb
 const ROT = [-Math.PI / 2, Math.PI, 0, Math.PI / 2];   // ← ↓ ↑ →
 function drawStep(d: D) {
   const { c, W, H, pulse } = d;
-  const LEAD = 1.1;
+  const LEAD = LEAD_ALL;
   const AW = Math.min(W * 0.72, 300), x0 = (W - AW) / 2, lw = AW / 4, ry = H * 0.14;
   const yAt = (u: number) => ry + u * (H - ry);
   const size = Math.min(lw * 0.82, 62);
@@ -526,7 +529,7 @@ function drawStep(d: D) {
  * ============================================================ */
 function drawRail(d: D) {
   const { c, W, H, t, pulse } = d;
-  const LEAD = 1.6;
+  const LEAD = LEAD_ALL;
   const x0 = Math.max(70, W * 0.16), cy = H / 2, amp = Math.min(H * 0.3, 110);
   const P = (s: number) => ({ x: x0 + s * (W - x0 - 24), y: cy + amp * Math.sin(s * Math.PI * 2.4 - t * 1.2) * Math.min(1, Math.max(0, s) * 2.2) });
   const path = (s0: number, s1: number) => {
@@ -578,7 +581,7 @@ function drawRail(d: D) {
 const POP_COLORS = ['#f9a8d4', '#fdba74', '#fde047', '#bef264', '#6ee7b7', '#7dd3fc', '#a5b4fc', '#d8b4fe', '#fda4af'];
 function drawPop(d: D) {
   const { c, W, H, pulse } = d;
-  const LEAD = 1.1;
+  const LEAD = LEAD_ALL;
   const PW = Math.min(W * 0.94, 430), x0 = (W - PW) / 2, lw = PW / 9, by = H * 0.84;
   const yAt = (u: number) => by - u * (by - 4);
   const br = Math.min(lw * 0.46, 22);

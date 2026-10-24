@@ -1,3 +1,4 @@
+import { pixelRatioCap } from '../utils/perf';
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { makeRig, restAll } from './Shiashia3D';
@@ -74,7 +75,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat }) => {
     const camera = new THREE.PerspectiveCamera(30, 1, 10, 50000);
     const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    renderer.setPixelRatio(pixelRatioCap(1.5));
     renderer.setSize(size, size);
     renderer.setClearColor(0x000000, 0);
     mount.appendChild(renderer.domElement);

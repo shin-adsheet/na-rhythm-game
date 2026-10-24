@@ -1,4 +1,11 @@
-import { GameMode } from './types';
+import { GameMode, Difficulty } from './types';
+
+export const DIFF_LABEL: Record<Difficulty, string> = { easy: 'かんたん', normal: 'ふつう', hard: 'むずかしい' };
+export const DIFF_DESC: Record<Difficulty, string> = {
+  easy: '2分・4分だけ。声で遊ぶならここから',
+  normal: '4分＋曲のキックに合わせたウラ拍',
+  hard: '8分の連打。タップ向け',
+};
 
 export const MODE_LABEL: Record<GameMode, string> = {
   '10s': '10秒',
@@ -7,9 +14,9 @@ export const MODE_LABEL: Record<GameMode, string> = {
 };
 
 export const MODE_DESC: Record<GameMode, string> = {
-  '10s': '曲の頭 10 秒。まずはここから（エンディングはしょぼい）',
-  '30s': '曲の頭 30 秒。炎上が 1 回ある（エンディングはしょぼい）',
-  'FULL': '1 曲まるごと。炎上が 5 回ある（エンディングが豪華）',
+  '10s': '曲の頭 10 秒。炎上も画面チェンジもない入門（エンディングはしょぼい）',
+  '30s': '曲の頭 30 秒。炎上 1 回・画面チェンジあり（エンディングはしょぼい）',
+  'FULL': '1 曲まるごと。炎上 5 回・画面チェンジ 9 回（エンディングが豪華）',
 };
 
 /** ローカルストレージのキー */
@@ -20,7 +27,7 @@ export const LS_KEYS = {
   offsets: 'rhythm_na_offsets',
   settings: 'rhythm_na_settings',
   skipRules: 'rhythm_na_skip_rules',
-  scores: (mode: GameMode) => `rhythm_na_subs_v2_${mode}`,
+  scores: (mode: GameMode, d: Difficulty = 'normal') => `rhythm_na_subs_v3_${mode}_${d}`,
 };
 
 /** 背景に流れるコメント */

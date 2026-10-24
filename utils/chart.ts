@@ -8,7 +8,7 @@
  *
  * 曲を差し替えたときは、ここの数字だけ直せば譜面ごと入れ替わる。
  */
-import { GameMode } from '../types';
+import { GameMode, Difficulty } from '../types';
 
 export const BPM = 175;
 export const BEAT = 60 / BPM;          // 4分（秒）
@@ -45,19 +45,83 @@ export interface BurnSection { start: number; end: number; t0: number; t1: numbe
 
 export const burnAt = (i: number) => BURNS.findIndex(([a, b]) => i >= a && i <= b);
 
-export function buildChart(mode: GameMode) {
+/**
+ * 曲の構成（8分の番号）。1 小節 = 8 個で、小節の頭は 17, 25, 33 …（小節の中の位置 0〜7。偶数＝4分の拍）
+ * 解析：キックが 4 分で鳴り続けるのは 73〜200・225〜288・345〜415。サビでは位置 5（3 拍目のウラ）にもキック。
+ */
+type Section = 'intro' | 'drive' | 'break' | 'drive2' | 'quiet' | 'final';
+export const sectionOf = (i: number): Section =>
+  i < 73 ? 'intro' : i <= 200 ? 'drive' : i <= 224 ? 'break' : i <= 288 ? 'drive2' : i <= 344 ? 'quiet' : 'final';
+const BAR0 = FIRST_NOTE;
+export const barPos = (i: number) => (((i - BAR0) % 8) + 8) % 8;
+const barNo = (i: number) => Math.floor((i - BAR0) / 8);
+
+/** 画面チェンジの切り替え位置（小節の頭・8分の番号）。その前の 6 個は休みにして、切り替えの間に目を慣らす */
+export const SWITCH_AT = [49, 97, 137, 177, 225, 257, 305, 353, 385];
+export const SWITCH_REST = 6;
+const inSwitchRest = (i: number) => SWITCH_AT.some((s) => i >= s - SWITCH_REST && i < s);
+
+/**
+ * 難易度ごとの「その 8 分に音符を置くか」
+ *  かんたん：2 分〜4 分だけ（声でも無理なく言える。1 秒に 3 回まで）
+ *  ふつう　：4 分＋曲のキックに合わせた 8 分（3 拍目のウラ）。4 小節ごとに息つぎ
+ *  むずかしい：8 分の連続（息つぎの休みだけ）
+ */
+function place(i: number, d: Difficulty): boolean {
+  const p = barPos(i), bar = barNo(i), sec = sectionOf(i);
+  const lastOf4 = bar % 4 === 3;          // 4 小節のまとまりの最後
+  switch (d) {
+    case 'easy':
+      if (p % 2) return false;
+      if (sec === 'quiet') return p === 0;
+      if (sec === 'intro' || sec === 'break') return p === 0 || p === 4;
+      if (lastOf4) return p === 0 || p === 4;
+      return p !== 6;
+    case 'normal':
+      if (sec === 'quiet') return p === 0 || p === 4;
+      if (sec === 'intro') return p % 2 === 0 && !(p === 6 && bar % 2 === 1);
+      if (sec === 'break') return p % 2 === 0;
+      if (lastOf4 && p >= 6) return false;   // 息つぎ
+      if (p % 2 === 0) return true;
+      if (p === 5) return true;              // キックのウラ
+      return sec === 'drive2' && p === 7 && bar % 2 === 1;
+    case 'hard':
+    default:
+      if (lastOf4 && p === 7) return false;
+      if (sec === 'quiet') return p % 2 === 0;
+      return true;
+  }
+}
+
+/** 登録者の増え方の基準（曲が進むほど大きい）。難易度で音符の数が違っても、ノルマへの届きやすさをそろえるのに使う */
+const weightAt = (t: number) => Math.pow(10, Math.max(0, t - 3.1) / 22);
+
+function rawChart(mode: GameMode, d: Difficulty) {
   const endT = MODE_END_TIME[mode];
+  const useBurns = mode !== '10s';          // 10 秒は入門なので炎上なし
   const notes: ChartNote[] = [];
   for (let i = FIRST_NOTE; i <= LAST_NOTE; i++) {
     const t = timeOf(i);
     if (t >= endT) break;
-    if (burnAt(i) >= 0) continue;
-    notes.push({ i, t, strong: i % 2 === 1 });   // 奇数番＝4分の拍（大きい丸）
+    if (useBurns && burnAt(i) >= 0) continue;
+    if (mode !== '10s' && inSwitchRest(i)) continue;
+    if (!place(i, d)) continue;
+    notes.push({ i, t, strong: barPos(i) % 2 === 0 });   // 4分の拍＝大きい丸
   }
-  const burns: BurnSection[] = BURNS
+  const burns: BurnSection[] = useBurns ? BURNS
     .map(([a, b], id) => ({ start: a, end: b, t0: timeOf(a) - EIGHTH / 2, t1: timeOf(b) + EIGHTH / 2, id }))
-    .filter((s) => s.t0 < endT);
+    .filter((s) => s.t0 < endT) : [];
   return { notes, burns, endT, firstT: timeOf(FIRST_NOTE) };
+}
+
+export function buildChart(mode: GameMode, d: Difficulty = 'normal') {
+  const c = rawChart(mode, d);
+  // むずかしいを基準に、1 音符あたりの登録者の増え方を大きくする
+  const w = (n: ChartNote[]) => n.reduce((a, x) => a + weightAt(x.t), 0);
+  const gainMul = d === 'hard' ? 1 : w(rawChart(mode, 'hard').notes) / Math.max(1e-9, w(c.notes));
+  // 視聴者ゲージの増え方も、音符が少ないほど大きく
+  const density = rawChart(mode, 'hard').notes.length / Math.max(1, c.notes.length);
+  return { ...c, gainMul, viewerMul: Math.sqrt(density), comboFull: Math.max(15, Math.round(60 / density)), difficulty: d };
 }
 
 /** 判定の幅（秒） */

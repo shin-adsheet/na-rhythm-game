@@ -1,0 +1,12 @@
+/* Tailwind（Vite で事前にビルドする。以前は CDN で毎回ブラウザの中で作っていた） */
+@import "tailwindcss";
+
+/* Tailwind v3 のころと同じ見た目にするための差分 */
+@theme {
+  --blur-sm: 4px;
+  --radius-sm: 0.125rem;
+}
+@layer base {
+  *, ::after, ::before, ::backdrop, ::file-selector-button { border-color: var(--color-gray-200, currentColor); }
+  button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+}

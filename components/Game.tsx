@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { GameState, GameMode, ScoreEntry, NaParticle, RunStats, Ending } from '../types';
-import { MODE_LABEL, MODE_DESC, LS_KEYS } from '../constants';
+import { GameState, GameMode, Difficulty, ScoreEntry, NaParticle, RunStats, Ending } from '../types';
+import { MODE_LABEL, MODE_DESC, LS_KEYS, DIFF_LABEL, DIFF_DESC } from '../constants';
 import { buildChart, BEAT, EIGHTH } from '../utils/chart';
 import { JudgeEngine, NoteState, BurnState } from '../utils/judge';
 import {
@@ -16,6 +16,7 @@ import NaEffects from './NaEffects';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import ShiashiaSeated, { STORY } from './ShiashiaSeated';
 import Track from './Track';
+import { perf, guessLite } from '../utils/perf';
 import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO } from '../utils/arcade';
 import EventCutIn, { CutInData } from './EventCutIn';
 import CommentStream, { CommentMood } from './CommentStream';
@@ -23,6 +24,7 @@ import Calibration from './Calibration';
 import RulesCard from './RulesCard';
 import AchievementToasts, { ToastItem } from './AchievementToast';
 import EndingScene from './EndingScene';
+import ResultScreen from './ResultScreen';
 import CollectionBook from './CollectionBook';
 
 /* ============================================================
@@ -39,14 +41,14 @@ const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
   { id: 'original', label: '原曲', file: 'bgm/top.mp3' },
 ];
 
-interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean }
-const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true };
+interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean }
+const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite() };
 const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 type Offsets = { mic: number | null; tap: number | null };
 
-const emptyRun = (mode: GameMode): RunStats => ({
-  mode, subs: 0, quota: QUOTA[mode], cleared: false, hits: 0, perfect: 0, great: 0, good: 0, misses: 0, extras: 0,
+const emptyRun = (mode: GameMode, difficulty: Difficulty = 'normal', notesTotal = 0): RunStats => ({
+  mode, difficulty, notesTotal, subs: 0, quota: QUOTA[mode], cleared: false, hits: 0, perfect: 0, great: 0, good: 0, misses: 0, extras: 0,
   fuels: 0, burnsKept: 0, burnsTotal: 0, maxCombo: 0, buzzes: 0, items: 0, pokes: 0, pauses: 0, cutoff: false, ban: false, finished: false, stylesSeen: 0, styleClean: 0,
 });
 
@@ -142,6 +144,10 @@ const Game: React.FC = () => {
   const setOffset = (k: 'mic' | 'tap', v: number | null) => setOffsetsState((o) => { const n = { ...o, [k]: v }; saveJSON(LS_KEYS.offsets, n); return n; });
   const offsetsRef = useRef(offsets); offsetsRef.current = offsets;
   const settingsRef = useRef(settings); settingsRef.current = settings;
+  // かるいモード（設定、またはプレイ中に重いと分かったら自動で）
+  const [liteAuto, setLiteAuto] = useState(false);
+  const lite = !!settings.lite || liteAuto;
+  perf.lite = lite;
   const input: 'mic' | 'tap' = TAP_ONLY ? 'tap' : settings.input;
   const [skipRules, setSkipRules] = useState(() => { try { return localStorage.getItem(LS_KEYS.skipRules) === '1'; } catch { return false; } });
   const [bgmUrl, setBgmUrl] = useState(DEFAULT_BGM);
@@ -149,6 +155,7 @@ const Game: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [vp, setVp] = useState({ w: typeof window !== 'undefined' ? window.innerWidth : 800, h: typeof window !== 'undefined' ? window.innerHeight : 600 });
   const isMobile = vp.w < 768;
+  const isMobileRef = useRef(isMobile); isMobileRef.current = isMobile;
 
   // --- 永続データ ---
   const [unlocked, setUnlocked] = useState<Record<string, number>>(() => loadUnlocked());
@@ -260,10 +267,11 @@ const Game: React.FC = () => {
   const seenEnds = () => loadSeenEndings();
   const bumpLife = (p: Partial<LifetimeStats>) => { lifeRef.current = { ...lifeRef.current, ...p }; saveLifetime(lifeRef.current); };
 
-  const loadScores = useCallback((m: GameMode) => {
-    try { setHighScores(JSON.parse(localStorage.getItem(LS_KEYS.scores(m)) || '[]')); } catch { setHighScores([]); }
+  const difficulty: Difficulty = settings.difficulty || 'normal';
+  const loadScores = useCallback((m: GameMode, d: Difficulty) => {
+    try { setHighScores(JSON.parse(localStorage.getItem(LS_KEYS.scores(m, d)) || '[]')); } catch { setHighScores([]); }
   }, []);
-  useEffect(() => { loadScores(mode); }, [mode, loadScores]);
+  useEffect(() => { loadScores(mode, difficulty); }, [mode, difficulty, loadScores]);
 
   // マイクの設定を反映
   useEffect(() => { micRef.current.threshold = settings.threshold; }, [settings.threshold]);
@@ -322,9 +330,10 @@ const Game: React.FC = () => {
   const flashMood = (m: ShiashiaMood, ms: number) => { setTempMood(m); setTimeout(() => setTempMood((x) => (x === m ? null : x)), ms); };
 
   const spawnBackgroundNa = () => {
+    if (perf.lite || (isMobileRef.current && Math.random() < 0.5)) return;
     const ps = createParticles(pickVariant(rollRarity(flagsRef.current.buzz)), 'normal');
     if (flagsRef.current.nu) ps.forEach((p) => { p.text = p.text.replace(/な/g, 'ぬ'); });
-    setParticles((prev) => [...prev, ...ps].slice(-70));
+    setParticles((prev) => [...prev, ...ps].slice(isMobileRef.current ? -30 : -70));
   };
   useEffect(() => {
     const iv = setInterval(() => setParticles((prev) => {
@@ -413,8 +422,10 @@ const Game: React.FC = () => {
       if (comboRef.current > run.maxCombo) run.maxCombo = comboRef.current;
       const fx = effectsRef.current;
       const mul = (flagsRef.current.buzz ? 2 : 1) * (fx.some((x) => x.id === 'superchat') ? 3 : 1) * (flagsRef.current.nu ? 0.7 : 1);
-      addSubs(gainFor(r.note.t, j, comboRef.current, viewersRef.current, mul));
-      setViewersV(viewersRef.current + VIEWERS.hit[j]);
+      const ch = chartRef.current;
+      addSubs(gainFor(r.note.t, j, comboRef.current, viewersRef.current, mul * ch.gainMul, ch.comboFull));
+      // バズ中は視聴者が増えない（バズを連発しないように）
+      if (!flagsRef.current.buzz) setViewersV(viewersRef.current + VIEWERS.hit[j] * ch.viewerMul);
       hitRef.current = performance.now();
       flagsRef.current.lastHit = hitRef.current;
       showJudge(j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GREAT' : 'GOOD', j === 'perfect' ? 'text-amber-400' : j === 'great' ? 'text-pink-500' : 'text-sky-500');
@@ -532,16 +543,17 @@ const Game: React.FC = () => {
   const startPlay = async () => {
     const p = playerRef.current;
     if (!p) return;
-    const ch = buildChart(mode);
+    const ch = buildChart(mode, settingsRef.current.difficulty || 'normal');
     chartRef.current = ch;
-    scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false);
+    // 10 秒は入門なので画面チェンジなし
+    scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false && mode !== '10s');
     segDirtyRef.current = new Set();
     setTrackStyle('lane'); setStyleBanner(null);
     const eng = new JudgeEngine(ch.notes, ch.burns);
     engineRef.current = eng;
     notesRef.current = eng.notes;
     burnsRef.current = eng.burns;
-    runRef.current = emptyRun(mode);
+    runRef.current = emptyRun(mode, ch.difficulty, ch.notes.length);
     flagsRef.current = { mirror: false, hidden: false, nu: false, buzz: false, lastHit: 0, lastJudge: '' };
     subsRef.current = 0; peakSubsRef.current = 0; comboRef.current = 0; strikesRef.current = 0;
     buzzUntilRef.current = -1; effectsRef.current = []; milestoneIdxRef.current = 0;
@@ -551,7 +563,7 @@ const Game: React.FC = () => {
     setSpecials([]); setParticles([]); setEnding(null); setTempMood(null); setBanFlash(false); setTimePct(1); setCommentMood('normal');
     clearCuts();
     try {
-      const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(LS_KEYS.scores(mode)) || '[]');
+      const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(LS_KEYS.scores(mode, ch.difficulty)) || '[]');
       prevBestRef.current = prev.length ? Math.max(...prev.map((e) => e.score)) : 0;
     } catch { prevBestRef.current = 0; }
     p.setVolume(settingsRef.current.volume);
@@ -637,7 +649,7 @@ const Game: React.FC = () => {
       setSeenEndings(nextSeen);
       // 記録
       bumpLife({ plays: lifeRef.current.plays + 1, totalHits: lifeRef.current.totalHits + run.hits });
-      const key = LS_KEYS.scores(run.mode);
+      const key = LS_KEYS.scores(run.mode, run.difficulty);
       let scores: ScoreEntry[] = [];
       try { scores = JSON.parse(localStorage.getItem(key) || '[]'); } catch { /* noop */ }
       isNewRecordRef.current = run.subs > prevBestRef.current && run.subs > 0;
@@ -673,8 +685,16 @@ const Game: React.FC = () => {
     if (gameState !== 'PLAYING') return;
     let raf = 0;
     let lastUi = 0;
+    // 重さの見張り：3 秒間の平均が 1 コマ 28ms（約 35fps）より遅ければ、かるいモードにする
+    let fpsT0 = performance.now(), fpsN = 0;
     const loop = () => {
       raf = requestAnimationFrame(loop);
+      fpsN++;
+      const nowF = performance.now();
+      if (nowF - fpsT0 > 3000) {
+        if ((nowF - fpsT0) / fpsN > 28 && !perf.lite) setLiteAuto(true);
+        fpsT0 = nowF; fpsN = 0;
+      }
       const p = playerRef.current, e = engineRef.current;
       if (!p || !e || finishingRef.current) return;
       const t = p.time();
@@ -748,7 +768,7 @@ const Game: React.FC = () => {
         const k = segIndexAt(segs, t);
         setTrackStyle((x) => (x === segs[k].style ? x : segs[k].style));
         const nx = segs[k + 1];
-        const bn = nx && nx.t - t < 1.3 ? { id: k + 1, style: nx.style } : k > 0 && t - segs[k].t < 0.8 ? { id: k, style: segs[k].style } : null;
+        const bn = nx && nx.t - t < 2.2 ? { id: k + 1, style: nx.style } : k > 0 && t - segs[k].t < 0.9 ? { id: k, style: segs[k].style } : null;
         setStyleBanner((x) => (x?.id === bn?.id ? x : bn));
       }
 
@@ -810,6 +830,9 @@ const Game: React.FC = () => {
         <input id="vol" type="range" min="0" max="1" step="0.05" value={settings.volume} onChange={(e) => setSettings({ volume: parseFloat(e.target.value) })} className="w-full" />
         <label className="flex items-center gap-2 mt-2 text-xs font-bold text-sky-700" htmlFor="clicks">
           <input id="clicks" type="checkbox" checked={settings.clicks} onChange={(e) => setSettings({ clicks: e.target.checked })} /> 拍にクリック音を入れる
+        </label>
+        <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="lite">
+          <input id="lite" type="checkbox" checked={lite} onChange={(e) => { setLiteAuto(false); setSettings({ lite: e.target.checked }); }} /> かるいモード（重いときに。画面の細かさと背景の飾りを減らす）
         </label>
         <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="arcade">
           <input id="arcade" type="checkbox" checked={settings.arcade !== false} onChange={(e) => setSettings({ arcade: e.target.checked })} /> 画面チェンジ（譜面がいろんな音ゲー風に切り替わる）
@@ -912,17 +935,26 @@ const Game: React.FC = () => {
           {/* 右：あそぶ */}
           <div className="flex flex-col gap-3 min-w-0 w-full max-w-md mx-auto">
             <div className="bg-white/90 backdrop-blur rounded-2xl p-3 shadow-[0_4px_0_rgba(0,0,0,0.08)] border-4 border-white flex flex-col gap-2">
-              <div className="text-cyan-600 font-bold text-center text-sm">モードをえらんでね</div>
+              <div className="text-cyan-600 font-bold text-center text-sm">モードとむずかしさ</div>
               <div className="grid grid-cols-3 gap-2">
                 {(['10s', '30s', 'FULL'] as GameMode[]).map((m) => (
                   <button key={m} onClick={() => setMode(m)}
-                    className={`py-3 px-1 rounded-xl transition-all flex flex-col items-center gap-0.5 ${mode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706] -translate-y-px' : 'bg-gray-100 text-gray-500'}`}>
+                    className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center gap-0.5 ${mode === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706] -translate-y-px' : 'bg-gray-100 text-gray-500'}`}>
                     <span className="font-black text-base">{MODE_LABEL[m]}</span>
                     <span className="text-[10px] font-bold">ノルマ {fmtSubs(QUOTA[m])}人</span>
                   </button>
                 ))}
               </div>
-              <div className="text-[11px] text-slate-500 text-center font-bold">{MODE_DESC[mode]}</div>
+              <div className="text-[10px] text-slate-500 text-center font-bold leading-snug">{MODE_DESC[mode]}</div>
+              <div className="grid grid-cols-3 gap-2 mt-0.5">
+                {(['easy', 'normal', 'hard'] as Difficulty[]).map((d) => (
+                  <button key={d} onClick={() => setSettings({ difficulty: d })}
+                    className={`py-1.5 px-1 rounded-xl transition-all font-black text-sm ${difficulty === d ? (d === 'easy' ? 'bg-emerald-400 text-white shadow-[0_3px_0_#059669]' : d === 'normal' ? 'bg-sky-400 text-white shadow-[0_3px_0_#0284c7]' : 'bg-rose-500 text-white shadow-[0_3px_0_#be123c]') + ' -translate-y-px' : 'bg-gray-100 text-gray-500'}`}>
+                    {DIFF_LABEL[d]}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] text-slate-500 text-center font-bold leading-snug">{DIFF_DESC[difficulty]}{input === 'mic' && difficulty === 'hard' ? '（声だと速すぎるかも）' : ''}</div>
             </div>
 
             <button onClick={handleStart} className="group relative w-full focus:outline-none transition-transform active:scale-95 duration-200 h-[104px] md:h-[132px]">
@@ -930,7 +962,7 @@ const Game: React.FC = () => {
               <div className="absolute inset-0 bg-gradient-to-b from-pink-400 to-pink-500 rounded-[2rem] border-4 border-white flex flex-col items-center justify-center overflow-hidden">
                 <div className="absolute top-[-30%] left-[-10%] w-32 h-32 bg-white/20 rotate-45" />
                 <span className="text-4xl md:text-5xl font-black text-white drop-shadow-md z-10">始める！</span>
-                <span className="mt-1.5 z-10 text-sm md:text-base font-bold text-white bg-white/25 rounded-full px-4 py-1">{MODE_LABEL[mode]}で 登録者{fmtSubs(QUOTA[mode])}人 を目指す</span>
+                <span className="mt-1.5 z-10 text-sm md:text-base font-bold text-white bg-white/25 rounded-full px-4 py-1">{MODE_LABEL[mode]}・{DIFF_LABEL[difficulty]}で 登録者{fmtSubs(QUOTA[mode])}人 を目指す</span>
               </div>
             </button>
 
@@ -1051,7 +1083,7 @@ const Game: React.FC = () => {
             <div className="flex items-baseline gap-1 bg-white/80 rounded-full px-3 py-0.5">
               <span className="font-black text-2xl text-slate-800 tabular-nums">{combo}</span>
               <span className="text-[10px] font-black text-slate-500">COMBO</span>
-              <span className="text-xs font-black text-pink-500 ml-1 tabular-nums">×{(comboMul(combo) * viewerMul(viewers) * (buzz ? 2 : 1)).toFixed(1)}</span>
+              <span className="text-xs font-black text-pink-500 ml-1 tabular-nums">×{(comboMul(combo, chartRef.current.comboFull) * viewerMul(viewers) * (buzz ? 2 : 1)).toFixed(1)}</span>
             </div>
           )}
           {judge && <div key={judge.id} className={`judge-pop font-black text-2xl md:text-3xl ${judge.cls}`} style={{ WebkitTextStroke: '4px #fff', paintOrder: 'stroke fill' }}>{judge.text}</div>}
@@ -1104,111 +1136,6 @@ const Game: React.FC = () => {
     );
   };
 
-  const renderFinished = () => {
-    const run = runRef.current;
-    const show = (ms: number) => revealT >= ms;
-    const countK = Math.min(1, Math.max(0, (revealT - 900) / 1500));
-    const shownSubs = Math.round(run.subs * (1 - Math.pow(1 - countK, 3)));
-    const ratio = run.subs / run.quota;
-    const pRate = run.hits > 0 ? run.perfect / run.hits : 0;
-    const bad = run.ban || run.cutoff;
-    const rank = bad ? 'D' : ratio >= 2 && pRate >= 0.7 ? 'S' : ratio >= 1 ? 'A' : ratio >= 0.6 ? 'B' : ratio >= 0.3 ? 'C' : 'D';
-    const rankColor = rank === 'S' ? 'text-amber-400' : rank === 'A' ? 'text-pink-500' : rank === 'B' ? 'text-sky-500' : 'text-slate-500';
-    const newly = runUnlockedRef.current.map((id) => achievementById(id)).filter(Boolean);
-    const Row = ({ k, v, at }: { k: string; v: React.ReactNode; at: number }) => (
-      <div className="bg-gray-100 rounded-xl px-4 py-1.5 w-full flex justify-between gap-2 text-sm">
-        <span className="font-bold text-gray-500">{k}</span><span className="font-black text-slate-700 text-right">{show(at) ? v : '-'}</span>
-      </div>
-    );
-    return (
-      <div className="w-full h-full overflow-y-auto relative z-20">
-        <div className="min-h-full flex flex-col items-center w-full max-w-4xl mx-auto px-4 py-6 justify-center text-center">
-          <h2 className="text-6xl md:text-8xl font-black text-pink-500 drop-shadow-[4px_4px_0_#fff] mb-1 animate-impact">おしまい！</h2>
-          <div className="h-16 md:h-20 flex items-center justify-center">
-            {show(350) && (
-              <div className={`stamp-in font-black text-3xl md:text-5xl px-5 py-1 border-[6px] rounded-2xl -rotate-6 ${run.cleared ? 'text-red-500 border-red-500 bg-white/85' : 'text-slate-500 border-slate-500 bg-white/75'}`}>
-                {run.ban ? 'BAN' : run.cutoff ? '配信終了' : run.cleared ? 'ノルマ達成' : 'ノルマ未達'}
-              </div>
-            )}
-          </div>
-          {ending && show(600) && (
-            <div className="mb-3 flex flex-col items-center gap-2 animate-impact">
-              <div className="bg-slate-800 text-white rounded-2xl px-5 py-2 border-4 border-white shadow-lg flex items-center gap-3">
-                <div className="text-left">
-                  <div className="text-[10px] tracking-widest text-white/60">ENDING No.{String(ending.no).padStart(2, '0')}</div>
-                  <div className="font-black text-lg md:text-xl">{ending.title}</div>
-                </div>
-                {endingIsNew && <span className="bg-yellow-300 text-slate-800 font-black px-2 py-1 rounded-full text-xs -rotate-6">NEW!</span>}
-              </div>
-              <p className="text-sm md:text-xl font-black text-red-500 bg-yellow-200 px-5 py-2 rounded-full border-4 border-white shadow-lg">{ending.oneLiner}</p>
-            </div>
-          )}
-
-          <div className="flex flex-col md:flex-row gap-5 items-center md:items-start w-full justify-center">
-            <div className="relative bg-white/85 backdrop-blur-md p-5 md:p-7 rounded-[2.5rem] border-8 border-yellow-300 shadow-xl flex flex-col items-center gap-1.5 w-full max-w-sm">
-              {show(2400) && (
-                <div className="stamp-in absolute -top-6 -right-4 w-20 h-20 rounded-full bg-white border-[6px] border-slate-800 flex flex-col items-center justify-center shadow-xl rotate-12">
-                  <span className="text-[9px] font-bold text-slate-500 tracking-widest">RANK</span>
-                  <span className={`text-4xl font-black leading-none ${rankColor}`}>{rank}</span>
-                </div>
-              )}
-              {isNewRecordRef.current && show(2600) && (
-                <div className="stamp-in absolute -top-5 left-1/2 -translate-x-1/2 bg-red-500 text-white font-black text-sm px-4 py-1 rounded-full border-4 border-white shadow-lg -rotate-3 whitespace-nowrap">NEW RECORD</div>
-              )}
-              <p className="text-lg text-yellow-500 font-bold">チャンネル登録者数</p>
-              <p className="text-5xl md:text-6xl font-black text-slate-700 tabular-nums">{fmtSubs(show(900) ? shownSubs : 0)}<span className="text-2xl">人</span></p>
-              <p className="text-xs font-bold text-slate-400 tabular-nums">{show(900) ? shownSubs.toLocaleString('ja-JP') : 0}人　/ ノルマ {fmtSubs(run.quota)}人（{ratio >= 1 ? `${ratio.toFixed(1)}倍` : `${Math.floor(ratio * 100)}%`}）</p>
-              <div className="w-full flex flex-col gap-1.5 mt-2">
-                <Row at={1300} k="PERFECT / GREAT / GOOD" v={`${run.perfect} / ${run.great} / ${run.good}`} />
-                <Row at={1500} k="MISS / 空振り" v={`${run.misses} / ${run.extras}`} />
-                <Row at={1700} k="最大コンボ" v={run.maxCombo} />
-                <Row at={1900} k="炎上" v={`鎮火 ${run.burnsKept} / ${run.burnsTotal}　火に油 ${run.fuels}`} />
-                <Row at={2100} k="バズ / special「な」" v={`${run.buzzes}回 / ${run.items}回`} />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-4 w-full max-w-sm">
-              {newly.length > 0 && show(2800) && (
-                <div className="bg-white/90 rounded-[2rem] border-4 border-white shadow-lg p-4 text-left animate-[pop_0.3s]">
-                  <div className="font-black text-slate-700 mb-2">今回 解除した実績</div>
-                  <ul className="flex flex-col gap-1.5">
-                    {newly.map((a) => (
-                      <li key={a!.id} className="flex items-center gap-2">
-                        <span className="w-8 h-8 shrink-0 rounded-lg bg-slate-800 text-white text-sm font-black flex items-center justify-center">{a!.icon}</span>
-                        <span className="min-w-0"><span className="block font-black text-sm text-slate-800 truncate">{a!.title}</span><span className="block text-[10px] text-slate-500 truncate">{a!.description}</span></span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className="bg-sky-100/90 p-5 rounded-[2rem] border-4 border-white shadow-lg">
-                <div className="bg-sky-400 text-white text-lg font-black py-1.5 px-5 rounded-full inline-block mb-3">ランキング（{MODE_LABEL[run.mode]}）</div>
-                <ul className="space-y-1.5">
-                  {highScores.map((e, i) => (
-                    <li key={i} className={`flex justify-between items-center px-4 py-1.5 rounded-xl text-left ${i === 0 ? 'bg-yellow-100 text-yellow-700 font-black border-2 border-yellow-200' : 'bg-white/60 text-slate-600 font-bold'}`}>
-                      <span>#{i + 1}　{fmtSubs(e.score)}人</span>
-                      <span className="text-[10px] text-slate-400 truncate ml-2">{ENDINGS.find((x) => x.id === e.endingId)?.title ?? ''}</span>
-                    </li>
-                  ))}
-                  {highScores.length === 0 && <li className="text-gray-400 py-3">まだきろくがないよ</li>}
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-7 flex flex-col sm:flex-row gap-3 items-center">
-            <button onClick={async () => { setGameState('READY'); }} className="bg-white text-slate-600 font-black px-7 py-3 rounded-full border-4 border-slate-200 shadow">タイトルへ</button>
-            <button onClick={async () => { prepareSong(); if (input === 'mic' && !(await ensureMic())) return; setGameState('RULES'); }} className="relative">
-              <span className="absolute inset-0 translate-y-2 bg-pink-300 rounded-full" />
-              <span className="relative inline-block border-4 border-white px-10 py-3 text-2xl font-black text-white bg-pink-500 rounded-full shadow-lg">もういちど</span>
-            </button>
-            <button onClick={() => setShowBook(true)} className="bg-white text-slate-700 font-black px-7 py-3 rounded-full border-4 border-yellow-300 shadow">ずかん</button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const renderContent = () => {
     switch (gameState) {
       case 'READY': return renderReady();
@@ -1230,7 +1157,7 @@ const Game: React.FC = () => {
         );
       case 'RULES':
         return (
-          <RulesCard mode={mode} input={input} ready={songReady} offsetMs={offsets[input] == null ? null : Math.round(offsets[input]! * 1000)}
+          <RulesCard mode={mode} difficulty={difficulty} input={input} ready={songReady} offsetMs={offsets[input] == null ? null : Math.round(offsets[input]! * 1000)}
             skip={skipRules} onSkipChange={(v) => { setSkipRules(v); try { localStorage.setItem(LS_KEYS.skipRules, v ? '1' : '0'); } catch { /* noop */ } }}
             onStart={startPlay} onCalibrate={() => setGameState('CALIBRATE')} onBack={() => { if (input === 'mic') stopMic(); setGameState('READY'); }} />
         );
@@ -1251,7 +1178,14 @@ const Game: React.FC = () => {
         );
       case 'ENDING':
         return ending ? <EndingScene ending={ending} isNew={endingIsNew} volume={settings.volume} audioCtx={playerRef.current?.ctx ?? null} onDone={() => setGameState('FINISHED')} /> : null;
-      case 'FINISHED': return renderFinished();
+      case 'FINISHED':
+        return (
+          <ResultScreen run={runRef.current} revealT={revealT} ending={ending} endingIsNew={endingIsNew} isNewRecord={isNewRecordRef.current}
+            newlyIds={runUnlockedRef.current} highScores={highScores}
+            onTitle={() => setGameState('READY')}
+            onRetry={async () => { prepareSong(); if (input === 'mic' && !(await ensureMic())) return; setGameState('RULES'); }}
+            onBook={() => setShowBook(true)} />
+        );
     }
   };
 
@@ -1267,7 +1201,10 @@ const Game: React.FC = () => {
       <audio ref={menuBgmRef} loop preload="auto" src={ASSET_BASE + (MENU_BGMS.find((x) => x.id === settings.menuBgm) || MENU_BGMS[0]).file} />
 
       {(playing || gameState === 'PAUSED') && <Crowd subs={subs} buzz={buzz} />}
-      {(playing || gameState === 'PAUSED') && <CommentStream active={playing} level={chaos} mood={commentMood} />}
+      {(playing || gameState === 'PAUSED') && (
+        <CommentStream active={playing} level={lite ? chaos * 0.5 : chaos} mood={commentMood} sparse={isMobile || lite}
+          avoid={(() => { const th = Math.min(420, vp.h * 0.5); const half = trackStyle === 'lane' ? 60 : th / 2; return [((vp.h * 0.54 - half) / vp.h) * 100, ((vp.h * 0.54 + half) / vp.h) * 100] as [number, number]; })()} />
+      )}
       {buzz && playing && <div className="fever-glow absolute inset-0 z-[2] pointer-events-none" />}
       <NaEffects particles={particles} onClickSpecial={() => {}} />
 

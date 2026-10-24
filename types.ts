@@ -1,6 +1,7 @@
 
 export type GameState = 'READY' | 'CALIBRATE' | 'RULES' | 'PLAYING' | 'PAUSED' | 'ENDING' | 'FINISHED';
 export type GameMode = '10s' | '30s' | 'FULL';
+export type Difficulty = 'easy' | 'normal' | 'hard';
 
 export type Rarity = 'normal' | 'uncommon' | 'rare' | 'ultra';
 
@@ -95,6 +96,8 @@ export interface Ending {
 /** 1プレイの結果（実績・エンディング判定に使う） */
 export interface RunStats {
   mode: GameMode;
+  difficulty: Difficulty;
+  notesTotal: number;  // その譜面の音符の数（コンボ系の条件に使う）
   subs: number;
   quota: number;
   cleared: boolean;
