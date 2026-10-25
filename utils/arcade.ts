@@ -7,15 +7,15 @@ import { timeOf, barPos, SWITCH_AT, SWITCH_REST } from './chart';
 export type TrackStyle = 'lane' | 'fall' | 'drum' | 'ring' | 'highway' | 'panel' | 'step' | 'rail' | 'pop';
 
 export const STYLE_INFO: Record<TrackStyle, { label: string; hint: string }> = {
-  lane: { label: 'いつもの', hint: '右から来る丸が「な！」に重なったら' },
-  fall: { label: '落ちもの', hint: '落ちてくる音符が赤い線に来たら' },
-  drum: { label: '和太鼓', hint: '右から来る玉が太鼓に重なったら' },
-  ring: { label: 'リング', hint: 'まん中から広がる音符が外の輪に来たら' },
-  highway: { label: 'ハイウェイ', hint: '奥から来る音符が手前の線に来たら' },
-  panel: { label: 'パネル', hint: '光るパネルがいっぱいに広がったら' },
-  step: { label: 'ステップ', hint: '下から上がる矢印が上の枠に重なったら' },
-  rail: { label: 'レール', hint: 'レールを走る玉が左の円に来たら' },
-  pop: { label: 'ポップ', hint: '落ちてくる玉がボタンに重なったら' },
+  lane: { label: 'いつもの', hint: '右から来る「な」が、左の「な！」に重なったら' },
+  fall: { label: '落ちもの', hint: '上から落ちてくる「な」が、下の赤い線に重なったら' },
+  drum: { label: '和太鼓', hint: '右から来る「な」が、左の太鼓に重なったら' },
+  ring: { label: 'リング', hint: 'まん中から出てくる「な」が、外の白い輪に重なったら' },
+  highway: { label: 'ハイウェイ', hint: '奥から来る「な」が、手前の光る線に重なったら' },
+  panel: { label: 'パネル', hint: 'マスの中の「な」が、マスいっぱいに広がったら' },
+  step: { label: 'ステップ', hint: '下から上がる「な」が、上の矢印の枠に重なったら' },
+  rail: { label: 'レール', hint: 'レールを走る「な」が、左の丸に重なったら' },
+  pop: { label: 'ポップ', hint: '落ちてくる「な」が、下の丸いボタンに重なったら' },
 };
 
 export const ARCADE_STYLES: TrackStyle[] = ['fall', 'drum', 'ring', 'highway', 'panel', 'step', 'rail', 'pop'];

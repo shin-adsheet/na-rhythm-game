@@ -30,7 +30,7 @@ import CollectionBook from './CollectionBook';
 /* ============================================================
  * 設定・保存
  * ============================================================ */
-const TAP_ONLY = !!process.env.TAP_ONLY;           // 公開版（マイクが使えない環境）
+const TAP_ONLY = !!process.env.TAP_ONLY;           // マイクを使わない版を作るとき（ビルド時に TAP_ONLY=1）
 const ASSET_BASE = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
 const DEFAULT_BGM = ASSET_BASE + 'bgm/bgm.mp3';
 /** タイトル（OP）の曲。設定で切り替えられる */
@@ -42,10 +42,13 @@ const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
 ];
 
 interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean }
-const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: TAP_ONLY ? 'tap' : 'mic', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite() };
+const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: 'tap', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite() };
 const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 type Offsets = { mic: number | null; tap: number | null };
+/** キーボードで遊ぶときのキー（どれでも同じ） */
+const PLAY_KEYS = new Set(['Space', 'Enter', 'KeyN', 'KeyF', 'KeyJ', 'KeyD', 'KeyK']);
+const INPUT_LABEL = { tap: 'キーボード・タップ', mic: '声' } as const;
 
 const emptyRun = (mode: GameMode, difficulty: Difficulty = 'normal', notesTotal = 0): RunStats => ({
   mode, difficulty, notesTotal, subs: 0, quota: QUOTA[mode], cleared: false, hits: 0, perfect: 0, great: 0, good: 0, misses: 0, extras: 0,
@@ -295,11 +298,19 @@ const Game: React.FC = () => {
       refreshDevices();
       return true;
     } catch {
-      setError('マイクが使えませんでした。設定で「タップ」に切り替えると遊べます。');
+      setError('マイクが使えませんでした（ブラウザでマイクを許可してください）。キーボード・タップに戻しました。');
+      setSettings({ input: 'tap' });
       return false;
     }
   };
   const stopMic = () => { micRef.current.stop(); setMicOn(false); setMicTesting(false); };
+  /** あそびかたの切り替え。声にしたら、その場でマイクが使えるか確かめる（使えなければキーボードに戻す） */
+  const chooseInput = async (m: 'mic' | 'tap'): Promise<boolean> => {
+    setError(null);
+    if (m === 'tap') { stopMic(); setSettings({ input: 'tap' }); return true; }
+    setSettings({ input: 'mic' });
+    return ensureMic();
+  };
 
   // メニュー BGM
   useEffect(() => {
@@ -347,6 +358,14 @@ const Game: React.FC = () => {
   /* ---------------- カットイン ---------------- */
   const playNextCut = () => {
     if (cutCurRef.current || !cutQueueRef.current.length) return;
+    // 画面チェンジの案内（切り替えの 2.3 秒前〜2.7 秒後）とかぶるカットインは、案内が終わるまで待つ
+    const head = cutQueueRef.current[0];
+    if (head.event !== 'burn' && head.event !== 'ban' && gameStateRef.current === 'PLAYING') {
+      const tNow = playerRef.current?.time() ?? 0;
+      const end = tNow + head.durationMs / 1000;
+      const sw = scheduleRef.current.slice(1).find((g) => end > g.t - 2.3 && tNow < g.t + 2.7);
+      if (sw) { cutTimerRef.current = window.setTimeout(playNextCut, Math.max(200, (sw.t + 2.7 - tNow) * 1000)); return; }
+    }
     const d = cutQueueRef.current.shift()!;
     cutCurRef.current = d;
     setCutIn(d);
@@ -467,7 +486,7 @@ const Game: React.FC = () => {
       if (gameStateRef.current === 'PLAYING') {
         if (e.code === 'Escape') { e.preventDefault(); pauseGame(); return; }
         if (e.repeat) return;
-        if ((e.code === 'Space' || e.code === 'Enter' || e.key.toLowerCase() === 'n') && (TAP_ONLY || settingsRef.current.input === 'tap')) {
+        if (PLAY_KEYS.has(e.code) && (TAP_ONLY || settingsRef.current.input === 'tap')) {
           e.preventDefault(); handleInputRef.current('tap');
         }
       }
@@ -843,15 +862,15 @@ const Game: React.FC = () => {
         <div className="bg-white/60 p-3 rounded-xl">
           <div className="font-bold text-sky-600 mb-2 text-sm">にゅうりょく</div>
           <div className="flex gap-2">
-            {([['mic', '声で「な」'], ['tap', 'タップ / スペース']] as const).map(([m, label]) => (
-              <button key={m} onClick={() => setSettings({ input: m })}
+            {([['tap', 'キーボード・タップ'], ['mic', '声で「な」']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => chooseInput(m)}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${settings.input === m ? 'bg-yellow-300 text-slate-800 shadow-[0_3px_0_#d97706]' : 'bg-white text-slate-400'}`}>{label}</button>
             ))}
           </div>
-          <div className="text-[11px] text-slate-500 mt-1.5 leading-snug">声は「な」でなくても、声が出たら反応します。</div>
+          <div className="text-[11px] text-slate-500 mt-1.5 leading-snug">キーはスペース・Enter・F・J（どれでも同じ）。声は「な」でなくても、声が出たら反応します。</div>
         </div>
       ) : (
-        <div className="bg-white/60 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">この公開版はタップ / スペースキーで「な」を伝えます。声で遊ぶには GitHub のプロジェクトを起動してください。</div>
+        <div className="bg-white/60 p-3 rounded-xl text-xs text-slate-500 font-bold leading-relaxed">この版はキーボード・タップで「な」を伝えます。</div>
       )}
 
       {!TAP_ONLY && settings.input === 'mic' && (
@@ -898,7 +917,7 @@ const Game: React.FC = () => {
 
   const renderReady = () => {
     const say = STORY[storyIdx]?.say || '';
-    const sceneSize = isMobile ? Math.min(330, vp.w - 40) : 340;
+    const sceneSize = isMobile ? Math.round(Math.min(330, vp.w - 40, vp.h * 0.3)) : 340;
     return (
       <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="min-h-full w-full max-w-5xl mx-auto px-4 py-5 md:py-8 grid md:grid-cols-2 gap-4 md:gap-8 items-center">
@@ -935,7 +954,23 @@ const Game: React.FC = () => {
           {/* 右：あそぶ */}
           <div className="flex flex-col gap-3 min-w-0 w-full max-w-md mx-auto">
             <div className="bg-white/90 backdrop-blur rounded-2xl p-3 shadow-[0_4px_0_rgba(0,0,0,0.08)] border-4 border-white flex flex-col gap-2">
-              <div className="text-cyan-600 font-bold text-center text-sm">モードとむずかしさ</div>
+              {!TAP_ONLY && (
+                <>
+                  <div className="text-cyan-600 font-bold text-center text-sm">あそびかた</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['tap', 'mic'] as const).map((m) => (
+                      <button key={m} onClick={() => chooseInput(m)}
+                        className={`py-2 px-1 rounded-xl transition-all flex flex-col items-center leading-tight ${input === m ? 'bg-violet-500 text-white shadow-[0_3px_0_#6d28d9] -translate-y-px' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className="font-black text-sm">{m === 'tap' ? 'キーボード・タップ' : '声で「な」'}</span>
+                        <span className={`text-[10px] font-bold ${input === m ? 'text-white/80' : 'text-gray-400'}`}>{m === 'tap' ? 'スペース / F / J / 画面タップ' : 'マイクに向かって「な」'}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {input === 'mic' && <div className={`text-[10px] text-center font-bold ${micOn ? 'text-emerald-600' : 'text-slate-500'}`}>{micOn ? 'マイクOK。イヤホンだと曲の音を拾いにくい' : '「始める！」でマイクの許可をたずねます'}</div>}
+                  {error && /マイク/.test(error) && <div className="text-[11px] text-center font-bold text-white bg-red-400 rounded-lg px-2 py-1.5">{error}</div>}
+                </>
+              )}
+              <div className="text-cyan-600 font-bold text-center text-sm mt-0.5">モードとむずかしさ</div>
               <div className="grid grid-cols-3 gap-2">
                 {(['10s', '30s', 'FULL'] as GameMode[]).map((m) => (
                   <button key={m} onClick={() => setMode(m)}
@@ -962,7 +997,7 @@ const Game: React.FC = () => {
               <div className="absolute inset-0 bg-gradient-to-b from-pink-400 to-pink-500 rounded-[2rem] border-4 border-white flex flex-col items-center justify-center overflow-hidden">
                 <div className="absolute top-[-30%] left-[-10%] w-32 h-32 bg-white/20 rotate-45" />
                 <span className="text-4xl md:text-5xl font-black text-white drop-shadow-md z-10">始める！</span>
-                <span className="mt-1.5 z-10 text-sm md:text-base font-bold text-white bg-white/25 rounded-full px-4 py-1">{MODE_LABEL[mode]}・{DIFF_LABEL[difficulty]}で 登録者{fmtSubs(QUOTA[mode])}人 を目指す</span>
+                <span className="mt-1.5 z-10 text-sm md:text-base font-bold text-white bg-white/25 rounded-full px-4 py-1">{MODE_LABEL[mode]}・{DIFF_LABEL[difficulty]}・{INPUT_LABEL[input]}で 登録者{fmtSubs(QUOTA[mode])}人</span>
               </div>
             </button>
 
@@ -986,11 +1021,11 @@ const Game: React.FC = () => {
               </button>
               <button onClick={() => setShowSettings((v) => !v)} className={`rounded-2xl py-3 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex flex-col items-center ${showSettings ? 'bg-sky-300 text-white' : 'bg-white/90 text-slate-700'}`}>
                 <span className="font-black">せってい</span>
-                <span className={`text-[10px] font-bold ${showSettings ? 'text-white/80' : 'text-slate-400'}`}>{input === 'mic' ? '声' : 'タップ'}・補正 {offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
+                <span className={`text-[10px] font-bold ${showSettings ? 'text-white/80' : 'text-slate-400'}`}>{input === 'mic' ? '声' : 'キー・タップ'}・補正 {offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
               </button>
             </div>
             {showSettings && <div ref={settingsBoxRef} className="scroll-mt-4">{renderSettings()}</div>}
-            {error && <div className="bg-red-400 text-white font-bold p-3 rounded-xl border-4 border-white shadow-lg text-center text-sm">{error}</div>}
+            {error && !/マイク/.test(error) && <div className="bg-red-400 text-white font-bold p-3 rounded-xl border-4 border-white shadow-lg text-center text-sm">{error}</div>}
           </div>
         </div>
       </div>
@@ -1001,6 +1036,8 @@ const Game: React.FC = () => {
     const ratio = subs / quota;
     const trackH = Math.round(Math.min(420, vp.h * 0.5));
     const laneStyle = trackStyle === 'lane';
+    const nuNow = activeFx.includes('nu');
+    const actionWord = input === 'mic' ? (nuNow ? '「ぬ」' : '「な」') : isMobile ? 'タップ' : '押す';
     const hasFx = (id: ItemId) => activeFx.includes(id);
     return (
       <>
@@ -1091,16 +1128,17 @@ const Game: React.FC = () => {
 
         {/* 譜面 */}
         <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
-          <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} />
+          <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} action={actionWord} />
         </div>
         {/* 画面チェンジのお知らせ（譜面の下に出す。譜面は隠さない） */}
         {styleBanner && (
           <div key={styleBanner.id} className="absolute left-0 right-0 z-30 pointer-events-none flex justify-center px-3" style={{ top: `calc(54% + ${laneStyle ? 62 : trackH / 2 - 6}px)` }}>
-            <div className="mode-change flex items-center gap-3 bg-slate-900/90 text-white rounded-xl pl-2 pr-4 py-1.5 border-2 border-white/70 shadow-xl">
-              <span className="text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
-              <span className="flex flex-col leading-tight">
-                <span className="font-black text-lg">{STYLE_INFO[styleBanner.style].label}</span>
-                <span className="text-[10px] font-bold text-white/75">{STYLE_INFO[styleBanner.style].hint}「{activeFx.includes('nu') ? 'ぬ' : 'な'}」</span>
+            <div className="mode-change flex items-center gap-3 bg-slate-900/92 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
+              <span className="shrink-0 text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
+              <span className="flex flex-col leading-tight min-w-0">
+                <span className="font-black text-lg">{STYLE_INFO[styleBanner.style].label}<span className="text-xs font-bold text-white/60 ml-2">やることは同じ</span></span>
+                <span className="text-[11px] font-bold text-white/85">{STYLE_INFO[styleBanner.style].hint}</span>
+                <span className="text-sm font-black text-yellow-300">→ {input === 'mic' ? `${nuNow ? '「ぬ」' : '「な」'}と言う` : isMobile ? '画面をタップ' : 'キーを押す'}</span>
               </span>
             </div>
           </div>
@@ -1157,7 +1195,7 @@ const Game: React.FC = () => {
         );
       case 'RULES':
         return (
-          <RulesCard mode={mode} difficulty={difficulty} input={input} ready={songReady} offsetMs={offsets[input] == null ? null : Math.round(offsets[input]! * 1000)}
+          <RulesCard mode={mode} difficulty={difficulty} input={input} onInputChange={TAP_ONLY ? undefined : async (m) => { const ok = await chooseInput(m); if (ok && offsetsRef.current[m] == null) setGameState('CALIBRATE'); }} ready={songReady} offsetMs={offsets[input] == null ? null : Math.round(offsets[input]! * 1000)}
             skip={skipRules} onSkipChange={(v) => { setSkipRules(v); try { localStorage.setItem(LS_KEYS.skipRules, v ? '1' : '0'); } catch { /* noop */ } }}
             onStart={startPlay} onCalibrate={() => setGameState('CALIBRATE')} onBack={() => { if (input === 'mic') stopMic(); setGameState('READY'); }} />
         );

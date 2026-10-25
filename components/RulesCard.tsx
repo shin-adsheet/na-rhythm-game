@@ -14,10 +14,11 @@ interface Props {
   onStart: () => void;
   onCalibrate: () => void;
   onBack: () => void;
+  onInputChange?: (m: 'mic' | 'tap') => void;   // あそびかたの切り替え（なければ出さない）
 }
 
 /** ゲーム開始前の説明（視聴者ゲージ・炎上・ノルマ） */
-const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, skip, onSkipChange, onStart, onCalibrate, onBack }) => {
+const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, skip, onSkipChange, onStart, onCalibrate, onBack, onInputChange }) => {
   const quota = QUOTA[mode];
   const ms = MILESTONES.find((m) => m.subs === quota);
   return (
@@ -36,8 +37,8 @@ const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, 
             <li className="flex gap-3 items-start">
               <span className="shrink-0 w-8 h-8 rounded-full bg-pink-500 text-white font-black flex items-center justify-center">1</span>
               <div className="min-w-0">
-                <div className="font-black text-slate-800">丸が「な！」の円に重なったら{input === 'mic' ? '「な」と言う' : 'タップ'}</div>
-                <div className="text-xs text-slate-500 leading-relaxed">1 つの丸に 1 回だけ。ズレが小さいほど PERFECT で登録者が多く増える。連打すると空振りで損。曲の途中で画面がいろんな音ゲー風に変わる（MODE CHANGE）けど、やることは同じ。</div>
+                <div className="font-black text-slate-800">「な」が「な！」の円に重なったら{input === 'mic' ? '「な」と言う' : 'キーを押す / タップ'}</div>
+                <div className="text-xs text-slate-500 leading-relaxed">1 つの丸に 1 回だけ。ズレが小さいほど PERFECT で登録者が多く増える。連打すると空振りで損。曲の途中で画面がいろんな音ゲー風に変わる（MODE CHANGE）けど、やることは同じ。どの画面でも、次の「な」の場所に<b className="text-slate-700">白い輪</b>が出て縮んでいくので、輪が「な」に重なった瞬間に打つ。</div>
                 <div className="mt-1.5 flex items-center gap-1.5">
                   <span className="w-9 h-9 rounded-full bg-pink-500 border-4 border-white shadow text-white text-xs font-black flex items-center justify-center">な！</span>
                   <span className="text-slate-300 font-black">←</span>
@@ -71,6 +72,20 @@ const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, 
               </div>
             </li>
           </ol>
+
+          {onInputChange && (
+            <div className="flex items-center gap-2 bg-violet-50 rounded-xl px-3 py-2">
+              <span className="text-xs font-black text-violet-700 shrink-0">あそびかた</span>
+              <div className="flex-1 grid grid-cols-2 gap-1.5">
+                {(['tap', 'mic'] as const).map((m) => (
+                  <button key={m} onClick={() => onInputChange(m)}
+                    className={`py-1.5 rounded-lg text-xs font-black transition-all ${input === m ? 'bg-violet-500 text-white shadow-[0_2px_0_#6d28d9]' : 'bg-white text-slate-500'}`}>
+                    {m === 'tap' ? 'キーボード・タップ' : '声で「な」'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-2 bg-slate-50 rounded-xl px-3 py-2 text-xs">
             <span className="font-bold text-slate-500">

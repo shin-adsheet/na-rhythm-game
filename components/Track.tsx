@@ -17,6 +17,8 @@ interface Props {
   flagsRef: React.MutableRefObject<Flags>;
   scheduleRef?: React.MutableRefObject<StyleSeg[]>;
   height?: number;
+  /** 何をすればいいか（声：「な」と言う／キーボード：押す）。画面チェンジ直後の案内に出す */
+  action?: string;
 }
 
 const FONT = "'Mochiy Pop One', sans-serif";
@@ -29,8 +31,9 @@ interface D {
   notes: NoteState[]; burns: BurnState[]; A: number; pulse: number; beatPh: number;
 }
 
-const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, scheduleRef, height = 104 }) => {
+const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, scheduleRef, height = 104, action = '「な」' }) => {
   const ref = useRef<HTMLCanvasElement>(null);
+  const actionRef = useRef(action); actionRef.current = action;
 
   useEffect(() => {
     const cv = ref.current!;
@@ -65,8 +68,11 @@ const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, schedul
         const a = into / TRANSITION;
         STYLES[segs[k - 1].style]({ ...base, A: 1 - a });
         STYLES[segs[k].style]({ ...base, A: a });
+        guides(segs[k - 1].style, { ...base, A: 1 - a }, -1, actionRef.current);
+        guides(segs[k].style, { ...base, A: a }, into, actionRef.current);
       } else {
         STYLES[segs[k].style]({ ...base, A: 1 });
+        guides(segs[k].style, { ...base, A: 1 }, k > 0 ? into : -1, actionRef.current);
       }
       ctx.globalAlpha = 1;
     };
@@ -658,6 +664,94 @@ function drawPop(d: D) {
     naNote(d, x, y, n.strong ? sz : sz * 0.8, { strong: n.strong, missed, alpha: a, color: POP_COLORS_DEEP[k] });
   });
   eachHit(d, (n, age) => naBurst(d, x0 + lw * (laneOf(n.i, 9) + 0.5), by, br * 1.6, age));
+}
+
+/* ============================================================
+ * どの画面でも「どこで・いつ」が分かる案内
+ *  ・次の「な」の判定の場所に、だんだん縮む輪（輪が「な」に重なった瞬間に打つ）
+ *  ・画面が切り替わった直後は、判定の場所に「ここで○○」と矢印、最初の「な」に「これ」
+ * ============================================================ */
+type Geo = { x: number; y: number; size: number; squash?: number };
+/** 各画面の「音符 i が u の位置にあるときの場所」。描画の数字と同じ */
+const GEOM: Record<TrackStyle, (d: D, i: number, u: number) => Geo> = {
+  lane: ({ W, H }, _i, u) => { const jx = Math.max(64, W * 0.16); return { x: jx + u * (W - jx - 16), y: H / 2, size: 34 }; },
+  fall: ({ W, H }, i, u) => { const PW = Math.min(W * 0.66, 300), x0 = (W - PW) / 2, lw = PW / 7, jy = H * 0.82; return { x: x0 + lw * (laneOf(i, 7) + 0.5), y: jy - u * (jy - 6), size: Math.min(lw * 1.05, 34) }; },
+  drum: ({ W, H }, _i, u) => { const jx = Math.max(70, W * 0.17); return { x: jx + u * (W - jx - 12), y: H / 2, size: 40 }; },
+  ring: ({ W, H }, i, u) => {
+    const R = Math.min(W, H) * 0.42, hub = Math.max(22, R * 0.17), a = -Math.PI / 2 + (laneOf(i, 8) + 0.5) * (Math.PI / 4), r = hub + (R - hub) * (1 - u);
+    return { x: W / 2 + Math.cos(a) * r, y: H / 2 + Math.sin(a) * r, size: 32 };
+  },
+  highway: ({ W, H }, i, u) => {
+    const vpY = H * 0.02, jy = H * 0.84, half = Math.min(W * 0.46, 210), sc = 1 / (1 + Math.max(-0.2, u) * 3);
+    return { x: W / 2 + (-1 + (laneOf(i, 4) + 0.5) * 0.5) * half * sc, y: vpY + (jy - vpY) * sc, size: 46 * sc, squash: 0.72 };
+  },
+  panel: ({ W, H }, i) => {
+    const G = Math.min(W * 0.8, H * 0.94, 340), x0 = (W - G) / 2, y0 = (H - G) / 2, gap = 7, cs = (G - gap * 3) / 4, k = laneOf(i, 16);
+    return { x: x0 + (k % 4) * (cs + gap) + cs / 2, y: y0 + Math.floor(k / 4) * (cs + gap) + cs / 2, size: cs * 0.64 };
+  },
+  step: ({ W, H }, i, u) => { const AW = Math.min(W * 0.72, 300), x0 = (W - AW) / 2, lw = AW / 4, ry = H * 0.14; return { x: x0 + lw * (laneOf(i, 4) + 0.5), y: ry + u * (H - ry), size: Math.min(lw * 0.82, 62) * 0.78 }; },
+  rail: ({ W, H, t }, _i, u) => {
+    const x0 = Math.max(70, W * 0.16), amp = Math.min(H * 0.3, 110);
+    return { x: x0 + u * (W - x0 - 24), y: H / 2 + amp * Math.sin(u * Math.PI * 2.4 - t * 1.2) * Math.min(1, Math.max(0, u) * 2.2), size: 32 };
+  },
+  pop: ({ W, H }, i, u) => { const PW = Math.min(W * 0.94, 430), x0 = (W - PW) / 2, lw = PW / 9, by = H * 0.84; return { x: x0 + lw * (laneOf(i, 9) + 0.5), y: by - u * (by - 4), size: Math.min(lw * 1.05, 36) }; },
+};
+const APPROACH = 0.65;   // 輪が出始める（判定の何秒前から）
+const INTRO = 2.6;       // 切り替え直後の案内を出す秒数
+function guides(style: TrackStyle, d: D, into: number, action: string) {
+  const { c, t, notes } = d;
+  const g = GEOM[style];
+  // 次の「な」（まだ打っていないもの）
+  let next: NoteState | null = null;
+  for (let k = 0; k < notes.length; k++) { const n = notes[k]; if (n.t < t - 0.02 || n.res) continue; next = n; break; }
+  if (next && next.t - t < APPROACH) {
+    const left = Math.max(0, next.t - t) / APPROACH;          // 1 → 0
+    const p = g(d, next.i, 0);
+    const r = p.size * (0.62 + 1.9 * left);
+    ga(d, 0.35 + 0.6 * (1 - left));
+    c.lineWidth = 3 + 3 * (1 - left);
+    c.strokeStyle = 'rgba(15,23,42,0.5)';
+    c.beginPath(); c.ellipse(p.x, p.y, r + 1.5, (r + 1.5) * (p.squash ?? 1), 0, 0, Math.PI * 2); c.stroke();
+    c.strokeStyle = d.f.buzz ? '#fbbf24' : '#ffffff';
+    c.beginPath(); c.ellipse(p.x, p.y, r, r * (p.squash ?? 1), 0, 0, Math.PI * 2); c.stroke();
+  }
+  // 切り替え直後の案内
+  if (into >= 0 && into < INTRO && style !== 'lane') {
+    const fade = Math.min(1, into / 0.3) * Math.min(1, (INTRO - into) / 0.5);
+    // 切り替え後の最初の「な」
+    let first: NoteState | null = null;
+    for (let k = 0; k < notes.length; k++) { const n = notes[k]; if (n.t >= t - into + 0.05) { first = n; break; } }
+    const target = first ? g(d, first.i, 0) : null;
+    if (target) {
+      const bob = Math.sin(t * 9) * 5;
+      // 判定の場所：点線の輪＋「ここで○○」
+      ga(d, 0.95 * fade);
+      c.save(); c.setLineDash([6, 5]); c.lineDashOffset = -t * 30;
+      c.strokeStyle = '#facc15'; c.lineWidth = 3;
+      c.beginPath(); c.ellipse(target.x, target.y, target.size * 0.85, target.size * 0.85 * (target.squash ?? 1), 0, 0, Math.PI * 2); c.stroke();
+      c.restore();
+      const above = target.y > d.H * 0.35;
+      const ly = above ? target.y - target.size * 1.2 - 22 + bob : target.y + target.size * 1.2 + 22 - bob;
+      const lx = Math.max(70, Math.min(d.W - 70, target.x));
+      const label = `ここで${action}`;
+      c.font = `900 17px ${FONT}`;
+      const tw = c.measureText(label).width + 20;
+      ga(d, 0.95 * fade);
+      c.fillStyle = '#0f172a'; roundRect(c, lx - tw / 2, ly - 16, tw, 32, 16); c.fill();
+      c.strokeStyle = '#facc15'; c.lineWidth = 2; c.stroke();
+      text(d, label, lx, ly + 1, 17, '#fde047');
+      // 矢印（ラベル → 判定の場所）
+      c.fillStyle = '#facc15';
+      const ay = above ? ly + 18 : ly - 18, dir = above ? 1 : -1;
+      c.beginPath(); c.moveTo(target.x, ay + dir * 12); c.lineTo(target.x - 9, ay); c.lineTo(target.x + 9, ay); c.closePath(); c.fill();
+      // 最初の「な」に「これ」
+      if (first && first.t - t < LEAD_ALL && first.t - t > 0) {
+        const p = g(d, first.i, (first.t - t) / LEAD_ALL);
+        ga(d, 0.9 * fade);
+        text(d, 'これ', p.x, p.y - p.size * 0.95, 12, '#fff', '#0f172a');
+      }
+    }
+  }
 }
 
 const STYLES: Record<TrackStyle, (d: D) => void> = {
