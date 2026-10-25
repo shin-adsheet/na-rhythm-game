@@ -232,6 +232,7 @@ const Game: React.FC = () => {
   // 画面チェンジ（譜面の見た目が音ゲー風に切り替わる）
   const scheduleRef = useRef<StyleSeg[]>([{ t: -1e9, style: 'lane' }]);
   const segDirtyRef = useRef<Set<number>>(new Set());
+  const lastSegRef = useRef(0);
   const [trackStyle, setTrackStyle] = useState<TrackStyle>('lane');
   const [styleBanner, setStyleBanner] = useState<{ id: number; style: TrackStyle } | null>(null);
   const settingsBoxRef = useRef<HTMLDivElement>(null);
@@ -341,10 +342,21 @@ const Game: React.FC = () => {
   const flashMood = (m: ShiashiaMood, ms: number) => { setTempMood(m); setTimeout(() => setTempMood((x) => (x === m ? null : x)), ms); };
 
   const spawnBackgroundNa = () => {
-    if (perf.lite || (isMobileRef.current && Math.random() < 0.5)) return;
+    if (perf.lite) return;
     const ps = createParticles(pickVariant(rollRarity(flagsRef.current.buzz)), 'normal');
     if (flagsRef.current.nu) ps.forEach((p) => { p.text = p.text.replace(/な/g, 'ぬ'); });
-    setParticles((prev) => [...prev, ...ps].slice(isMobileRef.current ? -30 : -70));
+    setParticles((prev) => [...prev, ...ps].slice(isMobileRef.current ? -45 : -70));
+  };
+  /** 画面チェンジの瞬間：「な」が降ってきたり、横切ったり、まとめてドバッと出す */
+  const spawnSwitchBurst = () => {
+    if (perf.lite) return;
+    const kinds: [Parameters<typeof createParticles>[0], Parameters<typeof createParticles>[1]][] = [
+      ['swarm', 'uncommon'], ['fall', 'normal'], ['fall', 'normal'], ['wave', 'normal'], ['slide', 'normal'], ['zigzag', 'normal'],
+    ];
+    if (Math.random() < 0.35) kinds.push(['chain', 'rare']);
+    const ps = kinds.flatMap(([v, r]) => createParticles(v, r));
+    if (flagsRef.current.nu) ps.forEach((p) => { p.text = p.text.replace(/な/g, 'ぬ'); });
+    setParticles((prev) => [...prev, ...ps].slice(isMobileRef.current ? -45 : -80));
   };
   useEffect(() => {
     const iv = setInterval(() => setParticles((prev) => {
@@ -566,7 +578,7 @@ const Game: React.FC = () => {
     chartRef.current = ch;
     // 10 秒は入門なので画面チェンジなし
     scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false && mode !== '10s');
-    segDirtyRef.current = new Set();
+    segDirtyRef.current = new Set(); lastSegRef.current = 0;
     setTrackStyle('lane'); setStyleBanner(null);
     const eng = new JudgeEngine(ch.notes, ch.burns);
     engineRef.current = eng;
@@ -786,6 +798,8 @@ const Game: React.FC = () => {
         const segs = scheduleRef.current;
         const k = segIndexAt(segs, t);
         setTrackStyle((x) => (x === segs[k].style ? x : segs[k].style));
+        if (k > 0 && lastSegRef.current !== k) spawnSwitchBurst();
+        lastSegRef.current = k;
         const nx = segs[k + 1];
         const bn = nx && nx.t - t < 2.2 ? { id: k + 1, style: nx.style } : k > 0 && t - segs[k].t < 0.9 ? { id: k, style: segs[k].style } : null;
         setStyleBanner((x) => (x?.id === bn?.id ? x : bn));
@@ -1244,7 +1258,7 @@ const Game: React.FC = () => {
           avoid={(() => { const th = Math.min(420, vp.h * 0.5); const half = trackStyle === 'lane' ? 60 : th / 2; return [((vp.h * 0.54 - half) / vp.h) * 100, ((vp.h * 0.54 + half) / vp.h) * 100] as [number, number]; })()} />
       )}
       {buzz && playing && <div className="fever-glow absolute inset-0 z-[2] pointer-events-none" />}
-      <NaEffects particles={particles} onClickSpecial={() => {}} />
+      <NaEffects particles={particles} onClickSpecial={() => {}} front={playing && trackStyle !== 'lane'} />
 
       {renderContent()}
 

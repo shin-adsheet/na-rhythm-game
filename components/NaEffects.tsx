@@ -4,6 +4,8 @@ import { NaParticle } from '../types';
 interface Props {
   particles: NaParticle[];
   onClickSpecial: (p: NaParticle, e: React.MouseEvent) => void;
+  /** 譜面より手前に出す（画面チェンジ中は台が大きいので、手前に出して見えるようにする） */
+  front?: boolean;
 }
 
 /** variant → CSS クラス */
@@ -42,7 +44,7 @@ const COLOR_BY_RARITY = {
   ultra: { color: '#fff', stroke: '#e879f9', shadow: 'rgba(217,70,239,0.6)' },
 };
 
-const NaEffects: React.FC<Props> = ({ particles, onClickSpecial }) => {
+const NaEffects: React.FC<Props> = ({ particles, onClickSpecial, front = false }) => {
   return (
     <>
       {particles.map((p) => {
@@ -82,9 +84,10 @@ const NaEffects: React.FC<Props> = ({ particles, onClickSpecial }) => {
           <span
             key={p.id}
             onClick={p.clickable ? (e) => onClickSpecial(p, e) : undefined}
-            className={`absolute font-black select-none z-[5] ${cls} ${p.clickable ? 'z-40 hover:scale-125 transition-transform' : 'pointer-events-none'}`}
+            className={`absolute font-black select-none ${front ? 'z-[24]' : 'z-[5]'} ${cls} ${p.clickable ? 'z-40 hover:scale-125 transition-transform' : 'pointer-events-none'}`}
             style={{
               ...style,
+              ...(front ? { opacity: 0.78 } : null),
               filter: style.filter,
               textShadow: `0 4px 0 ${c.shadow}`,
             }}
