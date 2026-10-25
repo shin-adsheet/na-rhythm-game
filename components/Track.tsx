@@ -122,6 +122,53 @@ function eachNote(d: D, lead: number, fn: (n: NoteState, u: number, alpha: numbe
     fn(n, u, a, missed);
   }
 }
+/** 打った直後の音符（判定の場所に「な」がはじける演出に使う）。age = 判定時刻からの経過秒 */
+function eachHit(d: D, fn: (n: NoteState, age: number) => void) {
+  const { t, notes } = d;
+  for (let k = 0; k < notes.length; k++) {
+    const n = notes[k];
+    if (n.t < t - 0.4) continue;
+    if (n.t > t + 0.12) break;
+    if (!n.res || n.res === 'miss') continue;
+    fn(n, t - n.t);
+  }
+}
+/**
+ * ノートはぜんぶ「な」：太い「な」の字（白と濃い色のふちどり）＋後ろにうすい丸（判定の中心が分かるように）。
+ * 4分の拍は大きくピンク、ウラ拍は小さく水色。色は画面ごとに変えられる
+ */
+function naNote(d: D, x: number, y: number, size: number, o: { strong: boolean; missed: boolean; alpha: number; color?: string; squash?: number }) {
+  const c = d.c;
+  const col = o.missed ? '#94a3b8' : o.color ?? (o.strong ? accent(d) : '#0ea5e9');
+  const sq = o.squash ?? 1;
+  ga(d, o.alpha * 0.3);
+  c.fillStyle = col; c.beginPath(); c.ellipse(x, y, size * 0.62, size * 0.62 * sq, 0, 0, Math.PI * 2); c.fill();
+  ga(d, o.alpha);
+  c.save();
+  c.translate(x, y); if (sq !== 1) c.scale(1, sq); if (d.f.mirror) c.scale(-1, 1);
+  c.font = `900 ${size}px ${FONT}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+  const ch = naChar(d), dy = size * 0.05;
+  c.strokeStyle = 'rgba(15,23,42,0.55)'; c.lineWidth = size * 0.34; c.strokeText(ch, 0, dy);
+  c.strokeStyle = '#fff'; c.lineWidth = size * 0.22; c.strokeText(ch, 0, dy);
+  c.fillStyle = col; c.fillText(ch, 0, dy);
+  c.restore();
+}
+/** 打った瞬間、判定の場所で「な」がはじける（どの画面でも同じ演出） */
+function naBurst(d: D, x: number, y: number, size: number, age: number, squash = 1) {
+  if (age > 0.4) return;
+  const k = Math.max(0, age) / 0.4;
+  const c = d.c;
+  ga(d, (1 - k) * 0.9);
+  c.strokeStyle = d.f.buzz ? '#fbbf24' : '#f9a8d4'; c.lineWidth = 5 * (1 - k) + 1;
+  c.beginPath(); c.ellipse(x, y, size * (0.55 + 1.3 * k), size * (0.55 + 1.3 * k) * squash, 0, 0, Math.PI * 2); c.stroke();
+  for (let i = 0; i < 6; i++) {          // 小さな「な」が飛び散る
+    const a = (i / 6) * Math.PI * 2 + 0.4, r = size * (0.5 + 1.6 * k);
+    ga(d, (1 - k) * 0.8);
+    text(d, naChar(d), x + Math.cos(a) * r, y + Math.sin(a) * r * squash, Math.max(8, size * 0.32), '#fff', accent(d));
+  }
+  ga(d, 1 - k);
+  text(d, naChar(d), x, y - size * 0.25 * k, size * (1 + 0.6 * k), '#fff', accent(d));
+}
 function eachBurn(d: D, lead: number, fn: (b: BurnState, u0: number, u1: number, active: boolean) => void) {
   const { t } = d;
   for (const b of d.burns) {
@@ -191,15 +238,10 @@ function drawLane(d: D) {
   }
 
   eachNote(d, LEAD, (n, u, a, missed) => {
-    const x = xAt(u);
-    const r = n.strong ? 17 : 12;
-    ga(d, a);
-    c.fillStyle = missed ? '#94a3b8' : '#fff';
-    c.strokeStyle = missed ? '#64748b' : f.buzz ? '#f59e0b' : '#f472b6';
-    c.lineWidth = n.strong ? 5 : 4;
-    c.beginPath(); c.arc(x, cy, r, 0, Math.PI * 2); c.fill(); c.stroke();
-    if (n.strong && !missed) text(d, naChar(d), x, cy + 1, 15, f.buzz ? '#d97706' : '#ec4899');
+    naNote(d, xAt(u), cy, n.strong ? 34 : 25, { strong: n.strong, missed, alpha: a });
   });
+  eachHit(d, (_n, age) => naBurst(d, jx, cy, 36, age));
+  void f;
 }
 
 /* ============================================================
@@ -212,7 +254,7 @@ function drawFall(d: D) {
   const top = 6, jy = H * 0.82;
   const yAt = (u: number) => jy - u * (jy - top);
 
-  ga(d, 0.93);
+  ga(d, 0.62);   // うしろの演出が透けて見えるように
   c.fillStyle = '#0b1020';
   roundRect(c, x0 - 8, 0, PW + 16, H, 14); c.fill();
   for (let k = 0; k < 7; k++) {
@@ -248,15 +290,12 @@ function drawFall(d: D) {
   ga(d, 1);
   text(d, naChar(d) + '！', x0 - 8 > 34 ? x0 - 26 : W / 2, x0 - 8 > 34 ? jy : jy + (H - jy) / 2 + 2, 15, '#fff', accent(d));
 
+  const ns = Math.min(lw * 1.05, 34);
   eachNote(d, LEAD, (n, u, a, missed) => {
-    const y = yAt(u);
     const lane = laneOf(n.i, 7);
-    const h = n.strong ? 14 : 10;
-    ga(d, a);
-    c.fillStyle = missed ? '#64748b' : lane % 2 ? '#38bdf8' : '#f8fafc';
-    roundRect(c, x0 + lane * lw + 2, y - h / 2, lw - 4, h, 3); c.fill();
-    if (n.strong && !missed) { c.fillStyle = accent(d); c.fillRect(x0 + lane * lw + 2, y - 1.5, lw - 4, 3); }
+    naNote(d, x0 + lw * (lane + 0.5), yAt(u), n.strong ? ns : ns * 0.8, { strong: n.strong, missed, alpha: a });
   });
+  eachHit(d, (n, age) => naBurst(d, x0 + lw * (laneOf(n.i, 7) + 0.5), jy, ns, age));
 }
 
 /* ============================================================
@@ -269,8 +308,9 @@ function drawDrum(d: D) {
   const jx = Math.max(70, W * 0.17);
   const xAt = (u: number) => jx + u * (W - jx - 12);
 
-  ga(d, 0.95);
+  ga(d, 0.72);
   c.fillStyle = '#292524'; c.fillRect(0, cy - bandH / 2, W, bandH);
+  ga(d, 0.95);
   c.fillStyle = '#ea580c'; c.fillRect(0, cy - bandH / 2 - 5, W, 5); c.fillRect(0, cy + bandH / 2, W, 5);
   c.strokeStyle = 'rgba(255,255,255,0.08)'; c.lineWidth = 2;
   for (const bt of beatsInView(d, LEAD)) { const x = xAt((bt - d.t) / LEAD); c.beginPath(); c.moveTo(x, cy - bandH / 2); c.lineTo(x, cy + bandH / 2); c.stroke(); }
@@ -296,14 +336,9 @@ function drawDrum(d: D) {
   eachNote(d, LEAD, (n, u, a, m) => list.push([n, u, a, m]));
   for (let k = list.length - 1; k >= 0; k--) {
     const [n, u, a, missed] = list[k];
-    const x = xAt(u), r = n.strong ? 19 : 13;
-    ga(d, a);
-    c.fillStyle = missed ? '#78716c' : n.strong ? '#ef4444' : '#3b82f6';
-    c.strokeStyle = '#fff'; c.lineWidth = 4;
-    c.beginPath(); c.arc(x, cy, r, 0, Math.PI * 2); c.fill(); c.stroke();
-    c.strokeStyle = '#1c1917'; c.lineWidth = 1.5; c.beginPath(); c.arc(x, cy, r + 3, 0, Math.PI * 2); c.stroke();
-    if (n.strong && !missed) text(d, naChar(d), x, cy + 1, 16, '#fff');
+    naNote(d, xAt(u), cy, n.strong ? 40 : 28, { strong: n.strong, missed, alpha: a, color: n.strong ? '#ef4444' : '#3b82f6' });
   }
+  eachHit(d, (_n, age) => naBurst(d, jx, cy, 38, age));
 }
 
 /* ============================================================
@@ -315,8 +350,9 @@ function drawRing(d: D) {
   const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.42, hub = Math.max(22, R * 0.17);
   const ang = (k: number) => -Math.PI / 2 + (k + 0.5) * (Math.PI / 4);
 
-  ga(d, 0.9);
+  ga(d, 0.58);
   c.fillStyle = '#0f172a'; c.beginPath(); c.arc(cx, cy, R + 20, 0, Math.PI * 2); c.fill();
+  ga(d, 0.9);
   c.strokeStyle = 'rgba(255,255,255,0.1)'; c.lineWidth = 2;
   for (let k = 0; k < 8; k++) { c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(ang(k)) * R, cy + Math.sin(ang(k)) * R); c.stroke(); }
   // 拍の輪
@@ -347,13 +383,10 @@ function drawRing(d: D) {
     const k = laneOf(n.i, 8);
     const r = hub + (R - hub) * (1 - u);
     const x = cx + Math.cos(ang(k)) * r, y = cy + Math.sin(ang(k)) * r;
-    const s = (n.strong ? 9 : 6) + (n.strong ? 9 : 6) * Math.max(0, Math.min(1, 1 - u));
-    ga(d, a);
-    c.fillStyle = missed ? '#64748b' : '#fff';
-    c.strokeStyle = missed ? '#475569' : n.strong ? accent(d) : '#38bdf8';
-    c.lineWidth = n.strong ? 5 : 4;
-    c.beginPath(); c.arc(x, y, s, 0, Math.PI * 2); c.fill(); c.stroke();
+    const grow = Math.max(0, Math.min(1, 1 - u));
+    naNote(d, x, y, (n.strong ? 16 : 12) + (n.strong ? 16 : 11) * grow, { strong: n.strong, missed, alpha: a });
   });
+  eachHit(d, (n, age) => { const k = laneOf(n.i, 8); naBurst(d, cx + Math.cos(ang(k)) * R, cy + Math.sin(ang(k)) * R, 30, age); });
 }
 
 /* ============================================================
@@ -373,7 +406,7 @@ function drawHighway(d: D) {
   };
   const sFar = 0.22, sNear = Math.min(1.16, (H - vpY) / (jy - vpY));
 
-  ga(d, 0.95);
+  ga(d, 0.7);
   const g = c.createLinearGradient(0, yOf(sFar), 0, H);
   g.addColorStop(0, 'rgba(30,27,75,0.2)'); g.addColorStop(0.4, '#1e1b4b'); g.addColorStop(1, '#312e81');
   c.fillStyle = g; quad(sFar, sNear, -1, 1); c.fill();
@@ -411,14 +444,13 @@ function drawHighway(d: D) {
   for (let k = list.length - 1; k >= 0; k--) {
     const [n, u, a, missed] = list[k];
     const lane = laneOf(n.i, 4);
-    const s1 = sOf(u), s0 = sOf(u + 0.035);
+    const s1 = sOf(u);
     if (s1 < sFar) continue;
-    const r0 = -1 + lane * 0.5 + 0.04, r1 = -1 + (lane + 1) * 0.5 - 0.04;
-    ga(d, a * Math.min(1, (s1 - sFar) / 0.12));
-    c.fillStyle = missed ? '#64748b' : n.strong ? '#f0abfc' : '#67e8f9';
-    quad(s0, s1, r0, r1); c.fill();
-    c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke();
+    const rel = -1 + (lane + 0.5) * 0.5;
+    // 奥ほど小さく、少しつぶれる（道に寝ている「な」）
+    naNote(d, xOf(s1, rel), yOf(s1), (n.strong ? 46 : 36) * s1, { strong: n.strong, missed, alpha: a * Math.min(1, (s1 - sFar) / 0.12), color: n.strong ? '#e879f9' : '#22d3ee', squash: 0.72 });
   }
+  eachHit(d, (n, age) => naBurst(d, xOf(1, -1 + (laneOf(n.i, 4) + 0.5) * 0.5), jy, 40, age, 0.72));
 }
 
 /* ============================================================
@@ -430,11 +462,13 @@ function drawPanel(d: D) {
   const G = Math.min(W * 0.8, H * 0.94, 340), x0 = (W - G) / 2, y0 = (H - G) / 2, gap = 7, cs = (G - gap * 3) / 4;
   const cell = (k: number) => ({ x: x0 + (k % 4) * (cs + gap), y: y0 + Math.floor(k / 4) * (cs + gap) });
 
-  ga(d, 0.92);
+  ga(d, 0.5);
   c.fillStyle = '#0f172a'; roundRect(c, x0 - 10, y0 - 10, G + 20, G + 20, 16); c.fill();
   for (let k = 0; k < 16; k++) {
     const p = cell(k);
+    ga(d, 0.55);
     c.fillStyle = '#1e293b'; roundRect(c, p.x, p.y, cs, cs, 10); c.fill();
+    ga(d, 0.9);
     c.strokeStyle = '#334155'; c.lineWidth = 2; c.stroke();
   }
   // 今打った所を光らせる
@@ -451,16 +485,20 @@ function drawPanel(d: D) {
     const p = cell(laneOf(n.i, 16));
     const k = Math.max(0, Math.min(1, 1 - u));
     const sz = cs * (0.2 + 0.8 * k);
-    ga(d, a * (0.35 + 0.65 * k));
-    c.fillStyle = missed ? '#64748b' : n.strong ? accent(d) : '#38bdf8';
+    const col = missed ? '#64748b' : n.strong ? accent(d) : '#0ea5e9';
+    ga(d, a * (0.2 + 0.25 * k));
+    c.fillStyle = col;
     roundRect(c, p.x + (cs - sz) / 2, p.y + (cs - sz) / 2, sz, sz, 8 * k + 2); c.fill();
-    c.strokeStyle = '#fff'; c.lineWidth = 3; c.stroke();
-    if (!missed && u < 0.25) text(d, naChar(d), p.x + cs / 2, p.y + cs / 2 + 1, Math.round(cs * 0.36), '#fff');
+    ga(d, a * (0.5 + 0.5 * k));
+    c.strokeStyle = col; c.lineWidth = 3; c.stroke();
+    naNote(d, p.x + cs / 2, p.y + cs / 2, cs * (0.34 + 0.3 * k), { strong: n.strong, missed, alpha: a, color: col });
     // 外枠：ここまで広がったら
     ga(d, a * 0.6);
     c.strokeStyle = n.strong ? '#f9a8d4' : '#7dd3fc'; c.lineWidth = 2;
     roundRect(c, p.x + 3, p.y + 3, cs - 6, cs - 6, 8); c.stroke();
   });
+
+  eachHit(d, (n, age) => { const p = cell(laneOf(n.i, 16)); naBurst(d, p.x + cs / 2, p.y + cs / 2, cs * 0.55, age); });
 
   eachBurn(d, LEAD, (b, u0, _u1, active) => {
     const k = active ? 1 : Math.max(0, Math.min(1, 1 - u0));
@@ -491,8 +529,9 @@ function drawStep(d: D) {
   const yAt = (u: number) => ry + u * (H - ry);
   const size = Math.min(lw * 0.82, 62);
 
-  ga(d, 0.85);
+  ga(d, 0.6);
   c.fillStyle = 'rgba(15,23,42,0.88)'; roundRect(c, x0 - 8, 0, AW + 16, H, 14); c.fill();
+  ga(d, 0.85);
   c.strokeStyle = 'rgba(255,255,255,0.12)'; c.lineWidth = 2;
   for (const bt of beatsInView(d, LEAD)) { const y = yAt((bt - d.t) / LEAD); c.beginPath(); c.moveTo(x0, y); c.lineTo(x0 + AW, y); c.stroke(); }
 
@@ -517,11 +556,16 @@ function drawStep(d: D) {
   eachNote(d, LEAD, (n, u, a, missed) => {
     const k = laneOf(n.i, 4);
     const x = x0 + lw * (k + 0.5), y = yAt(u);
+    const col = missed ? '#94a3b8' : n.strong ? '#f43f5e' : '#3b82f6';
+    // 向きを示す小さな矢じり（な の外側）
     ga(d, a);
-    arrowPath(c, x, y, size, ROT[k]);
-    c.fillStyle = missed ? '#64748b' : n.strong ? '#f43f5e' : '#3b82f6'; c.fill();
-    c.strokeStyle = '#fff'; c.lineWidth = 3; c.stroke();
+    c.save(); c.translate(x, y); c.rotate(ROT[k]);
+    c.beginPath(); c.moveTo(0, -size * 0.62); c.lineTo(size * 0.2, -size * 0.4); c.lineTo(-size * 0.2, -size * 0.4); c.closePath();
+    c.fillStyle = col; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke();
+    c.restore();
+    naNote(d, x, y, n.strong ? size * 0.78 : size * 0.64, { strong: n.strong, missed, alpha: a, color: col });
   });
+  eachHit(d, (n, age) => naBurst(d, x0 + lw * (laneOf(n.i, 4) + 0.5), ry, size * 0.7, age));
 }
 
 /* ============================================================
@@ -565,19 +609,15 @@ function drawRail(d: D) {
 
   eachNote(d, LEAD, (n, u, a, missed) => {
     const p = P(u);
-    const r = n.strong ? 13 : 9;
-    ga(d, a);
-    c.save(); if (!missed) { c.shadowColor = '#67e8f9'; c.shadowBlur = 12; }
-    c.fillStyle = missed ? '#64748b' : '#fff'; c.strokeStyle = missed ? '#475569' : n.strong ? accent(d) : '#22d3ee'; c.lineWidth = 4;
-    c.beginPath(); c.arc(p.x, p.y, r, 0, Math.PI * 2); c.fill(); c.stroke();
-    c.restore();
-    if (n.strong && !missed) text(d, naChar(d), p.x, p.y + 1, 12, accent(d));
+    naNote(d, p.x, p.y, n.strong ? 32 : 24, { strong: n.strong, missed, alpha: a, color: n.strong ? undefined : '#06b6d4' });
   });
+  eachHit(d, (_n, age) => naBurst(d, x0, cy, 34, age));
 }
 
 /* ============================================================
  * 9. ポップ（9 色のボタンに玉が落ちてくる）
  * ============================================================ */
+const POP_COLORS_DEEP = ['#ec4899', '#f97316', '#eab308', '#84cc16', '#10b981', '#0ea5e9', '#6366f1', '#a855f7', '#f43f5e'];
 const POP_COLORS = ['#f9a8d4', '#fdba74', '#fde047', '#bef264', '#6ee7b7', '#7dd3fc', '#a5b4fc', '#d8b4fe', '#fda4af'];
 function drawPop(d: D) {
   const { c, W, H, pulse } = d;
@@ -586,7 +626,7 @@ function drawPop(d: D) {
   const yAt = (u: number) => by - u * (by - 4);
   const br = Math.min(lw * 0.46, 22);
 
-  ga(d, 0.88);
+  ga(d, 0.55);
   c.fillStyle = '#fff'; roundRect(c, x0 - 6, 0, PW + 12, H, 18); c.fill();
   for (let k = 0; k < 9; k++) { c.fillStyle = POP_COLORS[k]; ga(d, 0.22); c.fillRect(x0 + k * lw + 1, 4, lw - 2, by - 4); }
   ga(d, 1);
@@ -614,13 +654,10 @@ function drawPop(d: D) {
   eachNote(d, LEAD, (n, u, a, missed) => {
     const k = laneOf(n.i, 9);
     const x = x0 + lw * (k + 0.5), y = yAt(u);
-    const w = lw * 0.86, h = n.strong ? 18 : 13;
-    ga(d, a);
-    c.fillStyle = missed ? '#94a3b8' : POP_COLORS[k];
-    roundRect(c, x - w / 2, y - h / 2, w, h, h / 2); c.fill();
-    c.strokeStyle = missed ? '#64748b' : '#334155'; c.lineWidth = 2.5; c.stroke();
-    if (n.strong && !missed) { c.fillStyle = '#334155'; for (const dx of [-4, 4]) { c.beginPath(); c.arc(x + dx, y - 1, 1.6, 0, Math.PI * 2); c.fill(); } }
+    const sz = Math.min(lw * 1.05, 36);
+    naNote(d, x, y, n.strong ? sz : sz * 0.8, { strong: n.strong, missed, alpha: a, color: POP_COLORS_DEEP[k] });
   });
+  eachHit(d, (n, age) => naBurst(d, x0 + lw * (laneOf(n.i, 9) + 0.5), by, br * 1.6, age));
 }
 
 const STYLES: Record<TrackStyle, (d: D) => void> = {
