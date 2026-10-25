@@ -49,6 +49,18 @@ const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, 
               </div>
             </li>
             <li className="flex gap-3 items-start">
+              <span className="shrink-0 w-8 h-8 rounded-full bg-orange-500 text-white font-black flex items-center justify-center">!</span>
+              <div className="min-w-0">
+                <div className="font-black text-slate-800">特殊な「な」</div>
+                <div className="text-xs text-slate-500 leading-relaxed">
+                  <b className="text-orange-500">大きい「な」</b>（ギザギザ付き）は{input === 'mic' ? '大声で' : 'キー 2 つ同時押し（スマホは 2 本指）で'}、
+                  {input === 'mic' && <><b className="text-violet-500">小さい「な」</b>は小声で、</>}
+                  <b className="text-emerald-600">しっぽ付きの「な」</b>は{input === 'mic' ? '「なーー」としっぽの終わりまで伸ばす' : 'しっぽの終わりまで押し続ける'}。
+                  「な」がだんだん大きく／小さくなる所もある。うまくいくと登録者ボーナス（失敗してもMISSにはならない）。
+                </div>
+              </div>
+            </li>
+            <li className="flex gap-3 items-start">
               <span className="shrink-0 w-8 h-8 rounded-full bg-red-600 text-white font-black flex items-center justify-center">2</span>
               <div className="min-w-0">
                 <div className="font-black text-slate-800">「炎上した！黙れ！」が来たら、黙る{mode === '10s' ? '（10秒モードにはない）' : ''}</div>

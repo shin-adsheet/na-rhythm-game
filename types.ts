@@ -120,4 +120,9 @@ export interface RunStats {
   finished: boolean;   // 曲の最後まで（または強制終了まで）たどり着いた
   stylesSeen: number;  // 画面チェンジで見た種類
   styleClean: number;  // 画面チェンジの区間をノーミスで乗り切った数
+  input: 'mic' | 'tap';  // あそびかた
+  holdsOk: number;     // 伸ばし成功
+  holdsTotal: number;  // 伸ばしの数（譜面）
+  powerOk: number;     // 強弱が合った数
+  powerTotal: number;  // 強弱の指定がある音符を打った数
 }

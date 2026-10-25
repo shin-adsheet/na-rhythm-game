@@ -40,7 +40,16 @@ export const MODE_END_TIME: Record<GameMode, number> = {
 };
 
 export type NoteKind = 'note' | 'burn';
-export interface ChartNote { i: number; t: number; strong: boolean }
+/** 強弱：small＝小さい声（ささやき）、big＝大きい声（キーボードは2つ同時押し・画面は2本指） */
+export type Power = 'small' | 'big';
+export interface ChartNote {
+  i: number; t: number; strong: boolean;
+  kind?: 'tap' | 'hold';     // hold＝伸ばし（「なーー」：t2 まで声を出し続ける／押し続ける）
+  t2?: number;               // 伸ばしの終わり
+  vel?: number;              // 見た目の大きさ（だんだん大きく・小さくで変わる。1 がふつう）
+  power?: Power;             // 強弱の指定（なければどちらでもよい）
+  tag?: 'cresc' | 'decresc' | 'accent';
+}
 export interface BurnSection { start: number; end: number; t0: number; t1: number; id: number }
 
 export const burnAt = (i: number) => BURNS.findIndex(([a, b]) => i >= a && i <= b);
@@ -93,8 +102,54 @@ function place(i: number, d: Difficulty): boolean {
   }
 }
 
+/**
+ * 特殊譜面
+ *  伸ばし：4 小節のまとまりの最後（3 拍目から小節の終わりまで「なーー」）・静かなパート（1 小節近く伸ばす）・曲の最後
+ *  大きい「な」：盛り上がるパートの 4 小節ごとの頭
+ *  だんだん大きく：ブレイク前（185〜200）と曲の最後（401〜415）
+ *  だんだん小さく：静かなパートに入る前（273〜288）
+ */
+export const CRESC: [number, number][] = [[185, 200], [401, 415]];
+export const DECRESC: [number, number][] = [[273, 288]];
+function addSpecials(notes: ChartNote[], mode: GameMode, endT: number, useBurns: boolean) {
+  const blocked = (i: number) => (useBurns && burnAt(i) >= 0) || (mode !== '10s' && inSwitchRest(i));
+  const remove = new Set<number>();
+  const makeHold = (n: ChartNote, len: number) => {
+    const iEnd = n.i + len;
+    for (let k = n.i; k <= iEnd; k++) if (blocked(k)) return;
+    const t2 = Math.min(timeOf(iEnd) - 0.02, SONG_END - 0.15);
+    if (t2 >= endT - 0.15 || t2 - n.t < 0.3) return;
+    n.kind = 'hold'; n.t2 = t2;
+    for (const m of notes) if (m.i > n.i && m.i < iEnd) remove.add(m.i);
+  };
+  for (const n of notes) {
+    const p = barPos(n.i), bar = barNo(n.i), sec = sectionOf(n.i);
+    if (sec === 'quiet' && p === 0) makeHold(n, 6);
+    else if (bar % 4 === 3 && p === 4 && sec !== 'quiet' && sec !== 'break') makeHold(n, 4);
+  }
+  const last = notes[notes.length - 1];
+  if (last && mode === 'FULL' && !last.kind) makeHold(last, 6);   // 曲の最後は「なーーー」
+  for (const n of notes) {
+    if (remove.has(n.i)) continue;
+    const p = barPos(n.i), bar = barNo(n.i), sec = sectionOf(n.i);
+    const inR = (rs: [number, number][]) => rs.find(([a, b]) => n.i >= a && n.i <= b);
+    const c = inR(CRESC), dc = inR(DECRESC);
+    if (c) {
+      const k = (n.i - c[0]) / (c[1] - c[0]);
+      n.vel = 0.6 + 0.95 * k; n.tag = 'cresc';
+    } else if (dc) {
+      const k = (n.i - dc[0]) / (dc[1] - dc[0]);
+      n.vel = 1.55 - 0.95 * k; n.tag = 'decresc';
+    } else if (p === 0 && bar % 4 === 0 && (sec === 'drive' || sec === 'drive2' || sec === 'final')) {
+      n.vel = 1.45; n.tag = 'accent';
+    }
+    if (n.vel != null) n.power = n.vel >= 1.35 ? 'big' : n.vel <= 0.75 ? 'small' : undefined;
+  }
+  for (let k = notes.length - 1; k >= 0; k--) if (remove.has(notes[k].i)) notes.splice(k, 1);
+}
+
 /** 登録者の増え方の基準（曲が進むほど大きい）。難易度で音符の数が違っても、ノルマへの届きやすさをそろえるのに使う */
-const weightAt = (t: number) => Math.pow(10, Math.max(0, t - 3.1) / 22);
+const weightAt = (t: number) => Math.pow(10, Math.max(0, t - 3.1) / 19);
 
 function rawChart(mode: GameMode, d: Difficulty) {
   const endT = MODE_END_TIME[mode];
@@ -108,6 +163,7 @@ function rawChart(mode: GameMode, d: Difficulty) {
     if (!place(i, d)) continue;
     notes.push({ i, t, strong: barPos(i) % 2 === 0 });   // 4分の拍＝大きい丸
   }
+  addSpecials(notes, mode, endT, useBurns);
   const burns: BurnSection[] = useBurns ? BURNS
     .map(([a, b], id) => ({ start: a, end: b, t0: timeOf(a) - EIGHTH / 2, t1: timeOf(b) + EIGHTH / 2, id }))
     .filter((s) => s.t0 < endT) : [];

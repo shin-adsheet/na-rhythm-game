@@ -13,6 +13,8 @@ export class MicDetector {
   private peak = 0;
   private lastOnset = 0;
   level = 0;
+  /** 直前の「声が出た瞬間」からいちばん大きかった音量（強弱の判定に使う） */
+  peakSinceOnset = 0;
   threshold = 30;          // 0〜100（設定の「はんのうライン」）
   onOnset: (() => void) | null = null;
   onLevel: ((v: number) => void) | null = null;
@@ -49,6 +51,7 @@ export class MicDetector {
     for (let i = 0; i < n; i++) sum += d[i];
     const vol = Math.min(100, (sum / n / 128) * 200);
     this.level = vol;
+    if (vol > this.peakSinceOnset) this.peakSinceOnset = vol;
     this.onLevel?.(vol);
     const now = performance.now();
     if (vol > this.threshold) {
@@ -56,6 +59,7 @@ export class MicDetector {
         this.armed = false;
         this.peak = vol;
         this.lastOnset = now;
+        this.peakSinceOnset = vol;
         this.onOnset?.();
       }
       if (!this.armed) {

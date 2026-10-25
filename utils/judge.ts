@@ -7,7 +7,13 @@
 import { ChartNote, BurnSection, WIN_PERFECT, WIN_GREAT, WIN_GOOD } from './chart';
 import type { Judge } from './economy';
 
-export type NoteState = ChartNote & { res: Judge | 'miss' | null; at?: number };
+export type NoteState = ChartNote & {
+  res: Judge | 'miss' | null; at?: number;
+  /** 伸ばし：on＝伸ばし中、ok＝最後まで伸ばせた、broken＝とぎれた */
+  hold?: 'on' | 'ok' | 'broken';
+  /** 強弱：合っていたか（判定前は undefined） */
+  powerOk?: boolean;
+};
 export type BurnState = BurnSection & { started: boolean; ended: boolean; fueled: boolean };
 
 export type InputResult =

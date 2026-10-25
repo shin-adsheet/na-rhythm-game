@@ -53,6 +53,7 @@ const INPUT_LABEL = { tap: 'キーボード・タップ', mic: '声' } as const;
 const emptyRun = (mode: GameMode, difficulty: Difficulty = 'normal', notesTotal = 0): RunStats => ({
   mode, difficulty, notesTotal, subs: 0, quota: QUOTA[mode], cleared: false, hits: 0, perfect: 0, great: 0, good: 0, misses: 0, extras: 0,
   fuels: 0, burnsKept: 0, burnsTotal: 0, maxCombo: 0, buzzes: 0, items: 0, pokes: 0, pauses: 0, cutoff: false, ban: false, finished: false, stylesSeen: 0, styleClean: 0,
+  input: 'tap', holdsOk: 0, holdsTotal: 0, powerOk: 0, powerTotal: 0,
 });
 
 const EVENT_MOOD: Record<string, ShiashiaMood> = {
@@ -199,6 +200,13 @@ const Game: React.FC = () => {
   const finishingRef = useRef(false);
   const pauseAtRef = useRef(0);
   const hitRef = useRef(0);
+  // 強弱・伸ばし
+  const keysDownRef = useRef<Set<string>>(new Set());          // 押しているキー
+  const pointersDownRef = useRef<Set<number>>(new Set());      // 画面に触れている指
+  const lastHitRef = useRef<{ note: NoteState; at: number; src: 'mic' | 'tap' } | null>(null);
+  const activeHoldRef = useRef<NoteState | null>(null);        // 伸ばし中の音符
+  const holdGapRef = useRef<number | null>(null);              // 声・指・キーが離れた時刻（少しの途切れは許す）
+  const voicePeaksRef = useRef<number[]>([]);                  // 最近の声の大きさ（ふつうの声の基準）
   const cutQueueRef = useRef<CutInData[]>([]);
   const cutTimerRef = useRef<number | null>(null);
   const cutCurRef = useRef<CutInData | null>(null);
@@ -435,10 +443,51 @@ const Game: React.FC = () => {
   };
 
   /* ---------------- 入力 ---------------- */
+  /** 強弱のボーナス（合っていたら登録者を上乗せ） */
+  const curMul = () => {
+    const fx = effectsRef.current;
+    return (flagsRef.current.buzz ? 2 : 1) * (fx.some((x) => x.id === 'superchat') ? 3 : 1) * (flagsRef.current.nu ? 0.7 : 1) * chartRef.current.gainMul;
+  };
+  const judgePower = (n: NoteState, ok: boolean) => {
+    if (n.powerOk !== undefined || !n.power) return;
+    n.powerOk = ok;
+    const run = runRef.current;
+    run.powerTotal++;
+    if (ok) {
+      run.powerOk++;
+      addSubs(gainFor(n.t, 'perfect', comboRef.current, viewersRef.current, curMul(), chartRef.current.comboFull) * (n.power === 'big' ? 1 : 0.5));
+      showJudge(n.power === 'big' ? (settingsRef.current.input === 'mic' ? '大声ナイス！' : '同時押しナイス！') : 'ささやきナイス！', n.power === 'big' ? 'text-orange-500' : 'text-violet-500');
+      if (n.power === 'big') doShake('shake', 250);
+    } else {
+      showJudge(n.power === 'big' ? (settingsRef.current.input === 'mic' ? 'もっと大きく！' : '2つ同時に！') : 'もっと小さく！', 'text-slate-500');
+    }
+  };
+  /** 声の大きさを、その人のふつうの声とくらべる */
+  const voiceLevel = (peak: number): 'small' | 'normal' | 'big' => {
+    const arr = voicePeaksRef.current;
+    const thr = micRef.current.threshold;
+    let lv: 'small' | 'normal' | 'big';
+    if (arr.length < 5) lv = peak > thr + 35 ? 'big' : peak < thr + 10 ? 'small' : 'normal';
+    else {
+      const med = [...arr].sort((a, b) => a - b)[arr.length >> 1];
+      lv = peak >= Math.max(med * 1.3, med + 10) ? 'big' : peak <= Math.min(med * 0.72, med - 8) ? 'small' : 'normal';
+    }
+    arr.push(peak); if (arr.length > 15) arr.shift();
+    return lv;
+  };
+
   const handleInput = (src: 'mic' | 'tap') => {
     if (gameStateRef.current !== 'PLAYING' || finishingRef.current) return;
     const p = playerRef.current, e = engineRef.current;
     if (!p || !e) return;
+    // 伸ばし中は、ほかの入力を数えない（空振りにしない）
+    if (activeHoldRef.current) return;
+    // 大きい「な」の 2 つ目のキー（同時押し）・2 本目の指
+    const lh = lastHitRef.current;
+    if (src === 'tap' && lh && lh.note.power === 'big' && lh.note.powerOk === undefined && performance.now() - lh.at < 90) {
+      judgePower(lh.note, true);
+      return;
+    }
     const t = p.time();
     if (t < chartRef.current.firstT - 0.6) return;     // カウント中は数えない
     const off = (src === 'mic' ? offsetsRef.current.mic : offsetsRef.current.tap) ?? 0;
@@ -457,6 +506,18 @@ const Game: React.FC = () => {
       addSubs(gainFor(r.note.t, j, comboRef.current, viewersRef.current, mul * ch.gainMul, ch.comboFull));
       // バズ中は視聴者が増えない（バズを連発しないように）
       if (!flagsRef.current.buzz) setViewersV(viewersRef.current + VIEWERS.hit[j] * ch.viewerMul);
+      // 伸ばし・強弱
+      const n = r.note;
+      lastHitRef.current = { note: n, at: performance.now(), src };
+      if (n.kind === 'hold') { n.hold = 'on'; activeHoldRef.current = n; holdGapRef.current = null; }
+      if (src === 'mic') {
+        // 声の大きさは、声が出てから少しのあいだのいちばん大きい所で決める
+        setTimeout(() => { const lv = voiceLevel(micRef.current.peakSinceOnset); if (n.power) judgePower(n, lv === n.power); }, 75);
+      } else if (n.power === 'small') {
+        n.powerOk = true;                      // キーボード・タップは小さい「な」の指定なし
+      } else if (n.power === 'big') {
+        setTimeout(() => { if (n.powerOk === undefined) judgePower(n, false); }, 100);
+      }
       hitRef.current = performance.now();
       flagsRef.current.lastHit = hitRef.current;
       showJudge(j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GREAT' : 'GOOD', j === 'perfect' ? 'text-amber-400' : j === 'great' ? 'text-pink-500' : 'text-sky-500');
@@ -498,13 +559,24 @@ const Game: React.FC = () => {
       if (gameStateRef.current === 'PLAYING') {
         if (e.code === 'Escape') { e.preventDefault(); pauseGame(); return; }
         if (e.repeat) return;
+        if (PLAY_KEYS.has(e.code)) keysDownRef.current.add(e.code);
         if (PLAY_KEYS.has(e.code) && (TAP_ONLY || settingsRef.current.input === 'tap')) {
           e.preventDefault(); handleInputRef.current('tap');
         }
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => { keysDownRef.current.delete(e.code); };
+    const onPtrUp = (e: PointerEvent) => { pointersDownRef.current.delete(e.pointerId); };
+    const clearAll = () => { keysDownRef.current.clear(); pointersDownRef.current.clear(); };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('pointerup', onPtrUp);
+    window.addEventListener('pointercancel', onPtrUp);
+    window.addEventListener('blur', clearAll);
+    return () => {
+      window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('pointerup', onPtrUp); window.removeEventListener('pointercancel', onPtrUp); window.removeEventListener('blur', clearAll);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -579,12 +651,15 @@ const Game: React.FC = () => {
     // 10 秒は入門なので画面チェンジなし
     scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false && mode !== '10s');
     segDirtyRef.current = new Set(); lastSegRef.current = 0;
+    activeHoldRef.current = null; holdGapRef.current = null; lastHitRef.current = null; keysDownRef.current.clear(); pointersDownRef.current.clear();
     setTrackStyle('lane'); setStyleBanner(null);
     const eng = new JudgeEngine(ch.notes, ch.burns);
     engineRef.current = eng;
     notesRef.current = eng.notes;
     burnsRef.current = eng.burns;
     runRef.current = emptyRun(mode, ch.difficulty, ch.notes.length);
+    runRef.current.input = TAP_ONLY ? 'tap' : settingsRef.current.input;
+    runRef.current.holdsTotal = ch.notes.filter((n) => n.kind === 'hold').length;
     flagsRef.current = { mirror: false, hidden: false, nu: false, buzz: false, lastHit: 0, lastJudge: '' };
     subsRef.current = 0; peakSubsRef.current = 0; comboRef.current = 0; strikesRef.current = 0;
     buzzUntilRef.current = -1; effectsRef.current = []; milestoneIdxRef.current = 0;
@@ -735,6 +810,26 @@ const Game: React.FC = () => {
       const ch = chartRef.current;
       const run = runRef.current;
 
+      // 伸ばし：最後まで声・指・キーが続いたか
+      const h = activeHoldRef.current;
+      if (h) {
+        const st = settingsRef.current;
+        const holding = st.input === 'mic' && !TAP_ONLY
+          ? micRef.current.level > micRef.current.threshold * 0.75
+          : keysDownRef.current.size > 0 || pointersDownRef.current.size > 0;
+        const nowP = performance.now();
+        if (tc >= (h.t2 ?? h.t)) {
+          h.hold = 'ok'; activeHoldRef.current = null;
+          run.holdsOk++;
+          addSubs(gainFor(h.t2 ?? h.t, 'perfect', comboRef.current, viewersRef.current, curMul(), ch.comboFull) * Math.max(1, ((h.t2 ?? h.t) - h.t) / 0.35) * 0.5);
+          showJudge('なーー！ 伸ばし成功', 'text-emerald-500');
+          hitRef.current = nowP; flagsRef.current.lastHit = nowP;
+          spawnBackgroundNa();
+        } else if (!holding) {
+          if (holdGapRef.current == null) holdGapRef.current = nowP;
+          else if (nowP - holdGapRef.current > 170) { h.hold = 'broken'; activeHoldRef.current = null; showJudge('とぎれた…', 'text-slate-400'); }
+        } else holdGapRef.current = null;
+      }
       for (const ev of e.tick(tc)) {
         if (ev.type === 'miss') {
           comboRef.current = 0; setCombo(0);
@@ -1248,7 +1343,7 @@ const Game: React.FC = () => {
     <div
       className={`w-full h-full flex items-center justify-center relative overflow-hidden ${bgClass} select-none ${shake}`}
       style={{ touchAction: playing ? 'none' : undefined }}
-      onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); handleInputRef.current('tap'); } : undefined}
+      onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); pointersDownRef.current.add(e.pointerId); handleInputRef.current('tap'); } : undefined}
     >
       <audio ref={menuBgmRef} loop preload="auto" src={ASSET_BASE + (MENU_BGMS.find((x) => x.id === settings.menuBgm) || MENU_BGMS[0]).file} />
 

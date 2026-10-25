@@ -79,6 +79,7 @@ const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNe
                 <Row at={1700} k="最大コンボ" v={run.maxCombo} />
                 <Row at={1900} k="炎上" v={`鎮火 ${run.burnsKept} / ${run.burnsTotal}　火に油 ${run.fuels}`} />
                 <Row at={2100} k="バズ / special「な」" v={`${run.buzzes}回 / ${run.items}回`} />
+                <Row at={2250} k="伸ばし / 強弱" v={`${run.holdsOk} / ${run.holdsTotal}　強弱 ${run.powerOk} / ${run.powerTotal}`} />
               </div>
             </div>
 

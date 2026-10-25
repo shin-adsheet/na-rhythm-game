@@ -29,6 +29,7 @@ const LEAD_ALL = 1.2;
 interface D {
   c: CanvasRenderingContext2D; W: number; H: number; t: number; f: Flags;
   notes: NoteState[]; burns: BurnState[]; A: number; pulse: number; beatPh: number;
+  style: TrackStyle;
 }
 
 const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, scheduleRef, height = 104, action = '「な」' }) => {
@@ -56,7 +57,7 @@ const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, schedul
       ctx.clearRect(0, 0, W, H);
       if (f.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
       const since = performance.now() - f.lastHit;
-      const base: Omit<D, 'A'> = {
+      const base: Omit<D, 'A' | 'style'> = {
         c: ctx, W, H, t, f, notes: notesRef.current, burns: burnsRef.current,
         pulse: since < 160 ? 1 - since / 160 : 0,
         beatPh: (((t - 0.36) / BEAT) % 1 + 1) % 1,
@@ -66,13 +67,15 @@ const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, schedul
       const into = t - segs[k].t;
       if (k > 0 && into < TRANSITION) {
         const a = into / TRANSITION;
-        STYLES[segs[k - 1].style]({ ...base, A: 1 - a });
-        STYLES[segs[k].style]({ ...base, A: a });
-        guides(segs[k - 1].style, { ...base, A: 1 - a }, -1, actionRef.current);
-        guides(segs[k].style, { ...base, A: a }, into, actionRef.current);
+        const pv = segs[k - 1].style, nx = segs[k].style;
+        STYLES[pv]({ ...base, A: 1 - a, style: pv });
+        STYLES[nx]({ ...base, A: a, style: nx });
+        guides(pv, { ...base, A: 1 - a, style: pv }, -1, actionRef.current);
+        guides(nx, { ...base, A: a, style: nx }, into, actionRef.current);
       } else {
-        STYLES[segs[k].style]({ ...base, A: 1 });
-        guides(segs[k].style, { ...base, A: 1 }, k > 0 ? into : -1, actionRef.current);
+        const st = segs[k].style;
+        STYLES[st]({ ...base, A: 1, style: st });
+        guides(st, { ...base, A: 1, style: st }, k > 0 ? into : -1, actionRef.current);
       }
       ctx.globalAlpha = 1;
     };
@@ -143,10 +146,32 @@ function eachHit(d: D, fn: (n: NoteState, age: number) => void) {
  * ノートはぜんぶ「な」：太い「な」の字（白と濃い色のふちどり）＋後ろにうすい丸（判定の中心が分かるように）。
  * 4分の拍は大きくピンク、ウラ拍は小さく水色。色は画面ごとに変えられる
  */
-function naNote(d: D, x: number, y: number, size: number, o: { strong: boolean; missed: boolean; alpha: number; color?: string; squash?: number }) {
+function naNote(d: D, x: number, y: number, size: number, o: { strong: boolean; missed: boolean; alpha: number; color?: string; squash?: number; n?: NoteState }) {
   const c = d.c;
+  const n = o.n;
   const col = o.missed ? '#94a3b8' : o.color ?? (o.strong ? accent(d) : '#0ea5e9');
   const sq = o.squash ?? 1;
+  if (n) {
+    size *= n.vel ?? 1;
+    if (n.kind === 'hold' && !o.missed) holdTail(d, n, (n.t - d.t) / LEAD_ALL, col, size, o.alpha);
+    if (n.power === 'big' && !o.missed) {
+      // 大きい「な」：ギザギザの吹き出し
+      ga(d, o.alpha * 0.9);
+      c.fillStyle = '#fb923c'; c.strokeStyle = '#fff'; c.lineWidth = 2;
+      c.beginPath();
+      for (let k = 0; k < 20; k++) {
+        const a = (k / 20) * Math.PI * 2 + d.t * 2, r = size * (k % 2 ? 0.62 : 0.88);
+        const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r * sq;
+        if (k) c.lineTo(px, py); else c.moveTo(px, py);
+      }
+      c.closePath(); c.fill(); c.stroke();
+    } else if (n.power === 'small' && !o.missed) {
+      // 小さい「な」：点線の輪
+      ga(d, o.alpha * 0.9);
+      c.save(); c.setLineDash([3, 3]); c.strokeStyle = '#a78bfa'; c.lineWidth = 2;
+      c.beginPath(); c.ellipse(x, y, size * 0.85, size * 0.85 * sq, 0, 0, Math.PI * 2); c.stroke(); c.restore();
+    }
+  }
   ga(d, o.alpha * 0.3);
   c.fillStyle = col; c.beginPath(); c.ellipse(x, y, size * 0.62, size * 0.62 * sq, 0, 0, Math.PI * 2); c.fill();
   ga(d, o.alpha);
@@ -158,6 +183,38 @@ function naNote(d: D, x: number, y: number, size: number, o: { strong: boolean; 
   c.strokeStyle = '#fff'; c.lineWidth = size * 0.22; c.strokeText(ch, 0, dy);
   c.fillStyle = col; c.fillText(ch, 0, dy);
   c.restore();
+}
+/**
+ * 伸ばしのしっぽ：今の位置（u0）から、伸ばしの終わり（t2）の位置まで、画面ごとの通り道に沿って太い線を引く。
+ * パネルは場所が動かないので、マスのまわりに輪（伸ばした分だけ減っていく）
+ */
+function holdTail(d: D, n: NoteState, u0: number, col: string, size: number, alpha: number) {
+  const c = d.c;
+  const g = GEOM[d.style];
+  const u2 = ((n.t2 ?? n.t) - d.t) / LEAD_ALL;
+  const a = Math.max(-0.02, u0), b = Math.min(1.05, u2);
+  if (d.style === 'panel') {
+    const p = g(d, n.i, 0);
+    const total = (n.t2 ?? n.t) - n.t, done = Math.max(0, Math.min(1, (d.t - n.t) / total));
+    ga(d, alpha * 0.9);
+    c.strokeStyle = '#34d399'; c.lineWidth = 6;
+    c.beginPath(); c.arc(p.x, p.y, size * 0.9, -Math.PI / 2 + done * Math.PI * 2, Math.PI * 1.5); c.stroke();
+    return;
+  }
+  if (b <= a) return;
+  const steps = Math.max(2, Math.ceil((b - a) * 40));
+  const pts: Geo[] = [];
+  for (let k = 0; k <= steps; k++) pts.push(g(d, n.i, a + (b - a) * (k / steps)));
+  const line = (w: number, color: string, al: number) => {
+    ga(d, alpha * al); c.strokeStyle = color; c.lineCap = 'round'; c.lineJoin = 'round';
+    c.beginPath(); pts.forEach((p, k) => { const wv = w * (p.size / Math.max(1, size)); c.lineWidth = Math.max(3, wv); if (k) c.lineTo(p.x, p.y); else c.moveTo(p.x, p.y); }); c.stroke();
+  };
+  line(size * 0.62, '#ffffff', 0.85);
+  line(size * 0.42, col, 0.75);
+  // しっぽの終わり：「ー」
+  const e = pts[pts.length - 1];
+  if (u2 <= 1.05) { ga(d, alpha); text(d, 'ー', e.x, e.y, Math.max(12, e.size * 0.7), '#fff', col); }
+  c.lineCap = 'butt';
 }
 /** 打った瞬間、判定の場所で「な」がはじける（どの画面でも同じ演出） */
 function naBurst(d: D, x: number, y: number, size: number, age: number, squash = 1) {
@@ -244,7 +301,7 @@ function drawLane(d: D) {
   }
 
   eachNote(d, LEAD, (n, u, a, missed) => {
-    naNote(d, xAt(u), cy, n.strong ? 34 : 25, { strong: n.strong, missed, alpha: a });
+    naNote(d, xAt(u), cy, n.strong ? 34 : 25, { n, strong: n.strong, missed, alpha: a });
   });
   eachHit(d, (_n, age) => naBurst(d, jx, cy, 36, age));
   void f;
@@ -299,7 +356,7 @@ function drawFall(d: D) {
   const ns = Math.min(lw * 1.05, 34);
   eachNote(d, LEAD, (n, u, a, missed) => {
     const lane = laneOf(n.i, 7);
-    naNote(d, x0 + lw * (lane + 0.5), yAt(u), n.strong ? ns : ns * 0.8, { strong: n.strong, missed, alpha: a });
+    naNote(d, x0 + lw * (lane + 0.5), yAt(u), n.strong ? ns : ns * 0.8, { n, strong: n.strong, missed, alpha: a });
   });
   eachHit(d, (n, age) => naBurst(d, x0 + lw * (laneOf(n.i, 7) + 0.5), jy, ns, age));
 }
@@ -342,7 +399,7 @@ function drawDrum(d: D) {
   eachNote(d, LEAD, (n, u, a, m) => list.push([n, u, a, m]));
   for (let k = list.length - 1; k >= 0; k--) {
     const [n, u, a, missed] = list[k];
-    naNote(d, xAt(u), cy, n.strong ? 40 : 28, { strong: n.strong, missed, alpha: a, color: n.strong ? '#ef4444' : '#3b82f6' });
+    naNote(d, xAt(u), cy, n.strong ? 40 : 28, { n, strong: n.strong, missed, alpha: a, color: n.strong ? '#ef4444' : '#3b82f6' });
   }
   eachHit(d, (_n, age) => naBurst(d, jx, cy, 38, age));
 }
@@ -390,7 +447,7 @@ function drawRing(d: D) {
     const r = hub + (R - hub) * (1 - u);
     const x = cx + Math.cos(ang(k)) * r, y = cy + Math.sin(ang(k)) * r;
     const grow = Math.max(0, Math.min(1, 1 - u));
-    naNote(d, x, y, (n.strong ? 16 : 12) + (n.strong ? 16 : 11) * grow, { strong: n.strong, missed, alpha: a });
+    naNote(d, x, y, (n.strong ? 16 : 12) + (n.strong ? 16 : 11) * grow, { n, strong: n.strong, missed, alpha: a });
   });
   eachHit(d, (n, age) => { const k = laneOf(n.i, 8); naBurst(d, cx + Math.cos(ang(k)) * R, cy + Math.sin(ang(k)) * R, 30, age); });
 }
@@ -454,7 +511,7 @@ function drawHighway(d: D) {
     if (s1 < sFar) continue;
     const rel = -1 + (lane + 0.5) * 0.5;
     // 奥ほど小さく、少しつぶれる（道に寝ている「な」）
-    naNote(d, xOf(s1, rel), yOf(s1), (n.strong ? 46 : 36) * s1, { strong: n.strong, missed, alpha: a * Math.min(1, (s1 - sFar) / 0.12), color: n.strong ? '#e879f9' : '#22d3ee', squash: 0.72 });
+    naNote(d, xOf(s1, rel), yOf(s1), (n.strong ? 46 : 36) * s1, { n, strong: n.strong, missed, alpha: a * Math.min(1, (s1 - sFar) / 0.12), color: n.strong ? '#e879f9' : '#22d3ee', squash: 0.72 });
   }
   eachHit(d, (n, age) => naBurst(d, xOf(1, -1 + (laneOf(n.i, 4) + 0.5) * 0.5), jy, 40, age, 0.72));
 }
@@ -497,7 +554,7 @@ function drawPanel(d: D) {
     roundRect(c, p.x + (cs - sz) / 2, p.y + (cs - sz) / 2, sz, sz, 8 * k + 2); c.fill();
     ga(d, a * (0.5 + 0.5 * k));
     c.strokeStyle = col; c.lineWidth = 3; c.stroke();
-    naNote(d, p.x + cs / 2, p.y + cs / 2, cs * (0.34 + 0.3 * k), { strong: n.strong, missed, alpha: a, color: col });
+    naNote(d, p.x + cs / 2, p.y + cs / 2, cs * (0.34 + 0.3 * k), { n, strong: n.strong, missed, alpha: a, color: col });
     // 外枠：ここまで広がったら
     ga(d, a * 0.6);
     c.strokeStyle = n.strong ? '#f9a8d4' : '#7dd3fc'; c.lineWidth = 2;
@@ -569,7 +626,7 @@ function drawStep(d: D) {
     c.beginPath(); c.moveTo(0, -size * 0.62); c.lineTo(size * 0.2, -size * 0.4); c.lineTo(-size * 0.2, -size * 0.4); c.closePath();
     c.fillStyle = col; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke();
     c.restore();
-    naNote(d, x, y, n.strong ? size * 0.78 : size * 0.64, { strong: n.strong, missed, alpha: a, color: col });
+    naNote(d, x, y, n.strong ? size * 0.78 : size * 0.64, { n, strong: n.strong, missed, alpha: a, color: col });
   });
   eachHit(d, (n, age) => naBurst(d, x0 + lw * (laneOf(n.i, 4) + 0.5), ry, size * 0.7, age));
 }
@@ -615,7 +672,7 @@ function drawRail(d: D) {
 
   eachNote(d, LEAD, (n, u, a, missed) => {
     const p = P(u);
-    naNote(d, p.x, p.y, n.strong ? 32 : 24, { strong: n.strong, missed, alpha: a, color: n.strong ? undefined : '#06b6d4' });
+    naNote(d, p.x, p.y, n.strong ? 32 : 24, { n, strong: n.strong, missed, alpha: a, color: n.strong ? undefined : '#06b6d4' });
   });
   eachHit(d, (_n, age) => naBurst(d, x0, cy, 34, age));
 }
@@ -661,7 +718,7 @@ function drawPop(d: D) {
     const k = laneOf(n.i, 9);
     const x = x0 + lw * (k + 0.5), y = yAt(u);
     const sz = Math.min(lw * 1.05, 36);
-    naNote(d, x, y, n.strong ? sz : sz * 0.8, { strong: n.strong, missed, alpha: a, color: POP_COLORS_DEEP[k] });
+    naNote(d, x, y, n.strong ? sz : sz * 0.8, { n, strong: n.strong, missed, alpha: a, color: POP_COLORS_DEEP[k] });
   });
   eachHit(d, (n, age) => naBurst(d, x0 + lw * (laneOf(n.i, 9) + 0.5), by, br * 1.6, age));
 }
@@ -714,6 +771,19 @@ function guides(style: TrackStyle, d: D, into: number, action: string) {
     c.beginPath(); c.ellipse(p.x, p.y, r + 1.5, (r + 1.5) * (p.squash ?? 1), 0, 0, Math.PI * 2); c.stroke();
     c.strokeStyle = d.f.buzz ? '#fbbf24' : '#ffffff';
     c.beginPath(); c.ellipse(p.x, p.y, r, r * (p.squash ?? 1), 0, 0, Math.PI * 2); c.stroke();
+  }
+  // 伸ばし中：判定の場所に「な」を残して、しっぽが縮んでいく
+  for (const n of notes) {
+    if (n.hold !== 'on') continue;
+    const p = g(d, n.i, 0);
+    const size = p.size * (n.vel ?? 1);
+    holdTail(d, n, 0, '#10b981', size, 1);
+    const glow = 0.6 + 0.4 * Math.sin(t * 20);
+    ga(d, glow);
+    c.fillStyle = '#34d399'; c.beginPath(); c.ellipse(p.x, p.y, size * 0.9, size * 0.9 * (p.squash ?? 1), 0, 0, Math.PI * 2); c.fill();
+    ga(d, 1);
+    text(d, naChar(d), p.x, p.y, size, '#fff', '#059669');
+    text(d, 'ーー', p.x + size * 0.9, p.y - size * 0.6, Math.max(12, size * 0.5), '#fff', '#059669');
   }
   // 切り替え直後の案内
   if (into >= 0 && into < INTRO && style !== 'lane') {
