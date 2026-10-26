@@ -3,6 +3,8 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { buildELGirl } from './shia/model.js';
 import { SHIA_CONFIG } from './shia/shia-config';
+import { buildELGirl as buildKia } from './kia/model.js';
+import { KIA_CONFIG } from './kia/kia-config';
 
 /**
  * しあしあ 3D（「しあ 調整台」で作ったモデルをそのまま使う）
@@ -16,7 +18,11 @@ THREE.ColorManagement.enabled = false;   // ベタ塗りの色がそのまま出
 
 export type ShiashiaMood =
   | 'dance' | 'idle' | 'sad' | 'fly' | 'celebrate' | 'sleep' | 'spin' | 'shock'
-  | 'sing' | 'game' | 'asmr' | 'ban';
+  | 'sing' | 'game' | 'asmr' | 'ban'
+  // きあきあ用（怒って走ってくる → 振りかぶる → パンチ → 腕組み「ふんっ」）
+  | 'run' | 'walk' | 'angry' | 'windup' | 'punch' | 'huff';
+export type Character = 'shia' | 'kia';
+const ANGRY_MOODS = new Set<ShiashiaMood>(['run', 'angry', 'windup', 'punch', 'huff']);
 
 interface Props {
   /** 曲の拍の位置（4分＝1、小数あり）。null なら 175BPM で勝手に刻む */
@@ -32,9 +38,11 @@ interface Props {
   partner?: boolean;
   /** コラボ相手を用意しておくか（partner を使う画面だけ true） */
   withPartner?: boolean;
+  /** だれを出すか（しあしあ／きあきあ。きあきあは「きあ 調整台」で作ったモデル） */
+  character?: Character;
 }
 
-/** きあきあ（コラボ相手・狐っ娘）の色：オレンジの髪・黄色のトップス */
+/** 昔の「しあしあの色違い」きあきあの色（今は本物のきあきあモデルを使う。e2e のスタブ用に残す） */
 export const KIA_COLORS: Record<string, number> = {
   hair: 0xf59e42, hairIn: 0xd0702a, tail: 0xf59e42, sweater: 0xffd84d, sweaterIn: 0xe0b52a, suit: 0xffd84d,
   eye: 0xd0702a, eye2: 0xd0702a, lash: 0xa4531c, brow: 0xa4531c, line: 0xa4531c, under: 0x7a4a2a,
@@ -56,10 +64,12 @@ export interface Rig {
   side: number;            // 1 = しあしあ、-1 = コラボ相手（動きを左右反転）
 }
 
-export function makeRig(colors?: Record<string, number>, side = 1): Rig {
-  const cfg = JSON.parse(JSON.stringify(SHIA_CONFIG));
+export function makeRig(colors?: Record<string, number>, side = 1, character: Character = 'shia'): Rig {
+  const cfg = JSON.parse(JSON.stringify(character === 'kia' ? KIA_CONFIG : SHIA_CONFIG));
   if (colors) cfg.colors = { ...cfg.colors, ...colors };
-  const g: THREE.Group = buildELGirl(cfg);
+  const g: THREE.Group = character === 'kia' ? buildKia(cfg) : buildELGirl(cfg);
+  // きあきあは耳と脚の分だけ背が高いので、しあしあと同じくらいの大きさにそろえる
+  if (character === 'kia') g.scale.setScalar(0.86);
   const J: Record<string, any> = g.userData.J || {};
   const rig: Rig = { g, J, setBlink: g.userData.setBlink, baseY: 0, mouthS: cfg.t?.mouthS ?? 1, side };
   restAll(rig);
@@ -75,17 +85,17 @@ export function restAll(r: Rig) {
 }
 
 const Shiashia3D: React.FC<Props> = ({
-  getBeat, hitRef, mood = 'dance', intensity = 0, size = 260, className = '', onPoke, colors, partner = false, withPartner = false,
+  getBeat, hitRef, mood = 'dance', intensity = 0, size = 260, className = '', onPoke, colors, partner = false, withPartner = false, character = 'shia',
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
-  const moodRef = useRef(mood);
+  const moodRef = useRef<ShiashiaMood>(mood as ShiashiaMood);
   const intensityRef = useRef(intensity);
   const partnerRef = useRef(partner);
   const getBeatRef = useRef(getBeat);
   const pokeTimeRef = useRef(0);
   const moodSince = useRef(performance.now());
   if (moodRef.current !== mood) moodSince.current = performance.now();
-  moodRef.current = mood;
+  moodRef.current = mood as ShiashiaMood;
   intensityRef.current = intensity;
   partnerRef.current = partner;
   getBeatRef.current = getBeat;
@@ -106,10 +116,10 @@ const Shiashia3D: React.FC<Props> = ({
     renderer.setClearColor(0x000000, 0);
     mount.appendChild(renderer.domElement);
 
-    const rigs: Rig[] = [makeRig(colors, 1)];
+    const rigs: Rig[] = [makeRig(colors, 1, character as Character)];
     scene.add(rigs[0].g);
     if (withPartner) {
-      const p = makeRig(KIA_COLORS, -1);
+      const p = makeRig(undefined, -1, 'kia');     // コラボ相手は本物のきあきあ
       p.g.visible = false;
       scene.add(p.g);
       rigs.push(p);
@@ -264,6 +274,62 @@ const Shiashia3D: React.FC<Props> = ({
           tiltZ = Math.sin(time * 40) * 3;
           break;
         }
+        case 'run': case 'walk': {
+          // 「きあ 調整台」の走り・歩きと同じ動き。走りは前のめりで、ひじを曲げて腕を大きく振る
+          const run = m === 'run', per = run ? 0.42 : 1.0, ph = (Math.PI * 2 * time) / per, A = run ? 42 : 24, sn = Math.sin(ph);
+          J.upperArmL?.rotation.set(D2(A * 0.9 * sn), 0, D2(22), 'ZXY');
+          J.upperArmR?.rotation.set(D2(-A * 0.9 * sn), 0, D2(-22), 'ZXY');
+          add('thighL', -A * sn); add('thighR', A * sn);
+          add('kneeL', (run ? 80 : 35) * Math.max(0, Math.cos(ph + 0.35)) ** 1.5 + (run ? 12 : 4));
+          add('kneeR', (run ? 80 : 35) * Math.max(0, Math.cos(ph + Math.PI + 0.35)) ** 1.5 + (run ? 12 : 4));
+          if (run) { add('elbowL', -80); add('elbowR', -80); add('spine', 18); add('head', -10); }
+          add('spine', 0, 5 * sn, 0); add('head', 0, -4 * sn, 0);
+          lift = (run ? 22 : 6) * Math.abs(Math.cos(ph));
+          spinY = -58;          // 画面の右から左へ走ってくる向き
+          break;
+        }
+        case 'angry': {
+          // じだんだ：こぶしを胸の前でぶんぶん、片足ずつ踏みならす
+          const shake = Math.sin(time * 26) * 10, st = Math.sin(time * Math.PI * 4);
+          armsFwd(38 + shake, 38 - shake, 42);
+          add('elbowL', -78); add('elbowR', -78);
+          add('spine', 12); add('head', -6, 0, Math.sin(time * 13) * 4);
+          if (st > 0) { add('thighL', -34 * st); add('kneeL', 40 * st); } else { add('thighR', 34 * st); add('kneeR', -40 * st); }
+          lift = -4 * Math.abs(st);
+          tiltZ = Math.sin(time * 30) * 2;
+          break;
+        }
+        case 'windup': {
+          // 右のこぶしを大きく後ろへ引く
+          const k = easeOutBack(clamp01(mt / 0.35));
+          J.upperArmR?.rotation.set(D2(lerp(0, 35, k)), 0, D2(lerp(-22, -125, k)), 'ZXY');
+          add('elbowR', -lerp(0, 110, k));
+          J.upperArmL?.rotation.set(D2(-lerp(0, 70, k)), 0, D2(lerp(22, 30, k)), 'ZXY');
+          add('elbowL', -30 * k);
+          add('spine', -6 * k, -28 * k, 0); add('head', -8 * k, 18 * k, 0);
+          add('thighL', -26 * k); add('kneeR', 20 * k);
+          tiltZ = Math.sin(time * 34) * 2 * k;
+          break;
+        }
+        case 'punch': {
+          // こぶしをこっち（画面）へ突き出す
+          const k = easeOutBack(clamp01(mt / 0.12));
+          J.upperArmR?.rotation.set(D2(-lerp(55, 95, k)), 0, D2(-lerp(70, 4, k)), 'ZXY');
+          add('elbowR', -lerp(125, 0, k));
+          J.upperArmL?.rotation.set(D2(30 * k), 0, D2(30), 'ZXY');
+          add('elbowL', -70 * k);
+          add('spine', 20 * k, 26 * k, 0); add('head', 6 * k, -12 * k, 0);
+          add('thighL', -34 * k); add('kneeL', 26 * k); add('thighR', 18 * k);
+          break;
+        }
+        case 'huff': {
+          // 腕を組んで、そっぽを向いて「ふんっ」
+          armsFwd(34, 34, 4);
+          add('elbowL', -112); add('elbowR', -112);
+          add('spine', -6); add('head', -12, 32 * s, -6 * s);
+          spinY = -10;
+          break;
+        }
       }
 
       if (s === 1 && pokePulse > 0) { add('head', 0, 0, 25 * pokePulse); add('spine', 0, 0, 6 * pokePulse); }
@@ -271,9 +337,10 @@ const Shiashia3D: React.FC<Props> = ({
 
       if (J.mouth) {
         const singing = m === 'sing' && Math.sin(time * 9) > -0.3;
-        J.mouth.visible = hitPulse > 0.3 || (s === 1 && pokePulse > 0.4) || singing || m === 'shock';
+        J.mouth.visible = hitPulse > 0.3 || (s === 1 && pokePulse > 0.4) || singing || m === 'shock' || (ANGRY_MOODS.has(m) && m !== 'huff' && Math.sin(time * 11) > -0.6);
         const ms = r.mouthS;
-        J.mouth.scale.set(4.2 * ms * (1 + 0.35 * hitPulse), 3.4 * ms * (1 + 1.1 * hitPulse), 1);
+        const yell = ANGRY_MOODS.has(m) && m !== 'huff' ? 1 + 0.5 * Math.abs(Math.sin(time * 11)) : 0;   // 怒鳴っている口
+        J.mouth.scale.set(4.2 * ms * (1 + 0.35 * hitPulse + 0.5 * yell), 3.4 * ms * (1 + 1.1 * hitPulse + 1.4 * yell), 1);
       }
       if (r.setBlink) {
         const P = 3.4, n = Math.floor(time / P), local = time - n * P, start = P * 0.4 * hash1(n * 7 + 3 + (s < 0 ? 9 : 0));
@@ -281,7 +348,13 @@ const Shiashia3D: React.FC<Props> = ({
         const v = m === 'sleep' ? 1 : m === 'asmr' ? 0.55 : Math.max(one(local - start), hash1(n * 5 + 11) < 0.35 ? one(local - start - 0.2) : 0);
         r.setBlink(v);
       }
-      if (J.tail) { J.tail.rotation.z += 0.35 * Math.sin(time * 9) * (0.5 + inten); J.tail.rotation.x += 0.2 * Math.sin(time * 6 + 1); }
+      // つり目（怒っているとき）：目を内側に傾ける
+      if (Array.isArray(J.eyes)) for (const e of J.eyes) {
+        const ud = e.userData; if (ud.rz0 == null) ud.rz0 = e.rotation.z;
+        const sideX = e.position.x >= 0 ? 1 : -1;
+        e.rotation.z = ud.rz0 + (ANGRY_MOODS.has(m) ? sideX * 0.38 : 0);
+      }
+      if (J.tail && !J.tail.userData.fox) { J.tail.rotation.z += 0.35 * Math.sin(time * 9) * (0.5 + inten); J.tail.rotation.x += 0.2 * Math.sin(time * 6 + 1); }
 
       r.g.position.y = r.baseY + lift;
       const hs = 1 + hitPulse * 0.08 - squash * 0.5;
