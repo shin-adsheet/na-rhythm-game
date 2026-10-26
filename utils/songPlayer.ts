@@ -6,6 +6,7 @@
  * - 読み込めない URL（他サイトの制限など）のときは <audio> で鳴らし、その再生位置を時計にする
  */
 import { BEAT } from './chart';
+import { playSfx, SfxId } from './sfx';
 
 const bufferCache = new Map<string, AudioBuffer>();
 
@@ -91,6 +92,8 @@ export class SongPlayer {
     const v = (c.outputLatency || 0) + (c.baseLatency || 0);
     return Math.max(0, Math.min(0.5, v));
   }
+  /** 曲の時刻 → AudioContext の時刻（効果音を拍ぴったりに予約するとき）。<audio> で鳴らしているときは null */
+  ctxTimeOf(tSong: number) { return this.buffer && this.started ? this.anchorCtx + (tSong - this.anchorSong) / this.rate : null; }
   /** いま耳に聞こえている所の曲の時刻（秒） */
   audibleTime() { return this.time() - this.outLatency() * this.rate; }
 
@@ -160,8 +163,25 @@ export class SongPlayer {
   }
 }
 
-/** 短い効果音（ジングル）。音源ファイル不要 */
+/** フリー素材の効果音（sfx/）。読み込めていないときは下の合成音で鳴らす */
+const JINGLE_SFX: Record<string, [SfxId, number, number][]> = {
+  clear: [['quota', 0, 1]],
+  record: [['res_record', 0, 1]],
+  milestone: [['milestone', 0, 0.9], ['coins', 0.05, 0.8]],
+  item: [['item', 0, 0.9]],
+  fail: [['res_fail', 0, 1]],
+  buzz: [['fuel', 0, 0.8]],
+  ban: [['ban', 0, 1], ['down', 0.35, 1]],
+};
+
+/** 短い効果音（ジングル） */
 export function playJingle(ctx: AudioContext | null, kind: 'clear' | 'record' | 'fail' | 'buzz' | 'item' | 'ban' | 'milestone', volume = 0.5) {
+  const list = JINGLE_SFX[kind];
+  const c = ctx && ctx.state === 'running' ? ctx : null;
+  if (list && playSfx(list[0][0], { ctx: c, volume, gain: list[0][2] })) {
+    list.slice(1).forEach(([id, d, g]) => playSfx(id, { ctx: c, volume, gain: g, delay: d }));
+    return;
+  }
   try {
     const own = !ctx || ctx.state !== 'running';
     const c = own ? new (window.AudioContext || (window as any).webkitAudioContext)() : ctx!;

@@ -1,15 +1,11 @@
 /**
- * タイトル画面の効果音（音源ファイルなし。WebAudio でその場で作る）
+ * タイトル画面の効果音
  *  pop：「な」を割った音／punch：きあきあのパンチ／glass：画面が割れる音／boing：しあしあの反応
+ *  フリー素材（utils/sfx.ts）が読み込めていればそれを使い、合成音を少し重ねて厚みを出す。
+ *  素材がないときは WebAudio でその場で作った音だけで鳴らす。
  */
-let ctx: AudioContext | null = null;
-function ac() {
-  try {
-    if (!ctx || ctx.state === 'closed') ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    ctx.resume().catch(() => {});
-    return ctx;
-  } catch { return null; }
-}
+import { playSfx, sfxCtx } from './sfx';
+const ac = sfxCtx;
 let noiseBuf: AudioBuffer | null = null;
 function noise(c: AudioContext) {
   if (noiseBuf && noiseBuf.sampleRate === c.sampleRate) return noiseBuf;
@@ -31,7 +27,9 @@ function burst(c: AudioContext, out: AudioNode, t: number, dur: number, vol: num
 }
 const master = (c: AudioContext, volume: number) => { const g = c.createGain(); g.gain.value = Math.max(0, Math.min(1, volume)) * 0.6; g.connect(c.destination); return g; };
 
-export function sfxPop(volume: number, pitch = 1) {
+export function sfxPop(volume: number, pitch = 1, gold = false) {
+  if (gold && playSfx('pop_gold', { volume, rate: Math.min(1.5, pitch * 0.8) })) { playSfx('pop', { volume, rate: pitch, gain: 0.6 }); return; }
+  if (playSfx('pop', { volume, rate: pitch })) return;
   const c = ac(); if (!c) return; const m = master(c, volume); const t = c.currentTime;
   tone(c, m, t, 0.12, 700 * pitch, 1500 * pitch, 'sine', 0.35);
   burst(c, m, t, 0.05, 0.15, 'highpass', 3000);
@@ -45,6 +43,7 @@ export function sfxBoing(volume: number) {
   o.connect(g); g.connect(m); o.start(t); l.start(t); o.stop(t + 0.4); l.stop(t + 0.4);
 }
 export function sfxWhoosh(volume: number) {
+  playSfx('swing', { volume, rate: 1.15, gain: 1.2 });
   const c = ac(); if (!c) return; const m = master(c, volume); const t = c.currentTime;
   const s = c.createBufferSource(); s.buffer = noise(c);
   const fl = c.createBiquadFilter(); fl.type = 'bandpass'; fl.Q.value = 1.2; fl.frequency.setValueAtTime(300, t); fl.frequency.exponentialRampToValueAtTime(2500, t + 0.35);
@@ -53,6 +52,16 @@ export function sfxWhoosh(volume: number) {
 }
 /** パンチ＋ガラスが割れる音 */
 export function sfxShatter(volume: number) {
+  if (playSfx('punch', { volume, gain: 1.2 })) {
+    // 素材：パンチ → ガラスが大きく割れる → 破片がばらばら落ちる。低い「ドン」だけ合成で重ねる
+    playSfx('glass_big', { volume, gain: 1.1, delay: 0.02 });
+    playSfx('glass_mid', { volume, delay: 0.09, rate: 0.9, pan: -0.4 });
+    playSfx('glass_mid', { volume, delay: 0.16, rate: 1.1, pan: 0.4 });
+    for (let i = 0; i < 7; i++) playSfx('glass_small', { volume, gain: 0.35 + Math.random() * 0.3, delay: 0.3 + Math.random() * 1.1, rate: 0.9 + Math.random() * 0.6, pan: Math.random() * 1.6 - 0.8 });
+    const c = ac(); if (!c) return; const m = master(c, volume); const t = c.currentTime;
+    tone(c, m, t, 0.4, 120, 35, 'sine', 0.8);
+    return;
+  }
   const c = ac(); if (!c) return; const m = master(c, volume); const t = c.currentTime;
   tone(c, m, t, 0.35, 140, 40, 'sine', 0.9);                // ドンッ
   burst(c, m, t, 0.12, 0.7, 'lowpass', 900);

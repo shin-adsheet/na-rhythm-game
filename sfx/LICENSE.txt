@@ -1,0 +1,8 @@
+These sound effects are by Kenney (www.kenney.nl), converted to mono mp3.
+License: Creative Commons Zero (CC0) — http://creativecommons.org/publicdomain/zero/1.0/
+"This content is free to use in personal, educational and commercial projects.
+ Support us by crediting Kenney or www.kenney.nl (this is not mandatory)"
+
+Packs: Interface Sounds, Digital Audio, Impact Sounds, Sci-fi Sounds, Casino Audio,
+RPG Audio, Music Jingles, Voiceover Pack, Voiceover Pack: Fighter
+Source mirror: https://github.com/kapishdima/soundcn (assets/kenney_*)

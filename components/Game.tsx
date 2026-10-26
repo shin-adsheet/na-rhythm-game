@@ -18,6 +18,7 @@ import ShiashiaSeated, { STORY, Reaction } from './ShiashiaSeated';
 import KiaKiaPunch, { ScreenCrack } from './KiaKiaPunch';
 import { NaBubbles, FortuneCard } from './TitleToys';
 import { sfxBoing } from '../utils/titleSfx';
+import { playSfx, playSfxAt, preloadSfx, installButtonSfx, cancelPendingSfx, SfxId, SfxOpt } from '../utils/sfx';
 import Track from './Track';
 import { perf, guessLite } from '../utils/perf';
 import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO } from '../utils/arcade';
@@ -44,8 +45,8 @@ const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
   { id: 'original', label: '原曲', file: 'bgm/top.mp3' },
 ];
 
-interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean }
-const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: 'tap', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite() };
+interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean; hitSound: boolean; voice: boolean }
+const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: 'tap', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite(), hitSound: true, voice: true };
 const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 type Offsets = { mic: number | null; tap: number | null };
@@ -151,6 +152,15 @@ const Game: React.FC = () => {
   const setOffset = (k: 'mic' | 'tap', v: number | null) => setOffsetsState((o) => { const n = { ...o, [k]: v }; saveJSON(LS_KEYS.offsets, n); return n; });
   const offsetsRef = useRef(offsets); offsetsRef.current = offsets;
   const settingsRef = useRef(settings); settingsRef.current = settings;
+  /**
+   * 効果音（フリー素材）。inPlay＝プレイ中に鳴らす音。声で遊んでいるときはマイクが拾って「な」と数えてしまうので鳴らさない
+   */
+  const se = (id: SfxId, o: SfxOpt = {}, inPlay = false) => {
+    if (inPlay && !TAP_ONLY && settingsRef.current.input === 'mic' && gameStateRef.current === 'PLAYING') return false;
+    const pc = playerRef.current?.ctx;
+    return playSfx(id, { volume: settingsRef.current.volume, ctx: pc && pc.state === 'running' ? pc : null, ...o });
+  };
+  const voiceOn = () => settingsRef.current.voice !== false;
   // かるいモード（設定、またはプレイ中に重いと分かったら自動で）
   const [liteAuto, setLiteAuto] = useState(false);
   const lite = !!settings.lite || liteAuto;
@@ -241,6 +251,7 @@ const Game: React.FC = () => {
   const [storyIdx, setStoryIdx] = useState(0);
   // タイトル画面のおまけ
   const seatedReactRef = useRef<((r: Reaction) => void) | null>(null);
+  const styleBannerIdRef = useRef(-1);
   const titlePokeRef = useRef({ n: 0, at: 0 });
   const [reactSay, setReactSay] = useState<{ id: number; text: string } | null>(null);
   const [kiaOn, setKiaOn] = useState(false);
@@ -262,6 +273,8 @@ const Game: React.FC = () => {
   const chaos = Math.min(1, Math.log10(subs + 1) / 8);
 
   /* ---------------- 共通 ---------------- */
+  // 効果音：先に読み込んでおく＋ボタンを押したときの音
+  useEffect(() => { preloadSfx(); return installButtonSfx(() => settingsRef.current.volume); }, []);
   useEffect(() => {
     const onResize = () => setVp({ w: window.innerWidth, h: window.innerHeight });
     window.addEventListener('resize', onResize);
@@ -272,6 +285,7 @@ const Game: React.FC = () => {
     if (!ids.length) return;
     const now = Date.now();
     const items = ids.map((id, i) => ({ id: now + i, achievement: achievementById(id)! })).filter((x) => x.achievement);
+    if (items.length) playSfx('achieve', { volume: settingsRef.current.volume });
     setToasts((p) => [...p, ...items]);
     items.forEach((it) => setTimeout(() => setToasts((p) => p.filter((t) => t.id !== it.id)), 4200));
   };
@@ -447,7 +461,8 @@ const Game: React.FC = () => {
     runRef.current.buzzes++;
     setViewersV(VIEWERS.buzzReset);
     showJudge('バズった！ 登録者2倍', 'text-amber-500');
-    playJingle(playerRef.current?.ctx ?? null, 'milestone', settingsRef.current.volume);
+    if (se('buzz', { gain: 0.8 })) { se('coins', { delay: 0.25 }); se('coins', { delay: 0.45, rate: 1.2 }); }
+    else playJingle(playerRef.current?.ctx ?? null, 'milestone', settingsRef.current.volume);
   };
   const checkViewers = (t: number) => {
     if (viewersRef.current >= 100 && !flagsRef.current.buzz) startBuzz(t);
@@ -480,7 +495,7 @@ const Game: React.FC = () => {
       run.powerOk++;
       addSubs(gainFor(n.t, 'perfect', comboRef.current, viewersRef.current, curMul(), chartRef.current.comboFull) * (n.power === 'big' ? 1 : 0.5));
       showJudge(n.power === 'big' ? (settingsRef.current.input === 'mic' ? '大声ナイス！' : '同時押しナイス！') : 'ささやきナイス！', n.power === 'big' ? 'text-orange-500' : 'text-violet-500');
-      if (n.power === 'big') doShake('shake', 250);
+      if (n.power === 'big') { doShake('shake', 250); se('hit_big', { gain: 0.9 }, true); }
     } else {
       showJudge(n.power === 'big' ? (settingsRef.current.input === 'mic' ? 'もっと大きく！' : '2つ同時に！') : 'もっと小さく！', 'text-slate-500');
     }
@@ -545,6 +560,9 @@ const Game: React.FC = () => {
       hitRef.current = performance.now();
       flagsRef.current.lastHit = hitRef.current;
       showJudge(j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GREAT' : 'GOOD', j === 'perfect' ? 'text-amber-400' : j === 'great' ? 'text-pink-500' : 'text-sky-500');
+      // タップ音（キーボード・タップのときだけ）とコンボの声
+      if (src === 'tap' && settingsRef.current.hitSound !== false) se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
+      if (voiceOn() && (comboRef.current === 50 || (comboRef.current > 0 && comboRef.current % 100 === 0))) se('v_combo', { gain: 0.8 }, true);
       if (Math.random() < 0.18 + chaos * 0.6) spawnBackgroundNa();
       checkViewers(t);
     } else if (r.type === 'extra') {
@@ -677,7 +695,7 @@ const Game: React.FC = () => {
     segDirtyRef.current = new Set(); lastSegRef.current = 0;
     activeHoldRef.current = null; holdGapRef.current = null; lastHitRef.current = null; keysDownRef.current.clear(); pointersDownRef.current.clear();
     dtsRef.current = [];
-    setTrackStyle('lane'); setStyleBanner(null);
+    setTrackStyle('lane'); setStyleBanner(null); styleBannerIdRef.current = -1;
     const eng = new JudgeEngine(ch.notes, ch.burns);
     engineRef.current = eng;
     notesRef.current = eng.notes;
@@ -701,6 +719,14 @@ const Game: React.FC = () => {
     p.clicks = settingsRef.current.clicks;
     p.stop();
     await p.start(0);
+    // カウントダウンの声「3・2・1」を、曲の拍ぴったりに予約する（声で遊ぶときはマイクが拾うので鳴らさない）
+    cancelPendingSfx();
+    if (voiceOn() && (TAP_ONLY || settingsRef.current.input === 'tap')) {
+      (['v3', 'v2', 'v1'] as SfxId[]).forEach((id, k) => {
+        const when = p.ctxTimeOf(ch.firstT - 2 * BEAT * (3 - k));
+        if (when != null) playSfxAt(id, when, { ctx: p.ctx, volume: settingsRef.current.volume });
+      });
+    }
     setGameState('PLAYING');
   };
 
@@ -733,6 +759,7 @@ const Game: React.FC = () => {
 
   const quitToTitle = () => {
     finishingRef.current = true;
+    cancelPendingSfx();
     playerRef.current?.stop();
     playerRef.current?.resume();
     clearCuts();
@@ -848,6 +875,7 @@ const Game: React.FC = () => {
           run.holdsOk++;
           addSubs(gainFor(h.t2 ?? h.t, 'perfect', comboRef.current, viewersRef.current, curMul(), ch.comboFull) * Math.max(1, ((h.t2 ?? h.t) - h.t) / 0.35) * 0.5);
           showJudge('なーー！ 伸ばし成功', 'text-emerald-500');
+          se('hold_ok', { gain: 0.8 }, true);
           hitRef.current = nowP; flagsRef.current.lastHit = nowP;
           spawnBackgroundNa();
         } else if (!holding) {
@@ -880,6 +908,7 @@ const Game: React.FC = () => {
           announcedRef.current.add(b.id);
           const dur = Math.max(1700, ((b.t1 - t) / p.getRate()) * 1000);
           queueCut({ event: 'burn', title: '炎上した！', sub: '黙れ！ 声を出すと火に油', durationMs: dur }, true);
+          se('fire', { gain: 0.7 }, true);
         }
       }
 
@@ -900,6 +929,7 @@ const Game: React.FC = () => {
         const id = now;
         const dur = 5200;
         setSpecials((s) => [...s, { id, top: 20 + Math.random() * 18, dur }]);
+        se('special', { gain: 0.55, rate: 1.1 }, true);
         setTimeout(() => setSpecials((s) => s.filter((x) => x.id !== id)), dur + 100);
       }
 
@@ -918,10 +948,16 @@ const Game: React.FC = () => {
         const segs = scheduleRef.current;
         const k = segIndexAt(segs, t);
         setTrackStyle((x) => (x === segs[k].style ? x : segs[k].style));
-        if (k > 0 && lastSegRef.current !== k) spawnSwitchBurst();
+        if (k > 0 && lastSegRef.current !== k) {
+          spawnSwitchBurst();
+          se('mode_switch', { gain: 0.9 });            // 切り替えは休みの所なので、声で遊んでいても鳴らす
+          if (k === segs.length - 1 && voiceOn()) se('v_final', { gain: 0.8, delay: 0.15 }, true);
+        }
         lastSegRef.current = k;
         const nx = segs[k + 1];
         const bn = nx && nx.t - t < 2.2 ? { id: k + 1, style: nx.style } : k > 0 && t - segs[k].t < 0.9 ? { id: k, style: segs[k].style } : null;
+        if (bn && bn.id === k + 1 && styleBannerIdRef.current !== bn.id) se('mode_alert', { gain: 0.8 }, true);
+        styleBannerIdRef.current = bn?.id ?? styleBannerIdRef.current;
         setStyleBanner((x) => (x?.id === bn?.id ? x : bn));
       }
 
@@ -938,9 +974,20 @@ const Game: React.FC = () => {
     const t0 = Date.now();
     setRevealT(0);
     const iv = setInterval(() => setRevealT(Date.now() - t0), 40);
-    const cleared = runRef.current.cleared;
-    const j1 = setTimeout(() => playJingle(null, cleared ? 'clear' : 'fail', settingsRef.current.volume), 350);
-    const j2 = setTimeout(() => { if (isNewRecordRef.current) playJingle(null, 'record', settingsRef.current.volume); }, 2600);
+    const run = runRef.current;
+    const cleared = run.cleared;
+    // 結果のジングル → アナウンスの声（クリア：WINNER／ノーミス：FLAWLESS VICTORY／失敗：YOU LOSE・GAME OVER）
+    const j1 = setTimeout(() => {
+      if (!se(cleared ? 'res_clear' : 'res_fail')) { playJingle(null, cleared ? 'clear' : 'fail', settingsRef.current.volume); return; }
+      if (!voiceOn()) return;
+      const flawless = cleared && run.misses === 0 && run.extras === 0 && run.fuels === 0;
+      se(cleared ? (flawless ? 'v_flawless' : 'v_winner') : run.ban || run.cutoff ? 'v_gameover' : 'v_lose', { delay: 0.95 });
+    }, 350);
+    const j2 = setTimeout(() => {
+      if (!isNewRecordRef.current) return;
+      if (!se('res_record')) { playJingle(null, 'record', settingsRef.current.volume); return; }
+      if (voiceOn()) se('v_highscore', { delay: 0.7 });
+    }, 2600);
     const stop = setTimeout(() => clearInterval(iv), 6000);
     return () => { clearInterval(iv); clearTimeout(j1); clearTimeout(j2); clearTimeout(stop); };
   }, [gameState]);
@@ -948,6 +995,12 @@ const Game: React.FC = () => {
   /** タイトルのしあしあをつついたときの反応。さわりすぎると、きあきあが出てくる */
   const showReact = (text: string, r: Reaction) => {
     seatedReactRef.current?.(r);
+    const POKE: Record<Reaction, [SfxId, number]> = {
+      surprise: ['poke_surprise', 1], giggle: ['poke_giggle', 1], shy: ['poke_shy', 1], angry: ['poke_angry', 1], spin: ['poke_spin', 1],
+      na: ['pop', 1.3], dizzy: ['poke_spin', 0.7], jump: ['poke_jump', 1], cry: ['poke_cry', 1], fear: ['poke_fear', 0.9],
+    };
+    const [sid, rate] = POKE[r] ?? ['poke_surprise', 1];
+    se(sid, { rate: rate * (0.95 + Math.random() * 0.1) });
     const id = performance.now();
     setReactSay({ id, text });
     setTimeout(() => setReactSay((x) => (x && x.id === id ? null : x)), 1900);
@@ -958,7 +1011,7 @@ const Game: React.FC = () => {
     const now = performance.now(), pk = titlePokeRef.current;
     pk.n = Math.max(0, pk.n - Math.floor((now - pk.at) / 4000)) + 1;   // 4 秒さわらないと 1 つずつ落ち着く
     pk.at = now;
-    sfxBoing(settingsRef.current.volume);
+    sfxBoing(settingsRef.current.volume * 0.6);
     const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
     if (pk.n <= 4) {
       const [r, t] = pick<[Reaction, string]>([['surprise', 'ひゃっ！'], ['giggle', 'くすぐったい〜'], ['shy', 'て、照れる…'], ['na', 'な！'], ['jump', 'ぴょん！'], ['spin', 'くるっ'], ['surprise', 'なになに？']]);
@@ -1016,6 +1069,12 @@ const Game: React.FC = () => {
         <input id="vol" type="range" min="0" max="1" step="0.05" value={settings.volume} onChange={(e) => setSettings({ volume: parseFloat(e.target.value) })} className="w-full" />
         <label className="flex items-center gap-2 mt-2 text-xs font-bold text-sky-700" htmlFor="clicks">
           <input id="clicks" type="checkbox" checked={settings.clicks} onChange={(e) => setSettings({ clicks: e.target.checked })} /> 拍にクリック音を入れる
+        </label>
+        <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="hitsnd">
+          <input id="hitsnd" type="checkbox" checked={settings.hitSound !== false} onChange={(e) => setSettings({ hitSound: e.target.checked })} /> タップ音（キーボード・タップで遊ぶとき）
+        </label>
+        <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="voice">
+          <input id="voice" type="checkbox" checked={settings.voice !== false} onChange={(e) => setSettings({ voice: e.target.checked })} /> アナウンスの声（3・2・1、COMBO、WINNER など）
         </label>
         <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="lite">
           <input id="lite" type="checkbox" checked={lite} onChange={(e) => { setLiteAuto(false); setSettings({ lite: e.target.checked }); }} /> かるいモード（重いときに。画面の細かさと背景の飾りを減らす）
@@ -1162,7 +1221,7 @@ const Game: React.FC = () => {
               <div className="text-[10px] text-slate-500 text-center font-bold leading-snug">{DIFF_DESC[difficulty]}{input === 'mic' && difficulty === 'hard' ? '（声だと速すぎるかも）' : ''}</div>
             </div>
 
-            <button onClick={handleStart} className="group relative w-full focus:outline-none transition-transform active:scale-95 duration-200 h-[104px] md:h-[132px]">
+            <button data-sfx="ui_start" onClick={handleStart} className="group relative w-full focus:outline-none transition-transform active:scale-95 duration-200 h-[104px] md:h-[132px]">
               <div className="absolute inset-0 bg-pink-300 rounded-[2rem] translate-y-2" />
               <div className="absolute inset-0 bg-gradient-to-b from-pink-400 to-pink-500 rounded-[2rem] border-4 border-white flex flex-col items-center justify-center overflow-hidden">
                 <div className="absolute top-[-30%] left-[-10%] w-32 h-32 bg-white/20 rotate-45" />
@@ -1194,7 +1253,7 @@ const Game: React.FC = () => {
                 <span className={`text-[10px] font-bold ${showSettings ? 'text-white/80' : 'text-slate-400'}`}>{input === 'mic' ? '声' : 'キー・タップ'}・補正 {offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
               </button>
             </div>
-            <button onClick={() => { setShowFortune(true); bumpLife({ fortunes: (lifeRef.current.fortunes ?? 0) + 1 }); checkAchievements(null, false); }}
+            <button data-nosfx onClick={() => { setShowFortune(true); bumpLife({ fortunes: (lifeRef.current.fortunes ?? 0) + 1 }); checkAchievements(null, false); }}
               className="bg-white/90 rounded-2xl py-2.5 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex items-center justify-center gap-2">
               <span className="font-black text-pink-500">今日のな占い</span>
               <span className="text-[10px] font-bold text-slate-400">配信運を占う（1 日 1 回変わる）</span>
@@ -1337,7 +1396,7 @@ const Game: React.FC = () => {
 
         {/* special「な」 */}
         {specials.map((s) => (
-          <button key={s.id} data-noinput onPointerDown={(e) => takeItem(s.id, e)}
+          <button key={s.id} data-noinput data-nosfx onPointerDown={(e) => takeItem(s.id, e)}
             className="special-fly absolute z-[55] w-20 h-20 md:w-24 md:h-24 rounded-full flex flex-col items-center justify-center text-white font-black border-4 border-white shadow-2xl"
             style={{ top: `${s.top}%`, left: '100%', ['--dur' as any]: `${s.dur}ms`, background: 'conic-gradient(from 0deg,#f472b6,#a78bfa,#38bdf8,#4ade80,#facc15,#f472b6)' }}
             aria-label="special な">
@@ -1452,7 +1511,7 @@ const Game: React.FC = () => {
         onDone={() => { setKiaOn(false); setTimeout(() => showReact('いたた…ごめんね', 'cry'), 200); }} />}
       {crackSeed && gameState === 'READY' && !kiaOn && <ScreenCrack seed={crackSeed} onFix={() => { setCrackSeed(null); showReact('直った！', 'jump'); }} />}
       {crackSeed && gameState === 'READY' && kiaOn && <ScreenCrack seed={crackSeed} onFix={() => {}} />}
-      {showFortune && <FortuneCard onClose={() => setShowFortune(false)} />}
+      {showFortune && <FortuneCard volume={settings.volume} onClose={() => setShowFortune(false)} />}
       {showBook && <CollectionBook unlocked={unlocked} seenEndings={seenEndings} itemsSeen={lifeRef.current.itemsSeen} onClose={() => setShowBook(false)} />}
     </div>
   );

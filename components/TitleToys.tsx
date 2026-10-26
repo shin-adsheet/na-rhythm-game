@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { sfxPop } from '../utils/titleSfx';
+import { playSfx } from '../utils/sfx';
 
 /**
  * タイトル画面のおまけ
@@ -37,7 +38,7 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
     c.n = now - c.at < 1300 ? c.n + 1 : 1; c.at = now;
     setCombo(c.n);
     const pts = (b.gold ? 10 : 1) * (c.n >= 5 ? 2 : 1);
-    sfxPop(volume, Math.min(2.2, 1 + (c.n - 1) * 0.12) * (b.gold ? 1.3 : 1));
+    sfxPop(volume, Math.min(2.2, 1 + (c.n - 1) * 0.08), b.gold);
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const id = b.id;
     setBubbles((x) => x.filter((y) => y.id !== id));
@@ -47,7 +48,7 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
   };
 
   return (
-    <div className="fixed inset-0 z-[5] pointer-events-none overflow-hidden" aria-hidden="true">
+    <div data-nosfx className="fixed inset-0 z-[5] pointer-events-none overflow-hidden" aria-hidden="true">
       {bubbles.map((b) => (
         <div key={b.id} className="absolute bubble-rise" style={{ left: `${b.x}%`, bottom: -90, ['--dur' as any]: `${b.dur}s`, ['--sway' as any]: `${b.sway}px` }}>
           <button onPointerDown={(e) => pop(b, e)} tabIndex={-1}
@@ -97,9 +98,16 @@ export function todaysFortune(date = new Date()) {
   return { rank: pick(RANKS), message: pick(MESSAGES), diff: pick(LUCKY_DIFF), screen: pick(LUCKY_SCREEN), key: pick(LUCKY_KEY) };
 }
 
-export const FortuneCard: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+export const FortuneCard: React.FC<{ onClose: () => void; volume?: number }> = ({ onClose, volume = 0.6 }) => {
   const f = todaysFortune();
   const good = f.rank !== 'な凶';
+  useEffect(() => {
+    // カードをめくる音 → 結果のジングル
+    playSfx('card', { volume });
+    const t = setTimeout(() => playSfx(good ? 'fortune_good' : 'fortune_bad', { volume }), 380);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="stamp-in w-full max-w-xs bg-white rounded-[2rem] border-8 border-pink-300 shadow-2xl p-5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -112,7 +120,7 @@ export const FortuneCard: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           ))}
         </div>
         <div className="mt-2 text-[10px] text-slate-400">結果は 1 日 1 回、日付で決まります</div>
-        <button onClick={onClose} className="mt-3 w-full py-2.5 rounded-full bg-pink-500 text-white font-black border-4 border-white shadow">とじる</button>
+        <button data-sfx="ui_close" onClick={onClose} className="mt-3 w-full py-2.5 rounded-full bg-pink-500 text-white font-black border-4 border-white shadow">とじる</button>
       </div>
     </div>
   );

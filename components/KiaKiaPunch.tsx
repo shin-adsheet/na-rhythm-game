@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Shiashia3D, { KIA_COLORS } from './Shiashia3D';
 import { sfxShatter, sfxWhoosh } from '../utils/titleSfx';
+import { playSfx } from '../utils/sfx';
 
 /**
  * しあしあをさわりすぎると、きあきあが出てきて画面をなぐって割る（タイトル画面のおまけ）
@@ -78,7 +79,7 @@ export const ScreenCrack: React.FC<{ seed: number; onFix: () => void }> = ({ see
           </g>
         ))}
       </svg>
-      <button onClick={onFix} style={{ top: 'max(10px, env(safe-area-inset-top))' }} className="pointer-events-auto absolute right-3 bg-slate-900/85 text-white font-black text-sm px-5 py-2.5 rounded-full border-2 border-white shadow-xl active:scale-95 transition-transform">
+      <button data-sfx="fix" onClick={onFix} style={{ top: 'max(10px, env(safe-area-inset-top))' }} className="pointer-events-auto absolute right-3 bg-slate-900/85 text-white font-black text-sm px-5 py-2.5 rounded-full border-2 border-white shadow-xl active:scale-95 transition-transform">
         画面を直す
       </button>
     </div>
@@ -93,12 +94,17 @@ const KiaKiaPunch: React.FC<Props> = ({ volume, onImpact, onDone }) => {
 
   useEffect(() => {
     const t0 = performance.now();
-    let raf = 0, hit = false, whoosh = false;
+    let raf = 0, hit = false, whoosh = false, fight = false, steps = 0, steps2 = false;
+    playSfx('v_ready', { volume, gain: 0.9 });
     const loop = () => {
       const e = performance.now() - t0;
       setT(e);
+      // 走ってくる足音 → 「FIGHT!」
+      if (e < 900 && e > steps * 150) { steps++; playSfx('knock', { volume, gain: 0.35, rate: 1.6 + Math.random() * 0.3 }); }
+      if (!fight && e > 1050) { fight = true; playSfx('v_fight', { volume }); }
       if (!whoosh && e > T_WIND) { whoosh = true; sfxWhoosh(volume); }
       if (!hit && e > T_HIT) { hit = true; sfxShatter(volume); onImpact(); }
+      if (hit && e > T_LEAVE && !steps2) { steps2 = true; playSfx('swing', { volume, rate: 0.8, gain: 0.7 }); }
       if (e > T_END) { onDone(); return; }
       raf = requestAnimationFrame(loop);
     };

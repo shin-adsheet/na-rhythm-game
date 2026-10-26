@@ -1,8 +1,10 @@
 /**
- * エンディングの効果音（音源ファイルなし。WebAudio でその場で作る）
+ * エンディングの効果音。WebAudio でその場で作る音に、フリー素材（utils/sfx.ts）を重ねる。
+ * 素材が読み込めていないときは、合成音だけで鳴る
  * シーンごとに「何秒目に何が鳴るか」を予約する。画面の演出（progress）と同じタイミング。
  */
 import type { EndingScene } from '../types';
+import { playSfxAt, SfxId } from './sfx';
 
 type Ctx = AudioContext;
 
@@ -25,6 +27,8 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
   const sec = (s: number) => T0 + s;
 
   // ---------- 部品 ----------
+  /** フリー素材を時刻 t に鳴らす（マスターを通るので音量・止めるのも一緒） */
+  const smp = (id: SfxId, t: number, gain = 1, rate = 1, pan = 0) => playSfxAt(id, t, { ctx, out: master, gain, rate, pan });
   const noiseBuf = (() => { const n = ctx.sampleRate * 2; const b = ctx.createBuffer(1, n, ctx.sampleRate); const d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; return b; })();
   const tone = (t: number, dur: number, f0: number, f1 = f0, type: OscillatorType = 'square', vol = 0.2, attack = 0.005) => {
     const o = ctx.createOscillator(), g = ctx.createGain();
@@ -66,6 +70,7 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       noise(boom, 2.6, 0.8, 'lowpass', 1800, 120, 0.002);
       noise(boom, 0.25, 0.5, 'highpass', 3000, 3000, 0.001);
       crackles(boom + 0.3, boom + 2.6, 16, 0.1);
+      smp('boom_low', boom, 1); smp('crunch', boom + 0.03, 0.9); smp('glass_big', boom + 0.12, 0.45, 0.8);
       break;
     }
     case 'rocket': {
@@ -74,22 +79,29 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       swell(sec(2.1), 0.8, 0.3, 'bandpass', 200, 1200);
       noise(sec(2.9), D - 2.9, 0.45, 'bandpass', 300, 4000, 0.05, 0.6);
       tone(sec(2.9), D - 2.9, 45, 70, 'sawtooth', 0.12, 0.2);
+      (['v3', 'v2', 'v1'] as SfxId[]).forEach((id, i) => smp(id, sec(0.3 + i * 0.6) + 0.05, 0.9));
+      smp('v_go', sec(2.1), 0.9);
+      smp('boom_low', sec(2.9), 0.6, 0.8);
+      for (let s = 2.9; s < D - 0.6; s += 1.0) smp('fire', sec(s), 0.8, 0.9 + Math.min(0.4, (s - 2.9) * 0.08));
       break;
     }
     case 'fire': {
       noise(sec(0.2), D, 0.18, 'lowpass', 500, 700, 0.6);
       crackles(sec(0.2), sec(D), 18, 0.14);
+      for (let s = 0.3; s < D - 0.6; s += 1.1) smp('fire', sec(s), 0.45, 0.8);
       break;
     }
     case 'legend': {
       fanfare(sec(0.8), [[60, 0, 0.18], [64, 0.18, 0.18], [67, 0.36, 0.18], [72, 0.54, 1.2]]);
       chord(sec(1.34), 2.4, [N(60), N(64), N(67), N(72)], 'square', 0.05);
       [2.6, 3.0, 3.4].forEach((s, i) => tone(sec(s), 1.4, N(84 + i * 3), N(84 + i * 3), 'sine', 0.08));
+      smp('fanfare', sec(0.8), 0.8); smp('steel', sec(2.6), 0.7);
       break;
     }
     case 'nafy': {
       const scale = [57, 60, 62, 64, 67, 69, 72];
       for (let s = 0.6; s < D - 0.4; s += 0.125) tone(sec(s), 0.09, N(scale[Math.floor(Math.random() * scale.length)] + 12), undefined, 'square', 0.06);
+      smp('nes_up', sec(0.3), 0.8); smp('nes_short', sec(D - 1.0), 0.8);
       break;
     }
     case 'god': {
@@ -97,11 +109,13 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       chord(sec(0.3), D - 0.3, [N(57) * 1.004, N(64) * 0.996], 'triangle', 0.04, 2.5);
       tone(at(0.4), 3, N(93), N(93), 'sine', 0.14);
       tone(at(0.4) + 0.4, 3, N(100), N(100), 'sine', 0.09);
+      smp('bell', at(0.4), 0.9); smp('bell', at(0.4) + 1.6, 0.55, 0.75);
       break;
     }
     case 'bottom': {
       noise(sec(0.1), D, 0.12, 'bandpass', 4000, 4000, 0.8, 0.5);
       noise(sec(3.2), 2.2, 0.35, 'lowpass', 220, 80, 0.3);
+      smp('down', sec(3.2), 0.8);
       break;
     }
     case 'cat': {
@@ -109,6 +123,8 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       const o = tone(t, 0.7, 620, 520, 'sine', 0.22, 0.05);
       o.frequency.setValueAtTime(620, t); o.frequency.linearRampToValueAtTime(950, t + 0.18); o.frequency.exponentialRampToValueAtTime(480, t + 0.7);
       tone(t + 1.1, 0.25, N(81), N(79), 'square', 0.12);
+      // 猫がキーボードの上を歩く
+      for (let s = at(0.12); s < t - 0.1; s += 0.07 + Math.random() * 0.12) smp('keys', s, 0.8, 0.8 + Math.random() * 0.5, Math.random() - 0.5);
       break;
     }
     case 'sleep': {
@@ -121,27 +137,34 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
         else noise(sec(s), 0.04, 0.12, 'highpass', 2000 + Math.random() * 6000);
       }
       tone(sec(D - 0.5), 0.5, 1000, 60, 'square', 0.12);
+      smp('computer', sec(0.2), 0.8);
+      for (let k = 0; k < 12; k++) smp('glitch', sec(0.3 + Math.random() * (D - 1)), 0.9, 0.6 + Math.random() * 1.2, Math.random() * 2 - 1);
+      smp('down', sec(D - 0.6), 0.7);
       break;
     }
     case 'timeloop': {
       for (let i = 0; i < 26; i++) { const s = 0.4 + Math.pow(i / 26, 0.7) * 4.2; noise(sec(s), 0.025, 0.25, 'highpass', i % 2 ? 2500 : 3500); }
       noise(sec(4.6), 1.4, 0.35, 'bandpass', 4000, 300, 0.05, 1.5);
       tone(sec(4.6), 1.4, 1200, 200, 'sine', 0.1);
+      smp('scratch', sec(0.4), 0.8); smp('rewind', sec(4.6), 1, 0.6); smp('rewind', sec(4.95), 0.7, 0.5);
       break;
     }
     case 'mirror': {
       for (let k = 0; k < 4; k++) [1.2, 3.4].forEach((s) => tone(sec(s + k * 0.33), 0.5, N(88), N(88), 'sine', 0.14 * Math.pow(0.55, k)));
+      smp('glass_mid', sec(1.2), 0.8); smp('glass_mid', sec(3.4), 0.8, 1.2);
       break;
     }
     case 'alien': {
       const o = tone(sec(0.4), D - 0.4, 320, 320, 'sine', 0.12, 0.6);
       const lfo = ctx.createOscillator(), lg = ctx.createGain(); lfo.frequency.value = 6; lg.gain.value = 70; lfo.connect(lg); lg.connect(o.frequency); lfo.start(sec(0.4)); lfo.stop(sec(D));
       tone(at(0.35), D * 0.6, 80, 600, 'sawtooth', 0.07, 0.4);
+      smp('beam', at(0.35), 0.9); smp('beam', at(0.35) + 0.9, 0.6, 0.85); smp('laser_big', at(0.6), 0.9); smp('zap', at(0.72), 0.6);
       break;
     }
     case 'cutoff': {
       tone(at(0.5), 1.2, 880, 40, 'sine', 0.25);
       tone(at(0.5) + 1.4, 2.0, 1000, 1000, 'sine', 0.06, 0.02);
+      smp('ui_close', at(0.5), 1, 0.7); smp('down', at(0.5) + 0.1, 0.8);
       break;
     }
     case 'silent': {
@@ -152,12 +175,14 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       [0.15, 0.55].forEach((s) => { tone(sec(s), 0.35, 120, 50, 'sine', 0.7, 0.002); noise(sec(s), 0.08, 0.4, 'lowpass', 1200); });
       tone(at(0.35), 0.9, 115, 115, 'sawtooth', 0.18);
       tone(at(0.35), 0.9, 122, 122, 'sawtooth', 0.12);
+      smp('metal', sec(0.15), 1, 0.7); smp('metal', sec(0.55), 1, 0.7); smp('ban', at(0.35), 0.9);
       break;
     }
     case 'dictator': {
       for (let s = 0.4; s < D - 0.3; s += 0.49) { tone(sec(s), 0.25, 70, 45, 'sine', 0.5, 0.002); noise(sec(s + 0.245), 0.12, 0.15, 'highpass', 1500); }
       fanfare(at(0.3), [[57, 0, 0.3], [64, 0.3, 0.3], [69, 0.6, 0.6], [69, 1.25, 0.2], [71, 1.45, 0.2], [73, 1.65, 1.0]], 'square', 0.1);
       chord(at(0.55), 2.6, [N(57), N(61), N(64), N(69)], 'sawtooth', 0.035, 0.05);
+      smp('fanfare', at(0.3), 0.7, 0.9); smp('bell', at(0.55), 0.5, 0.8);
       break;
     }
     // ---------- 突拍子のないエンディング ----------
@@ -170,6 +195,9 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       }
       for (let s = at(0.3) - T0; s < at(0.6) - T0; s += 0.18 + Math.random() * 0.2) tone(sec(s), 0.16, 1800, 220, 'square', 0.06);
       chord(at(0.62), 2.2, [N(69), N(73), N(76)], 'triangle', 0.06, 0.1);
+      smp('beam', sec(1.0), 0.6, 0.8);
+      for (let s = at(0.3) - T0; s < at(0.6) - T0; s += 0.22 + Math.random() * 0.25) smp(Math.random() < 0.7 ? 'laser' : 'laser_big', sec(s), 0.6, 0.85 + Math.random() * 0.4, Math.random() * 1.6 - 0.8);
+      smp('crunch', at(0.6), 0.7);
       break;
     }
     case 'meteor': {
@@ -180,6 +208,7 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       noise(hit, 3.0, 0.85, 'lowpass', 2200, 90, 0.002);
       noise(hit, 0.3, 0.5, 'highpass', 2500, 2500, 0.001);
       crackles(hit + 0.2, hit + 2.2, 14, 0.12);
+      smp('boom_low', hit, 1); smp('crunch', hit + 0.02, 1); smp('glass_big', hit + 0.15, 0.4, 0.7);
       break;
     }
     case 'quake': {
@@ -190,6 +219,8 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       tone(sp, 2.4, 60, 22, 'sine', 0.9, 0.003);
       noise(sp, 2.8, 0.7, 'lowpass', 1500, 70, 0.002);
       noise(sp + 0.3, 2.5, 0.2, 'bandpass', 300, 120, 0.4);   // マグマ
+      smp('boom_low', sec(0.6), 0.6, 0.6); smp('boom_low', sp, 1, 0.8); smp('crunch', sp + 0.05, 0.9, 0.7);
+      for (let k = 0; k < 8; k++) smp('knock', sp + 0.2 + Math.random() * 1.6, 0.5, 0.45 + Math.random() * 0.3, Math.random() * 1.6 - 0.8);   // がれき
       break;
     }
     case 'peace': {
@@ -197,6 +228,7 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       prog.forEach((c, i) => chord(sec(0.4 + i * 1.8), 2.2, c.map(N), 'sine', 0.05, 0.5));
       for (let i = 0; i < 12; i++) { const s0 = 1 + Math.random() * (D - 1.5); const f = 2400 + Math.random() * 1200; tone(sec(s0), 0.08, f, f * 1.4, 'sine', 0.05, 0.005); tone(sec(s0 + 0.1), 0.07, f * 1.1, f * 1.5, 'sine', 0.04, 0.005); }
       tone(at(0.75), 2.5, N(96), N(96), 'sine', 0.08);
+      smp('steel', sec(0.4), 0.7); smp('bell', at(0.75), 0.5, 1.5);
       break;
     }
     case 'arcade': {
@@ -205,6 +237,7 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       mel.forEach((m, i) => tone(sec(1.2 + i * 0.12), 0.11, N(m), N(m), 'square', 0.08));
       for (let s = 2.4; s < D - 0.3; s += 0.24) { tone(sec(s), 0.09, N(48 + ((Math.floor(s / 0.24) % 4 === 3) ? 7 : 0)), undefined, 'triangle', 0.12); if (Math.floor(s / 0.24) % 2) noise(sec(s), 0.03, 0.08, 'highpass', 6000); }
       for (let s = 2.4; s < D - 0.3; s += 0.12) tone(sec(s), 0.06, N([60, 64, 67, 72][Math.floor(s / 0.12) % 4] + 12), undefined, 'square', 0.035);
+      smp('coin', sec(0.3), 1); smp('v_prepare', sec(0.55), 0.9); smp('v_fight', sec(2.25), 0.9);
       break;
     }
     // ---------- しょぼいエンディング（10秒・30秒） ----------
@@ -212,32 +245,39 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       for (let s = 0.4; s < at(0.55) - T0; s += 0.18 + Math.random() * 0.3) tone(sec(s), 0.08, 120, 120, 'sawtooth', 0.04);
       noise(at(0.55), 0.18, 0.25, 'bandpass', 900, 300, 0.002);
       tone(at(0.55), 0.15, 160, 60, 'sine', 0.2, 0.002);
+      smp('glass_small', at(0.55), 1); smp('glass_mid', at(0.55) + 0.02, 0.6, 1.4);
       break;
     }
     case 'kairanban': {
       tone(sec(0.6), 0.9, N(76), N(76), 'sine', 0.2); tone(sec(1.05), 1.2, N(72), N(72), 'sine', 0.2);
       noise(at(0.4), 0.35, 0.12, 'highpass', 2500, 2500, 0.05);
+      smp('page', at(0.4), 1); smp('slide', at(0.4) + 0.45, 0.8);
       break;
     }
     case 'mom': {
       for (let i = 0; i < 6; i++) noise(at(0.45) + i * 0.13 + Math.random() * 0.03, 0.04, 0.2, 'bandpass', 1400, 1400, 0.002, 1);
       tone(at(0.45) + 0.9, 0.6, N(84), N(84), 'sine', 0.1);
+      for (let i = 0; i < 3; i++) smp('knock', at(0.45) + i * 0.2, 0.9, 1 + i * 0.03);
+      smp('door', at(0.45) + 0.75, 0.8); smp('creak', at(0.45) + 0.85, 0.5);
       break;
     }
     case 'yurukyara': {
       const kazoo = (s: number, m: number, d: number) => { const o = tone(s, d, N(m), N(m), 'sawtooth', 0.07, 0.03); const l = ctx.createOscillator(), g = ctx.createGain(); l.frequency.value = 7; g.gain.value = 8; l.connect(g); g.connect(o.frequency); l.start(s); l.stop(s + d); };
       [[67, 0, 0.25], [72, 0.3, 0.25], [76, 0.6, 0.6]].forEach(([m, s, d]) => kazoo(at(0.3) + s, m, d));
+      smp('poke_giggle', Math.max(sec(0.1), at(0.3) - 0.25), 0.8); smp('poke_jump', at(0.3) + 0.6, 0.6);
       break;
     }
     case 'boya': {
       noise(sec(0.5), 0.25, 0.25, 'bandpass', 3000, 6000, 0.01, 1.5);
       noise(sec(0.75), at(0.6) - sec(0.75), 0.05, 'lowpass', 900, 900, 0.3);
       noise(at(0.6), 0.6, 0.18, 'bandpass', 800, 300, 0.1);
+      smp('fire', sec(0.75), 0.35, 1.2); smp('fuel', at(0.6), 0.4, 1.3);
       break;
     }
     case 'snooze': {
       for (let s = 0.4; s < at(0.5) - T0; s += 0.5) { tone(sec(s), 0.08, 2000, 2000, 'square', 0.07); tone(sec(s + 0.12), 0.08, 2000, 2000, 'square', 0.07); }
       noise(at(0.5), 0.05, 0.3, 'bandpass', 1500, 1500, 0.001);
+      smp('knock', at(0.5), 0.8, 1.4);
       break;
     }
     case 'self': {
@@ -246,6 +286,7 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
     }
     case 'almost': {
       tone(at(0.6), 0.25, 140, 140, 'square', 0.15); tone(at(0.6) + 0.3, 0.5, 110, 110, 'square', 0.15);
+      smp('sad', at(0.6) + 0.9, 0.8);
       break;
     }
   }
