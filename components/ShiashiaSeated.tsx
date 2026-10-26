@@ -4,73 +4,132 @@ import * as THREE from 'three';
 import { makeRig, restAll } from './Shiashia3D';
 
 /**
- * タイトル画面のしあしあ：椅子に座って、約 34 秒のゆっくりした「お話」を演じる（くり返し）
- *   スマホで登録者数を見る → 0 人でしょんぼり → ひらめく → 「な」の練習
- *   → こっちに気づく → 手をふって誘う → のびをする → 足をぶらぶら
- * 関節の角度をキーフレームで持ち、ゆっくりしたイージングでつなぐ。
+ * タイトル画面のしあしあ：シャギーの丸いラグの上で、座り方を変えながら約 39 秒の「お話」を演じる（くり返し）
+ *   足を投げ出して座る → うつぶせでスマホ → ひざを抱える → 女の子座りでひらめく・「な」の練習
+ *   → 横座りでこっちに気づいて手をふる → のび → あおむけにごろん → 足をぱたぱた
+ * 関節の角度（脚・からだの傾きも）をキーフレームで持ち、ゆっくりしたイージングでつなぐ。
+ * からだのいちばん低い所がいつもラグにつくように、毎フレーム高さを合わせる。
+ *
+ * さわると、さわった所によって「ぴくっ」と反応する（頭＝耳がぴくっ、足＝足を引っこめる、手＝腕がびくっ、からだ＝肩がすくむ）。
+ * そのあと少しのあいだ、首をかしげてこっちを見る（もう一回さわりたくなるように）。
  */
 
 import { STORY, STORY_LEN, PoseKey, Reaction } from './ShiashiaSeated.story';
 export { STORY, STORY_LEN };
 export type { Reaction };
 
-
-/** 関節の角度（度）。arm = [前へ, 開き]、ほかは [x, y, z] */
+type V3 = [number, number, number];
+/** 関節の角度（度）。arm = [前へ, 開き]、thigh = [前へ, ひねり, 開き]、root = [前後に倒す, 横に倒す] */
 interface Pose {
   armL: [number, number]; armR: [number, number]; elbowL: number; elbowR: number;
-  spine: [number, number, number]; head: [number, number, number]; yaw: number;
+  spine: V3; head: V3; yaw: number;
+  thighL: V3; thighR: V3; kneeL: number; kneeR: number;
+  root: [number, number];
   mouth: number;   // 0〜1
   eyes: number;    // 0 開く〜1 閉じる
 }
 const P = (p: Partial<Pose>): Pose => ({
-  armL: [34, 14], armR: [34, 14], elbowL: -48, elbowR: -48,
-  spine: [6, 0, 0], head: [4, 0, 0], yaw: -18, mouth: 0, eyes: 0, ...p,
+  armL: [-28, 22], armR: [-28, 22], elbowL: 0, elbowR: 0,
+  spine: [-8, 0, 0], head: [6, 0, 0], yaw: -32,
+  thighL: [-88, 0, 8], thighR: [-88, 0, 8], kneeL: 6, kneeR: 10,
+  root: [0, 0], mouth: 0, eyes: 0, ...p,
 });
+// 女の子座り：ひざを前、すねを外へ流してお尻をぺたん
+const W_LEGS: Partial<Pose> = { thighL: [-82, -38, 14], thighR: [-82, -38, 14], kneeL: 162, kneeR: 162 };
+// 横座り：両ひざをそろえて右へ倒し、すねを左うしろへ
+const SIDE_LEGS: Partial<Pose> = { thighL: [-80, 0, -34], thighR: [-80, 0, -18], kneeL: 140, kneeR: 128, root: [0, 6] };
 const POSES: Record<PoseKey, Pose> = {
-  sit: P({}),
-  phone: P({ armL: [62, 10], armR: [66, 8], elbowL: -112, elbowR: -118, spine: [14, 0, 0], head: [24, 0, -4], yaw: -12 }),
-  sad: P({ armL: [26, 8], armR: [26, 8], elbowL: -40, elbowR: -40, spine: [26, 0, 0], head: [32, 0, 6], yaw: -20, eyes: 0.6 }),
-  idea: P({ armL: [30, 12], armR: [160, 4], elbowL: -44, elbowR: -16, spine: [-6, 0, 0], head: [-14, 0, -6], yaw: -6, mouth: 0.7 }),
-  practice: P({ armL: [58, 16], armR: [58, 16], elbowL: -84, elbowR: -84, spine: [8, 0, 0], head: [-4, 0, 0], yaw: -14 }),
-  notice: P({ armL: [30, 12], armR: [30, 12], elbowL: -46, elbowR: -46, spine: [16, 0, 0], head: [6, 0, 10], yaw: 0, mouth: 0.3 }),
-  wave: P({ armL: [30, 12], armR: [20, 150], elbowL: -46, elbowR: -26, spine: [2, 0, -4], head: [-6, 0, 8], yaw: 4, mouth: 0.6 }),
-  stretch: P({ armL: [170, 18], armR: [170, 18], elbowL: -10, elbowR: -10, spine: [-14, 0, 0], head: [-20, 0, 0], yaw: -10, mouth: 1, eyes: 1 }),
-  kick: P({ armL: [10, 24], armR: [10, 24], elbowL: -20, elbowR: -20, spine: [-2, 0, 0], head: [-6, 0, 0], yaw: -16, mouth: 0.4 }),
+  nage: P({}),
+  phone: P({ root: [84, 0], thighL: [8, 0, 6], thighR: [8, 0, 6], kneeL: 95, kneeR: 70, spine: [-16, 0, 0], head: [-58, 0, 0],
+    armL: [96, 26], armR: [96, 26], elbowL: -92, elbowR: -92, yaw: -38 }),
+  hug: P({ thighL: [-125, 0, 6], thighR: [-125, 0, 6], kneeL: 140, kneeR: 140, armL: [62, 4], armR: [62, 4], elbowL: -40, elbowR: -40,
+    spine: [18, 0, 0], head: [22, 0, 6], yaw: -14, eyes: 0.6 }),
+  idea: P({ ...W_LEGS, armL: [40, 14], armR: [165, 6], elbowL: -60, elbowR: -16, spine: [-4, 0, 0], head: [-14, 0, -6], yaw: -6, mouth: 0.7 }),
+  practice: P({ ...W_LEGS, armL: [52, 10], armR: [52, 10], elbowL: -70, elbowR: -70, spine: [8, 0, 0], head: [-4, 0, 0], yaw: -12 }),
+  notice: P({ ...SIDE_LEGS, armL: [-20, 40], armR: [30, 10], elbowL: 0, elbowR: -50, spine: [4, 0, 8], head: [6, 0, 12], yaw: 6, mouth: 0.3 }),
+  wave: P({ ...SIDE_LEGS, armL: [-20, 40], armR: [20, 150], elbowL: 0, elbowR: -26, spine: [0, 0, 6], head: [-6, 0, 10], yaw: 10, mouth: 0.6 }),
+  stretch: P({ armL: [140, 62], armR: [140, 62], elbowL: -8, elbowR: -8, spine: [-12, 0, 0], head: [-20, 0, 0], yaw: -10, mouth: 1, eyes: 1, kneeL: 0, kneeR: 0 }),
+  lie: P({ root: [-84, 0], thighL: [-30, 0, 10], thighR: [-6, 0, 6], kneeL: 70, kneeR: 8, armL: [170, 40], armR: [170, 40], elbowL: -40, elbowR: -40,
+    spine: [0, 0, 0], head: [-12, 0, -14], yaw: 72, eyes: 0.4, mouth: 0.2 }),
+  kick: P({ armL: [-34, 26], armR: [-34, 26], spine: [-14, 0, 0], head: [-4, 0, 0], yaw: -28, mouth: 0.4, kneeL: 4, kneeR: 4 }),
 };
 
-/** つつかれたときの姿勢（お話の姿勢の上にかぶせる） */
-const REACT: Record<Reaction, { pose: Pose; dur: number }> = {
-  surprise: { pose: P({ armL: [150, 30], armR: [150, 30], elbowL: -20, elbowR: -20, spine: [-10, 0, 0], head: [-14, 0, 0], yaw: 0, mouth: 1 }), dur: 1.3 },
-  giggle: { pose: P({ armL: [70, 6], armR: [70, 6], elbowL: -128, elbowR: -128, spine: [12, 0, 0], head: [8, 0, 6], yaw: -6, mouth: 0.8, eyes: 1 }), dur: 1.6 },
-  shy: { pose: P({ armL: [92, -6], armR: [92, -6], elbowL: -142, elbowR: -142, spine: [10, 0, 0], head: [12, 0, 14], yaw: -26, mouth: 0.25, eyes: 0.5 }), dur: 1.8 },
-  angry: { pose: P({ armL: [64, -22], armR: [64, -22], elbowL: -118, elbowR: -118, spine: [-4, 0, 0], head: [-8, 0, -6], yaw: -58, mouth: 0.2 }), dur: 1.7 },
-  spin: { pose: P({ armL: [80, 40], armR: [80, 40], elbowL: -10, elbowR: -10, spine: [0, 0, 0], head: [-4, 0, 0], yaw: 0, mouth: 0.6 }), dur: 1.3 },
-  na: { pose: P({ armL: [30, 12], armR: [92, 0], elbowL: -46, elbowR: -6, spine: [0, 0, 0], head: [-8, 0, 0], yaw: 8, mouth: 1 }), dur: 1.2 },
-  dizzy: { pose: P({ armL: [24, 30], armR: [24, 30], elbowL: -20, elbowR: -20, spine: [6, 0, 0], head: [4, 0, 0], yaw: -10, mouth: 0.5, eyes: 0.4 }), dur: 2.0 },
-  jump: { pose: P({ armL: [160, 20], armR: [160, 20], elbowL: -10, elbowR: -10, spine: [-8, 0, 0], head: [-10, 0, 0], yaw: 0, mouth: 1 }), dur: 1.3 },
-  cry: { pose: P({ armL: [84, 4], armR: [84, 4], elbowL: -150, elbowR: -150, spine: [24, 0, 0], head: [26, 0, 0], yaw: -16, mouth: 0.9, eyes: 1 }), dur: 2.0 },
-  fear: { pose: P({ armL: [120, -10], armR: [120, -10], elbowL: -100, elbowR: -100, spine: [-6, 0, 0], head: [-6, 0, 0], yaw: 40, mouth: 0.7 }), dur: 1.8 },
+/** つつかれたときの姿勢（上半身だけ、お話の姿勢の上にかぶせる） */
+type Upper = Pick<Pose, 'armL' | 'armR' | 'elbowL' | 'elbowR' | 'spine' | 'head' | 'yaw' | 'mouth' | 'eyes'>;
+const U = (p: Partial<Upper>): Upper => ({ armL: [30, 12], armR: [30, 12], elbowL: -46, elbowR: -46, spine: [0, 0, 0], head: [0, 0, 0], yaw: -10, mouth: 0, eyes: 0, ...p });
+const REACT: Record<Reaction, { pose: Upper; dur: number }> = {
+  surprise: { pose: U({ armL: [120, 30], armR: [120, 30], elbowL: -40, elbowR: -40, spine: [-10, 0, 0], head: [-14, 0, 0], yaw: 0, mouth: 1 }), dur: 1.2 },
+  giggle: { pose: U({ armL: [70, 6], armR: [70, 6], elbowL: -128, elbowR: -128, spine: [12, 0, 0], head: [8, 0, 6], yaw: -6, mouth: 0.8, eyes: 1 }), dur: 1.6 },
+  shy: { pose: U({ armL: [92, -6], armR: [92, -6], elbowL: -142, elbowR: -142, spine: [10, 0, 0], head: [12, 0, 14], yaw: -26, mouth: 0.25, eyes: 0.5 }), dur: 1.8 },
+  angry: { pose: U({ armL: [64, -22], armR: [64, -22], elbowL: -118, elbowR: -118, spine: [-4, 0, 0], head: [-8, 0, -6], yaw: -58, mouth: 0.2 }), dur: 1.7 },
+  spin: { pose: U({ armL: [80, 40], armR: [80, 40], elbowL: -10, elbowR: -10, head: [-4, 0, 0], yaw: 0, mouth: 0.6 }), dur: 1.3 },
+  na: { pose: U({ armR: [92, 0], elbowR: -6, head: [-8, 0, 0], yaw: 8, mouth: 1 }), dur: 1.2 },
+  dizzy: { pose: U({ armL: [24, 30], armR: [24, 30], elbowL: -20, elbowR: -20, spine: [6, 0, 0], head: [4, 0, 0], mouth: 0.5, eyes: 0.4 }), dur: 2.0 },
+  jump: { pose: U({ armL: [160, 20], armR: [160, 20], elbowL: -10, elbowR: -10, spine: [-8, 0, 0], head: [-10, 0, 0], yaw: 0, mouth: 1 }), dur: 1.3 },
+  cry: { pose: U({ armL: [84, 4], armR: [84, 4], elbowL: -150, elbowR: -150, spine: [24, 0, 0], head: [26, 0, 0], yaw: -16, mouth: 0.9, eyes: 1 }), dur: 2.0 },
+  fear: { pose: U({ armL: [120, -10], armR: [120, -10], elbowL: -100, elbowR: -100, spine: [-6, 0, 0], head: [-6, 0, 0], yaw: 40, mouth: 0.7 }), dur: 1.8 },
 };
 
 const D2 = THREE.MathUtils.degToRad;
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const mix = (a: number, b: number, k: number) => a + (b - a) * k;
+const mixV = <T extends number[]>(a: T, b: T, k: number) => a.map((x, i) => mix(x, b[i], k)) as T;
 const mixPose = (a: Pose, b: Pose, k: number): Pose => ({
-  armL: [mix(a.armL[0], b.armL[0], k), mix(a.armL[1], b.armL[1], k)],
-  armR: [mix(a.armR[0], b.armR[0], k), mix(a.armR[1], b.armR[1], k)],
-  elbowL: mix(a.elbowL, b.elbowL, k), elbowR: mix(a.elbowR, b.elbowR, k),
-  spine: [mix(a.spine[0], b.spine[0], k), mix(a.spine[1], b.spine[1], k), mix(a.spine[2], b.spine[2], k)],
-  head: [mix(a.head[0], b.head[0], k), mix(a.head[1], b.head[1], k), mix(a.head[2], b.head[2], k)],
-  yaw: mix(a.yaw, b.yaw, k), mouth: mix(a.mouth, b.mouth, k), eyes: mix(a.eyes, b.eyes, k),
+  armL: mixV(a.armL, b.armL, k), armR: mixV(a.armR, b.armR, k), elbowL: mix(a.elbowL, b.elbowL, k), elbowR: mix(a.elbowR, b.elbowR, k),
+  spine: mixV(a.spine, b.spine, k), head: mixV(a.head, b.head, k), yaw: mix(a.yaw, b.yaw, k),
+  thighL: mixV(a.thighL, b.thighL, k), thighR: mixV(a.thighR, b.thighR, k), kneeL: mix(a.kneeL, b.kneeL, k), kneeR: mix(a.kneeR, b.kneeR, k),
+  root: mixV(a.root, b.root, k), mouth: mix(a.mouth, b.mouth, k), eyes: mix(a.eyes, b.eyes, k),
 });
 
-/** ベタ塗りの箱（上・前・横で色を変えて立体に見せる） */
-function toonBox(w: number, h: number, d: number, top: number, side: number, front: number) {
-  const m = (c: number) => new THREE.MeshBasicMaterial({ color: c });
-  // 右, 左, 上, 下, 前, 後ろ
-  return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [m(side), m(side), m(top), m(side), m(front), m(side)]);
+/** シャギー（毛足の長い）丸いラグ：毛の模様を描いたテクスチャ＋ふちのふさ */
+function makeRug(R: number) {
+  const g = new THREE.Group();
+  const cv = document.createElement('canvas'); cv.width = cv.height = 512;
+  const x = cv.getContext('2d')!;
+  const grd = x.createRadialGradient(256, 256, 20, 256, 256, 256);
+  grd.addColorStop(0, '#fdf2f8'); grd.addColorStop(0.75, '#fbe3f0'); grd.addColorStop(1, '#f5cde3');
+  x.fillStyle = grd; x.fillRect(0, 0, 512, 512);
+  // 毛足：短い線をたくさん（明るい毛・影の毛）
+  let s = 7;
+  const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  x.lineCap = 'round';
+  for (let i = 0; i < 5200; i++) {
+    const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * 250;
+    const px = 256 + Math.cos(a) * r, py = 256 + Math.sin(a) * r;
+    const d = a + (rnd() - 0.5) * 2.4, L = 5 + rnd() * 9;
+    x.strokeStyle = rnd() < 0.55 ? 'rgba(255,255,255,0.75)' : 'rgba(236,160,200,0.45)';
+    x.lineWidth = 1.2 + rnd() * 1.6;
+    x.beginPath(); x.moveTo(px, py); x.lineTo(px + Math.cos(d) * L, py + Math.sin(d) * L); x.stroke();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.NoColorSpace;
+  const top = new THREE.Mesh(new THREE.CircleGeometry(R, 72), new THREE.MeshBasicMaterial({ map: tex }));
+  top.rotation.x = -Math.PI / 2; top.position.y = 16;
+  g.add(top);
+  // 厚み（ふっくら）
+  const side = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.98, 16, 72, 1, true), new THREE.MeshBasicMaterial({ color: 0xf3bfdc }));
+  side.position.y = 8; g.add(side);
+  // ふちのふさ：小さなもこもこを 2 色で並べる
+  const N = 84;
+  const tuft = new THREE.SphereGeometry(1, 10, 6);
+  const m1 = new THREE.InstancedMesh(tuft, new THREE.MeshBasicMaterial({ color: 0xfde7f3 }), N);
+  const m2 = new THREE.InstancedMesh(tuft, new THREE.MeshBasicMaterial({ color: 0xf6c6df }), N);
+  const o = new THREE.Object3D();
+  for (let i = 0; i < N; i++) {
+    for (const [m, off, rr] of [[m1, 0, 1.0], [m2, 0.5, 0.97]] as [THREE.InstancedMesh, number, number][]) {
+      const a = ((i + off) / N) * Math.PI * 2 + (rnd() - 0.5) * 0.03;
+      o.position.set(Math.cos(a) * R * rr, 12 + rnd() * 4, Math.sin(a) * R * rr);
+      o.rotation.set(0, -a, (rnd() - 0.5) * 0.4);
+      o.scale.set(20 + rnd() * 6, 9 + rnd() * 5, 11 + rnd() * 4);
+      o.updateMatrix(); m.setMatrixAt(i, o.matrix);
+    }
+  }
+  g.add(m2, m1);
+  return { group: g, top: 16, dispose: () => tex.dispose() };
 }
+
+type Part = 'head' | 'legL' | 'legR' | 'armL' | 'armR' | 'body';
 
 interface Props {
   size?: number;
@@ -83,7 +142,8 @@ interface Props {
 const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const onBeatRef = useRef(onBeat); onBeatRef.current = onBeat;
-  const pokeRef = useRef(0);
+  const onPokeRef = useRef(onPoke); onPokeRef.current = onPoke;
+  const touchRef = useRef<{ part: Part; t0: number } | null>(null);
   const reactionRef = useRef<{ r: Reaction; t0: number } | null>(null);
   if (reactRef) reactRef.current = (r: Reaction) => { reactionRef.current = { r, t0: performance.now() }; };
 
@@ -101,79 +161,52 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
 
     const rig = makeRig(undefined, 1);
     const { g, J } = rig;
-    const world = new THREE.Group();
-    world.add(g);
-    scene.add(world);
-
-    // --- 座る姿勢をつくる ---
-    const SIT_THIGH = -84, SIT_KNEE = 80;
-    const sitLegs = (swingL = 0, swingR = 0) => {
-      J.thighL?.rotation.set(D2(SIT_THIGH), (J.thighL.userData.rest || [0, 0, 0])[1], (J.thighL.userData.rest || [0, 0, 0])[2]);
-      J.thighR?.rotation.set(D2(SIT_THIGH), (J.thighR.userData.rest || [0, 0, 0])[1], (J.thighR.userData.rest || [0, 0, 0])[2]);
-      J.kneeL?.rotation.set(D2(SIT_KNEE + swingL), 0, 0);
-      J.kneeR?.rotation.set(D2(SIT_KNEE + swingR), 0, 0);
-    };
+    // 腰を中心に回せるように：body（腰の位置）の中に、腰が原点になるよう g を入れる
     restAll(rig);
-    sitLegs();
     g.position.set(0, 0, 0);
     g.updateMatrixWorld(true);
-    const v = new THREE.Vector3();
-    const hip = J.thighL ? v.setFromMatrixPosition(J.thighL.matrixWorld).clone() : new THREE.Vector3(0, 400, 0);
-    const knee = J.kneeL ? new THREE.Vector3().setFromMatrixPosition(J.kneeL.matrixWorld) : new THREE.Vector3(0, 400, 140);
-    const box = new THREE.Box3().setFromObject(g);
-    const footY = box.min.y;
-    // 足先が床から少し浮くように、床を足の下に置く
-    const floorY = footY - 14;
-    const seatTop = hip.y - 22;
-    const seatZ0 = hip.z - 70, seatZ1 = Math.max(knee.z - 10, hip.z + 60);
-    const seatD = seatZ1 - seatZ0, seatZc = (seatZ0 + seatZ1) / 2;
+    const hip0 = J.hips ? new THREE.Vector3().setFromMatrixPosition(J.hips.matrixWorld) : new THREE.Vector3(0, 380, 0);
+    const body = new THREE.Group();
+    g.position.copy(hip0).multiplyScalar(-1);
+    body.add(g);
+    const world = new THREE.Group();
+    world.add(body);
+    scene.add(world);
 
-    // --- 椅子と床（すべて自作の形） ---
-    const chair = new THREE.Group();
-    const seatH = 26;
-    const cushion = toonBox(250, seatH, seatD, 0xfbcfe8, 0xf472b6, 0xf9a8d4);
-    cushion.position.set(0, seatTop - seatH / 2, seatZc);
-    chair.add(cushion);
-    const frame = toonBox(262, 16, seatD + 12, 0xfef3c7, 0xd6a46a, 0xe9c48f);
-    frame.position.set(0, seatTop - seatH - 8, seatZc);
-    chair.add(frame);
-    const legH = seatTop - seatH - 16 - floorY;
-    for (const sx of [-1, 1]) for (const sz of [0, 1]) {
-      const leg = toonBox(18, legH, 18, 0xe9c48f, 0xc08a50, 0xd6a46a);
-      leg.position.set(sx * 112, floorY + legH / 2, sz ? seatZ1 - 6 : seatZ0 + 6);
-      chair.add(leg);
-    }
-    const back = toonBox(250, 230, 20, 0xfef3c7, 0xd6a46a, 0xe9c48f);
-    back.position.set(0, seatTop + 100, seatZ0 - 12);
-    chair.add(back);
-    const backPad = toonBox(220, 170, 14, 0xfbcfe8, 0xf472b6, 0xf9a8d4);
-    backPad.position.set(0, seatTop + 108, seatZ0 - 0);
-    chair.add(backPad);
-    // ハート（背もたれの飾り）
-    const heart = new THREE.Shape();
-    heart.moveTo(0, -18); heart.bezierCurveTo(-34, 8, -16, 34, 0, 16); heart.bezierCurveTo(16, 34, 34, 8, 0, -18);
-    const hm = new THREE.Mesh(new THREE.ShapeGeometry(heart), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-    hm.position.set(0, seatTop + 200, seatZ0 - 23); hm.rotation.y = Math.PI;
-    chair.add(hm);
-    world.add(chair);
-    // ラグと影
-    const rug = new THREE.Mesh(new THREE.CircleGeometry(1, 48), new THREE.MeshBasicMaterial({ color: 0xc4b5fd }));
-    rug.rotation.x = -Math.PI / 2; rug.scale.set(330, 230, 1); rug.position.set(0, floorY - 1, seatZc + 40);
-    world.add(rug);
-    const rugIn = new THREE.Mesh(new THREE.RingGeometry(0.82, 0.88, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
-    rugIn.rotation.x = -Math.PI / 2; rugIn.scale.set(330, 230, 1); rugIn.position.set(0, floorY, seatZc + 40);
-    world.add(rugIn);
-    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0x8b7bd8, transparent: true, opacity: 0.5 }));
-    shadow.rotation.x = -Math.PI / 2; shadow.scale.set(170, 120, 1); shadow.position.set(0, floorY + 0.5, seatZc);
+    const RUG_R = 360;
+    const rug = makeRug(RUG_R);
+    world.add(rug.group);
+    const floorY = rug.top;
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0xe9a6cb, transparent: true, opacity: 0.55 }));
+    shadow.rotation.x = -Math.PI / 2; shadow.position.y = floorY + 1;
     world.add(shadow);
 
-    // カメラ：椅子ごと全部が入るように
-    const midY = (floorY + (hip.y + 420)) / 2;
-    camera.position.set(0, midY + 260, 1950);
-    camera.lookAt(0, midY - 10, 0);
+    // カメラ：少し上から、ラグ全体と座ったしあしあが入るように
+    camera.position.set(0, 760, 1650);
+    camera.lookAt(0, 230, 0);
 
-    const onClick = () => { pokeRef.current = performance.now(); onPoke?.(); };
-    renderer.domElement.addEventListener('pointerdown', onClick);
+    // さわった所を調べる（頭・足・手・からだ）
+    const partOf = (o: THREE.Object3D | null): Part => {
+      for (let n: THREE.Object3D | null = o; n; n = n.parent) {
+        if (n === J.head) return 'head';
+        if (n === J.thighL || n === J.kneeL) return 'legL';
+        if (n === J.thighR || n === J.kneeR) return 'legR';
+        if (n === J.upperArmL) return 'armL';
+        if (n === J.upperArmR) return 'armR';
+        if (n === g) return 'body';
+      }
+      return 'body';
+    };
+    const ray = new THREE.Raycaster();
+    const onDown = (e: PointerEvent) => {
+      const r = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+      const hit = ray.intersectObject(g, true)[0];
+      touchRef.current = { part: hit ? partOf(hit.object) : 'body', t0: performance.now() };
+      onPokeRef.current?.();
+    };
+    renderer.domElement.addEventListener('pointerdown', onDown);
+    (window as any).__seatPoke = (part: Part) => { touchRef.current = { part, t0: performance.now() }; };   // テスト用
     const ro = new ResizeObserver(() => {
       const w = mount.clientWidth || size, h = mount.clientHeight || size;
       renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -184,6 +217,9 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
     const t0 = performance.now();
     const ears = (g.userData.ears || []) as THREE.Object3D[];
     const earRest = ears.map((e) => e.rotation.clone());
+    const rest = (o: any): V3 => (o?.userData.rest as V3) || [0, 0, 0];
+    const box = new THREE.Box3(), ctr = new THREE.Vector3();
+    let ground = 0, cx = 0, cz = 0, firstFrame = true;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const now = performance.now();
@@ -193,25 +229,29 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
       let bi = 0;
       for (let i = 0; i < STORY.length; i++) if (st >= STORY[i].t) bi = i;
       if (bi !== lastBeat) { lastBeat = bi; onBeatRef.current?.(bi); }
-      const cur = STORY[bi];
-      const prev = STORY[(bi - 1 + STORY.length) % STORY.length];
-      const since = st - cur.t;
-      // 1.6 秒かけて、ゆっくり次の姿勢へ
-      const k = ease(clamp01(since / 1.6));
+      const forced = (window as any).__seatPose as PoseKey | undefined;      // テスト用：姿勢を固定
+      const cur = forced ? { pose: forced, t: 0 } : STORY[bi];
+      const prev = forced ? cur : STORY[(bi - 1 + STORY.length) % STORY.length];
+      const since = forced ? 9 : st - cur.t;
+      // 1.8 秒かけて、ゆっくり次の姿勢へ（寝転がる・起き上がるのは少しゆっくり）
+      const slowK = POSES[cur.pose].root[0] !== POSES[prev.pose].root[0] ? 2.4 : 1.8;
+      const k = ease(clamp01(since / slowK));
       const pose = mixPose(POSES[prev.pose], POSES[cur.pose], k);
+      const lying = clamp01(Math.abs(pose.root[0]) / 80);
 
-      // 動きの味付け（呼吸・足ぶらぶら・手をふる・「な」の口）
+      // 動きの味付け（呼吸・足ぱたぱた・手をふる・「な」の口）
       const breathe = Math.sin(time * 1.6);
-      let swingL = 6 * Math.sin(time * 1.3), swingR = 6 * Math.sin(time * 1.3 + 1.2);
       let mouth = pose.mouth;
       let waveZ = 0;
-      if (cur.pose === 'kick') { const a = Math.min(1, since / 1.2); swingL = 28 * a * Math.sin(time * 5.2); swingR = 28 * a * Math.sin(time * 5.2 + Math.PI); }
+      let kickL = 0, kickR = 0;
+      if (cur.pose === 'kick') { const a = Math.min(1, since / 1.0); kickL = 22 * a * Math.sin(time * 6); kickR = 22 * a * Math.sin(time * 6 + Math.PI); }
+      if (cur.pose === 'phone') { const a = Math.min(1, since / 1.5); kickL = 40 * a * Math.sin(time * 3.2); kickR = 40 * a * Math.sin(time * 3.2 + Math.PI); }
+      if (cur.pose === 'nage') { kickL = 4 * Math.sin(time * 1.1); kickR = 4 * Math.sin(time * 1.1 + 2); }
       if (cur.pose === 'wave') waveZ = 16 * Math.sin(time * 6) * Math.min(1, since / 0.8);
       if (cur.pose === 'practice') { const beat = (since / 0.9) % 1; mouth = beat < 0.35 ? 1 : 0.1; }
-      if (cur.pose === 'phone') pose.head[1] += 4 * Math.sin(time * 0.9);
-      const poke = now - pokeRef.current < 700 ? Math.sin(((now - pokeRef.current) / 700) * Math.PI) : 0;
+      if (cur.pose === 'lie') pose.head[2] += 6 * Math.sin(time * 0.8);
 
-      // つつかれた反応：お話の姿勢の上にかぶせる（入り 0.15 秒・抜け 0.3 秒）
+      // テキストつきの反応（Game から）：上半身にかぶせる。寝転がっているときは弱く
       let lift = 0, extraYaw = 0, headWobX = 0, headWobZ = 0, shake = 0;
       const re = reactionRef.current;
       if (re) {
@@ -219,15 +259,17 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
         const rt = (now - re.t0) / 1000;
         if (rt > def.dur) reactionRef.current = null;
         else {
-          const w = Math.min(1, rt / 0.15) * Math.min(1, (def.dur - rt) / 0.3);
-          const rp = mixPose(pose, def.pose, w);
-          Object.assign(pose, rp);
-          mouth = mix(mouth, def.pose.mouth, w);
-          swingL *= 1 - w * 0.7; swingR *= 1 - w * 0.7;
-          const k = rt / def.dur;
+          const w = Math.min(1, rt / 0.15) * Math.min(1, (def.dur - rt) / 0.3) * (1 - 0.7 * lying) * 0.75;
+          const rp = def.pose;
+          pose.armL = mixV(pose.armL, rp.armL, w); pose.armR = mixV(pose.armR, rp.armR, w);
+          pose.elbowL = mix(pose.elbowL, rp.elbowL, w); pose.elbowR = mix(pose.elbowR, rp.elbowR, w);
+          pose.spine = mixV(pose.spine, rp.spine, w); pose.head = mixV(pose.head, rp.head, w);
+          pose.yaw = mix(pose.yaw, rp.yaw, w); pose.eyes = mix(pose.eyes, rp.eyes, w);
+          mouth = mix(mouth, rp.mouth, w);
+          const kk = rt / def.dur;
           switch (re.r) {
-            case 'surprise': lift = 70 * Math.sin(Math.min(1, rt / 0.45) * Math.PI); break;
-            case 'jump': lift = 90 * Math.abs(Math.sin(k * Math.PI * 2)); break;
+            case 'surprise': lift = 40 * Math.sin(Math.min(1, rt / 0.4) * Math.PI); break;
+            case 'jump': lift = 60 * Math.abs(Math.sin(kk * Math.PI * 2)); break;
             case 'spin': extraYaw = 360 * ease(clamp01(rt / 1.0)); break;
             case 'giggle': shake = 5 * Math.sin(rt * 38) * w; break;
             case 'dizzy': headWobX = 14 * Math.cos(rt * 9) * w; headWobZ = 14 * Math.sin(rt * 9) * w; break;
@@ -240,26 +282,73 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
         }
       }
 
+      // さわった所が「ぴくっ」：一瞬ちぢこまって、ばねのようにゆれて戻る。そのあと首をかしげてこっちを見る
+      let twL = 0, twR = 0, twArmL = 0, twArmR = 0, twHead = 0, twBody = 0, curious = 0, earK = 0, squint = 0;
+      const tc = touchRef.current;
+      if (tc) {
+        const t = (now - tc.t0) / 1000;
+        if (t > 2.6) touchRef.current = null;
+        else {
+          const jolt = t < 0.05 ? t / 0.05 : Math.exp(-(t - 0.05) * 9) * Math.cos((t - 0.05) * 32);
+          const j = Math.max(-0.5, jolt);
+          if (tc.part === 'legL') twL = j; else if (tc.part === 'legR') twR = j;
+          else if (tc.part === 'armL') twArmL = j; else if (tc.part === 'armR') twArmR = j;
+          else if (tc.part === 'head') twHead = j; else twBody = j;
+          earK = Math.max(0, j) + (tc.part === 'head' ? Math.max(0, j) : 0);
+          squint = t < 0.22 ? 0.85 : 0;
+          // ぴくっ → 0.35 秒後から、首をかしげて「…？」とこっちを見る（もう一回さわってほしそうに）
+          curious = clamp01((t - 0.35) / 0.35) * clamp01((2.6 - t) / 0.6);
+        }
+      }
+
       restAll(rig);
-      sitLegs(swingL, swingR);
-      J.upperArmL?.rotation.set(D2(-pose.armL[0]), 0, D2(pose.armL[1]), 'ZXY');
-      J.upperArmR?.rotation.set(D2(-pose.armR[0]), 0, D2(-pose.armR[1] + waveZ), 'ZXY');
-      if (J.elbowL) J.elbowL.rotation.x += D2(pose.elbowL);
-      if (J.elbowR) J.elbowR.rotation.x += D2(pose.elbowR + (cur.pose === 'wave' ? waveZ * 0.6 : 0));
-      if (J.spine) { J.spine.rotation.x += D2(pose.spine[0] + breathe * 1.2); J.spine.rotation.z += D2(pose.spine[2] + shake); }
-      if (J.head) { J.head.rotation.x += D2(pose.head[0] + breathe * 1.5 + headWobX); J.head.rotation.y += D2(pose.head[1]); J.head.rotation.z += D2(pose.head[2] + poke * 22 + headWobZ); }
-      if (J.mouth) { J.mouth.visible = mouth > 0.25 || poke > 0.3; const ms = rig.mouthS; J.mouth.scale.set(4.2 * ms, 3.4 * ms * (0.6 + mouth * 0.9), 1); }
+      const sgn = { L: 1, R: -1 } as const;
+      for (const S of ['L', 'R'] as const) {
+        const th = J['thigh' + S], kn = J['knee' + S];
+        const tp = S === 'L' ? pose.thighL : pose.thighR;
+        const kick = S === 'L' ? kickL : kickR;
+        const tw = S === 'L' ? twL : twR;
+        const r = rest(th);
+        th?.rotation.set(D2(tp[0] - (cur.pose === 'phone' ? 0 : kick * 0.4) - tw * 22), r[1] + sgn[S] * D2(tp[1]), r[2] + sgn[S] * D2(tp[2]));
+        kn?.rotation.set(D2(Math.max(0, (S === 'L' ? pose.kneeL : pose.kneeR) + (cur.pose === 'phone' ? kick : Math.abs(kick) * 0.5) + tw * 55)), 0, 0);
+      }
+      const shrug = Math.max(0, twBody) * 14 + Math.max(0, twHead) * 6;
+      J.upperArmL?.rotation.set(D2(-pose.armL[0] - twArmL * 30), 0, D2(pose.armL[1] - shrug + twArmL * 20), 'ZXY');
+      J.upperArmR?.rotation.set(D2(-pose.armR[0] - twArmR * 30), 0, D2(-pose.armR[1] + waveZ + shrug - twArmR * 20), 'ZXY');
+      if (J.elbowL) J.elbowL.rotation.x += D2(pose.elbowL - Math.max(0, twArmL) * 40);
+      if (J.elbowR) J.elbowR.rotation.x += D2(pose.elbowR + (cur.pose === 'wave' ? waveZ * 0.6 : 0) - Math.max(0, twArmR) * 40);
+      if (J.spine) { J.spine.rotation.x += D2(pose.spine[0] + breathe * 1.2 - twBody * 8 + curious * 6 * (1 - lying)); J.spine.rotation.y += D2(pose.spine[1]); J.spine.rotation.z += D2(pose.spine[2] + shake); }
+      if (J.head) {
+        J.head.rotation.x += D2(pose.head[0] + breathe * 1.5 + headWobX + twHead * 12 - curious * 4);
+        J.head.rotation.y += D2(pose.head[1]);
+        J.head.rotation.z += D2(pose.head[2] + headWobZ + twHead * 8 + curious * 16);
+      }
+      if (J.mouth) { const mo = Math.max(mouth, curious * 0.35, Math.max(0, twBody + twHead + twL + twR + twArmL + twArmR) * 0.8); J.mouth.visible = mo > 0.25; const ms = rig.mouthS; J.mouth.scale.set(4.2 * ms, 3.4 * ms * (0.6 + mo * 0.9), 1); }
       if (rig.setBlink) {
         const P2 = 3.8, n = Math.floor(time / P2), local = time - n * P2;
         const blink = local > 3.55 ? Math.sin(((local - 3.55) / 0.25) * Math.PI) : 0;
-        rig.setBlink(Math.max(pose.eyes, blink));
+        rig.setBlink(Math.max(pose.eyes * (1 - curious), blink, squint));
       }
-      // 耳：ひらめいた瞬間とつつかれた時にぴくっ
-      const twitch = (cur.pose === 'idea' && since < 0.6 ? Math.sin((since / 0.6) * Math.PI) : 0) + poke;
-      ears.forEach((e, i) => { const r = earRest[i]; e.rotation.set(r.x - 0.4 * twitch, r.y, r.z + (i ? 1 : -1) * 0.25 * twitch); });
+      // 耳：ひらめいた瞬間とさわられた時にぴくっ。こっちを見ているときはぴんと立てる
+      const twitch = (cur.pose === 'idea' && since < 0.6 ? Math.sin((since / 0.6) * Math.PI) : 0) + earK;
+      ears.forEach((e, i) => { const r = earRest[i]; e.rotation.set(r.x - 0.45 * twitch + curious * 0.12, r.y, r.z + (i ? 1 : -1) * (0.28 * twitch - curious * 0.08)); });
       if (J.tail) J.tail.rotation.z += 0.25 * Math.sin(time * 2.2);
-      world.rotation.y = D2(pose.yaw + 3 * Math.sin(time * 0.35) + extraYaw);
-      g.position.y = lift;
+
+      // からだの傾き（寝転がる）と向き。こっちを見たいときは少しこっちへ向く
+      body.rotation.set(D2(pose.root[0]), 0, D2(pose.root[1]));
+      world.rotation.y = D2(mix(pose.yaw + 3 * Math.sin(time * 0.35), 0, curious * 0.6) + extraYaw);
+      // いちばん低い所がラグにつくように高さを合わせ、ラグのまん中にいるように前後左右もそろえる
+      body.position.set(0, 0, 0);
+      body.updateMatrixWorld(true);
+      box.setFromObject(g);
+      box.getCenter(ctr);
+      const wantG = floorY - box.min.y, wantX = -ctr.x, wantZ = -ctr.z * 0.6;
+      const f = firstFrame || forced ? 1 : Math.min(1, dt * 8);
+      ground += (wantG - ground) * f; cx += (wantX - cx) * f; cz += (wantZ - cz) * f;
+      firstFrame = false;
+      body.position.set(cx, ground + lift + Math.max(0, twBody) * 10, cz);
+      shadow.scale.set(150 + 120 * lying, 1, 1); shadow.scale.y = 110 + 60 * lying;
+      shadow.position.x = cx * 0.5; shadow.position.z = cz * 0.5;
       g.updateMatrixWorld(true);
       g.userData.cloth?.(dt);
       renderer.render(scene, camera);
@@ -268,7 +357,8 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
-      renderer.domElement.removeEventListener('pointerdown', onClick);
+      renderer.domElement.removeEventListener('pointerdown', onDown);
+      rug.dispose();
       renderer.dispose();
       try { renderer.forceContextLoss(); } catch { /* noop */ }
       scene.traverse((o: any) => {
@@ -280,7 +370,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={mountRef} className={`select-none ${onPoke ? 'cursor-pointer' : ''}`} style={{ width: size, height: size }} aria-label="椅子に座るしあしあ" />;
+  return <div ref={mountRef} className={`select-none ${onPoke ? 'cursor-pointer' : ''}`} style={{ width: size, height: size }} aria-label="ラグに座るしあしあ" />;
 };
 
 export default ShiashiaSeated;
