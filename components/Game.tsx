@@ -1026,8 +1026,8 @@ const Game: React.FC = () => {
       // 画面の外から足音がだんだん近づいてくる（文字は出さない）
       const lines: Record<number, [Reaction, string]> = {
         9: ['surprise', 'や、やめて…'],
-        10: ['fear', 'あ…この足音…'],
-        11: ['fear', 'に、逃げて…！'],
+        10: ['angry', 'ほんとに怒るよ…'],
+        11: ['cry', 'もう…知らないからね…'],
       };
       const [r, t] = lines[pk.n];
       showReact(t, r);
@@ -1156,7 +1156,9 @@ const Game: React.FC = () => {
   );
 
   const renderReady = () => {
-    const say = kiaOn ? 'ひぃぃ…' : reactSay?.text || STORY[storyIdx]?.say || '';
+    // 画面が割れている間は、しあしあのひとことも割れた画面の話になる
+    const CRACK_LINES = ['画面、バキバキ…', '修理代… 配信で稼がなきゃ', 'きあきあ、やりすぎ…', 'ひび割れ配信って、バズるかな？', 'ガラスの破片、ふまないでね', '右上で直せるって…'];
+    const say = kiaOn ? 'ひぃぃ…' : reactSay?.text || (crackSeed && !crackFixing ? CRACK_LINES[storyIdx % CRACK_LINES.length] : STORY[storyIdx]?.say) || '';
     const sceneSize = isMobile ? Math.round(Math.min(330, vp.w - 40, vp.h * 0.3)) : 340;
     return (
       <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
@@ -1522,7 +1524,7 @@ const Game: React.FC = () => {
         onPop={(n) => { const v = (lifeRef.current.titlePops ?? 0) + n; bumpLife({ titlePops: v }); setTitlePops(v); if (v >= 50 && v - n < 50) checkAchievements(null, false); }} />}
       {kiaOn && <KiaKiaPunch volume={settings.volume} onShout={() => doShake('shake-hard', 600)}
         onImpact={() => { setCrackSeed((Date.now() % 99991) + 1); doShake('shake-hard', 700); bumpLife({ screenBroken: true }); checkAchievements(null, false); }}
-        onDone={() => { setKiaOn(false); setTimeout(() => showReact('いたた…ごめんね', 'cry'), 200); }} />}
+        onDone={() => { setKiaOn(false); setTimeout(() => showReact('が、画面が…！', 'surprise'), 200); }} />}
       {crackSeed && gameState === 'READY' && (
         <GlassCrack key={crackSeed} seed={crackSeed} impact={{ x: vp.w / 2, y: vp.h * 0.46 }} volume={settings.volume} lite={lite} fixing={crackFixing}
           onFixed={() => { setCrackSeed(null); setCrackFixing(false); showReact('直った！', 'jump'); }} />
