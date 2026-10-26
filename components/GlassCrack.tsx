@@ -71,9 +71,14 @@ const CELL_FS = /* glsl */ `
     vec3 R = reflect(-V, N);
     float F = fresnel(dot(N, V));
     vec3 refl = env(R) * (0.085 + F);
-    // 破片ごとに、ほんの少しくもり方が違う
-    refl += vec3(0.020 + 0.03 * vRnd);
-    float a = clamp(dot(refl, vec3(0.3333)) * 0.75, 0.0, 0.8);
+    float micro = step(1.5, vRnd);
+    float rn = fract(vRnd);
+    // 破片ごとに、ほんの少しくもり方が違う。砕けたかけらは白っぽく、強く光る
+    refl *= 1.0 + micro * 1.6;
+    refl += vec3(0.020 + 0.03 * rn) + micro * vec3(0.10 + 0.22 * rn);
+    float twinkle = micro * pow(max(0.0, sin(uT * (3.0 + rn * 5.0) + rn * 40.0 + uLook.x * 6.0)), 24.0) * 1.4;
+    refl += vec3(twinkle);
+    float a = clamp(dot(refl, vec3(0.3333)) * 0.75, 0.0, 0.85);
     gl_FragColor = vec4(refl * on, a * on);
   }`;
 
@@ -100,7 +105,9 @@ const CRACK_FS = /* glsl */ `
     vec3 V = normalize(uCam - vP);
     vec3 n2 = normalize(vec3(-vDir.y, vDir.x, 0.45));
     vec3 e = env(reflect(-V, n2));
-    float g = smoothstep(0.25, 1.6, dot(e, vec3(0.3333))) * vBright;
+    float g = smoothstep(0.25, 1.6, dot(e, vec3(0.3333))) * min(vBright, 1.0);
+    float whiteEdge = clamp(vBright - 1.0, 0.0, 1.0);        // 砕けたかけらのふちは、白っぽく光る
+    g = max(g, whiteEdge * 0.75);
     vec3 col = mix(vec3(0.20, 0.21, 0.25), vec3(1.0), g);
     // 光ったところに、ほんの少し虹色（ガラスの断面で光が分かれる）
     col += vec3(smoothstep(0.0, 0.5, vAcross), 0.0, smoothstep(0.0, 0.5, -vAcross)) * g * 0.35;
@@ -119,19 +126,20 @@ const BLOT_FS = /* glsl */ `
     vec2 px = vec2(vUv.x * uRes.x, (1.0 - vUv.y) * uRes.y);
     vec2 d = px - uImp; float r = length(d); float ang = atan(d.y, d.x);
     float k = 1.0 - uFix;
-    // にじみ：ふちがぎざぎざの黒い染み。時間とともに少し広がる
-    float grow = uRB * (1.0 - exp(-uT * 1.6)) * k;
-    float edge = grow * (0.55 + 0.75 * fbm(vec2(ang * 2.2, uSeed) + px * 0.004));
-    float blot = 1.0 - smoothstep(edge * 0.75, edge, r);
-    float rim = (smoothstep(edge * 0.6, edge * 0.9, r) - smoothstep(edge * 0.9, edge * 1.05, r));
-    float swirl = fbm(px * 0.012 + vec2(uSeed, uT * 0.08));
-    vec3 ink = mix(vec3(0.02, 0.0, 0.05), vec3(0.20, 0.02, 0.32), smoothstep(0.45, 0.8, swirl));
-    ink += vec3(0.0, 0.35, 0.40) * smoothstep(0.7, 0.9, swirl) * 0.6;
-    vec3 col = ink * blot + vec3(0.55, 0.15, 0.85) * rim * 0.5 + vec3(0.1, 0.9, 0.8) * rim * 0.25 * swirl;
-    float a = blot * 0.93 + rim * 0.5;
-    // 当たった所：細かく砕けて白くくもる
-    float frost = (1.0 - smoothstep(uR0 * 0.7, uR0 * 1.6, r)) * (0.45 + 0.55 * noise(px * 0.35)) * smoothstep(0.0, 0.03, uT) * k;
-    col = mix(col, vec3(0.92, 0.95, 1.0), frost * 0.8); a = max(a, frost * 0.75);
+    vec3 col = vec3(0.0); float a = 0.0;
+    // 当たった所のまん中：粉々になって白い粉のようになる
+    float powder = (1.0 - smoothstep(3.0, 9.0, r * (0.8 + 0.5 * noise(px * 0.6)))) * k * smoothstep(0.0, 0.02, uT);
+    // 液晶の小さなにじみ（くぼみのまわりだけ、うっすら）
+    float grow = uR0 * 1.2 * (1.0 - exp(-uT * 1.4)) * k;
+    float leak = (1.0 - smoothstep(grow * 0.4, grow, r * (0.75 + 0.5 * fbm(vec2(ang * 2.5, uSeed))))) * 0.55;
+    col = mix(col, vec3(0.05, 0.0, 0.10), leak); a = max(a, leak);
+    col = mix(col, vec3(0.97, 0.98, 1.0), powder * 0.9); a = max(a, powder * 0.85);
+    // 粉々のガラスの粒：細かい点がキラキラ
+    vec2 cellp = floor(px / 3.0);
+    float h = hash(cellp + uSeed);
+    float dust = step(0.82, h) * (1.0 - smoothstep(uR0 * 1.4, uR0 * 2.6, r)) * smoothstep(0.0, 0.03, uT) * k;
+    float tw = 0.35 + 0.65 * pow(max(0.0, sin(uT * (4.0 + h * 9.0) + h * 60.0 + uLook.y * 5.0)), 6.0);
+    col = mix(col, vec3(1.0), dust * tw); a = max(a, dust * tw * 0.9);
     // 縦線（液晶の線が光ったまま・消えたまま）
     float lt = smoothstep(0.12, 0.2, uT) * k;
     for (int i = 0; i < 4; i++) {
@@ -195,7 +203,7 @@ function crackGeometry(fr: Fracture, toW: (x: number, y: number) => [number, num
     const n = c.pts.length;
     let total = 0; const acc = [0];
     for (let i = 1; i < n; i++) { total += Math.hypot(c.pts[i].x - c.pts[i - 1].x, c.pts[i].y - c.pts[i - 1].y); acc.push(total); }
-    const br = c.kind === 'ray' ? 1 : c.kind === 'ring' ? 0.9 : c.kind === 'micro' ? 0.95 : 0.8;
+    const br = c.kind === 'ray' ? 1 : c.kind === 'ring' ? 0.9 : c.kind === 'micro' ? 1.8 : 0.8;   // 1 より大きい＝砕けたかけらのふち（白っぽい）
     for (let i = 0; i < n - 1; i++) {
       const a = c.pts[i], b = c.pts[i + 1];
       const dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1, tx = dx / L, ty = dy / L;
@@ -226,8 +234,9 @@ function cellGeometry(fr: Fracture, toW: (x: number, y: number) => [number, numb
     if (c.hole !== holes) continue;
     const base = v;
     const [cx, cy] = toW(c.c.x, c.c.y);
-    pos.push(cx, cy, 0); tilt.push(c.tilt[0], -c.tilt[1]); time.push(c.time); rnd.push((k * 0.618) % 1); v++;
-    for (const p of c.poly) { const [x, y] = toW(p.x, p.y); pos.push(x, y, 0); tilt.push(c.tilt[0], -c.tilt[1]); time.push(c.time); rnd.push((k * 0.618) % 1); v++; }
+    const rv = ((k * 0.618) % 1) + (c.micro ? 2 : 0);
+    pos.push(cx, cy, 0); tilt.push(c.tilt[0], -c.tilt[1]); time.push(c.time); rnd.push(rv); v++;
+    for (const p of c.poly) { const [x, y] = toW(p.x, p.y); pos.push(x, y, 0); tilt.push(c.tilt[0], -c.tilt[1]); time.push(c.time); rnd.push(rv); v++; }
     const m = c.poly.length;
     for (let i = 0; i < m; i++) idx.push(base, base + 1 + i, base + 1 + ((i + 1) % m));
   }
@@ -281,7 +290,7 @@ const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, fixin
     const shardMat = new THREE.ShaderMaterial({ vertexShader: SHARD_VS, fragmentShader: SHARD_FS, uniforms: { ...common, uFade: { value: 1 } }, ...premult });
 
     const holes = new THREE.Mesh(cellGeometry(fr, toW, true), holeMat); holes.renderOrder = 1; holes.frustumCulled = false;
-    const blot = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blotMat); blot.renderOrder = 2; blot.frustumCulled = false;
+    const blot = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blotMat); blot.renderOrder = 4.5; blot.frustumCulled = false;
     const cells = new THREE.Mesh(cellGeometry(fr, toW, false), cellMat); cells.renderOrder = 3; cells.frustumCulled = false;
     const cracks = new THREE.Mesh(crackGeometry(fr, toW), crackMat); cracks.renderOrder = 4; cracks.frustumCulled = false;
     scene.add(holes, blot, cells, cracks);

@@ -258,8 +258,6 @@ const Game: React.FC = () => {
   const [kiaOn, setKiaOn] = useState(false);
   const [crackSeed, setCrackSeed] = useState<number | null>(null);
   const [crackFixing, setCrackFixing] = useState(false);
-  /** 画面の外から聞こえるきあきあの声（さわりすぎの予兆） */
-  const [offShout, setOffShout] = useState<{ id: number; text: string; big: boolean } | null>(null);
   const [showFortune, setShowFortune] = useState(false);
   const [titlePops, setTitlePops] = useState(() => lifeRef.current.titlePops ?? 0);
   const [logo, setLogo] = useState({ i: 0, id: 0 });
@@ -1025,25 +1023,23 @@ const Game: React.FC = () => {
       showReact(t, r);
     } else if (pk.n <= 11) {
       // 画面の外から、きあきあの声がだんだん近づいてくる
-      const lines: Record<number, [Reaction, string, string]> = {
-        9: ['surprise', 'や、やめて…', '…ん？'],
-        10: ['fear', 'あ…この足音…', 'だれか しあしあに さわってない？'],
-        11: ['fear', 'に、逃げて…！', 'ちょっと！！'],
+      // 画面の外から足音がだんだん近づいてくる（文字は出さない）
+      const lines: Record<number, [Reaction, string]> = {
+        9: ['surprise', 'や、やめて…'],
+        10: ['fear', 'あ…この足音…'],
+        11: ['fear', 'に、逃げて…！'],
       };
-      const [r, t, off] = lines[pk.n];
+      const [r, t] = lines[pk.n];
       showReact(t, r);
-      const id = performance.now(), n = pk.n;
+      const n = pk.n;
       setTimeout(() => {
-        setOffShout({ id, text: off, big: n >= 11 });
         se('knock', { gain: 0.2 + (n - 9) * 0.25, rate: 1.5, pan: 0.9 });
         se('knock', { gain: 0.2 + (n - 9) * 0.25, rate: 1.65, pan: 0.9, delay: 0.16 });
-        if (n >= 11) { se('poke_angry', { rate: 0.8 }); doShake('shake', 300); }
+        if (n >= 11) { se('knock', { gain: 0.8, rate: 1.4, pan: 0.6, delay: 0.32 }); doShake('shake', 250); }
       }, 450);
-      setTimeout(() => setOffShout((x) => (x && x.id === id ? null : x)), 2300);
     } else {
       showReact('ひっ…！', 'fear');
       pk.n = 0;
-      setOffShout(null);
       setTimeout(() => setKiaOn(true), 350);
     }
   };
@@ -1537,14 +1533,6 @@ const Game: React.FC = () => {
           className="fixed z-[86] right-3 bg-slate-900/85 text-white font-black text-sm px-5 py-2.5 rounded-full border-2 border-white shadow-xl active:scale-95 transition-transform">
           画面を直す
         </button>
-      )}
-      {offShout && gameState === 'READY' && !kiaOn && (
-        <div key={offShout.id} className="bubble-pop fixed z-[70] right-0 top-[30%] pointer-events-none" style={{ transformOrigin: '100% 50%' }}>
-          <div className="relative bg-orange-500 border-4 border-white border-r-0 rounded-l-2xl pl-4 pr-3 py-2 text-white font-black shadow-xl" style={{ fontSize: offShout.big ? 22 : 15 }}>
-            {offShout.text}
-            <div className="text-[10px] text-orange-100 font-bold">きあきあ（画面の外から）</div>
-          </div>
-        </div>
       )}
       {showFortune && <FortuneCard volume={settings.volume} onClose={() => setShowFortune(false)} />}
       {showBook && <CollectionBook unlocked={unlocked} seenEndings={seenEndings} itemsSeen={lifeRef.current.itemsSeen} onClose={() => setShowBook(false)} />}

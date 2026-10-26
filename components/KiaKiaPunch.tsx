@@ -1,21 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import { sfxShatter, sfxWhoosh } from '../utils/titleSfx';
+
+/** 衝撃の光（とげとげの星形）。まっ暗な中で一瞬だけ光る */
+const Burst: React.FC<{ seed: number }> = ({ seed }) => {
+  const pts = useMemo(() => {
+    let s = seed; const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+    const out: string[] = []; const N = 22;
+    for (let i = 0; i < N * 2; i++) { const a = (i / (N * 2)) * Math.PI * 2; const r = i % 2 ? 7 + rnd() * 6 : 24 + rnd() * 26; out.push(`${(Math.cos(a) * r).toFixed(1)},${(Math.sin(a) * r).toFixed(1)}`); }
+    return out.join(' ');
+  }, [seed]);
+  return <polygon points={pts} fill="#fff" />;
+};
 import { playSfx } from '../utils/sfx';
 
 /**
  * しあしあをさわりすぎると、きあきあが怒鳴り込んできて画面をなぐって割る（タイトル画面のおまけ）
- *  0.0s 画面の外から「コラーーーッ！！」（画面がゆれる）
+ *  0.0s 画面の外で床を踏みならす音（画面がゆれる）
  *  0.0〜 足音がだんだん近づいてくる
  *  0.7s 右から走ってくる（本物のきあきあ 3D。「きあ 調整台」のモデル）
  *  1.4s ズザーッと止まって、じだんだ「しあしあに なにしてんの！！」
  *  2.4s 振りかぶる「おらぁ！」→ 画面に近づく
- *  3.0s ドンッ（げんこつが画面に当たる）→ 画面がガラスのように割れる（GlassCrack）
+ *  2.8s こっちへ飛び込んでくる → 3.0s 一瞬まっ白に光る → まっ暗（白い衝撃の光だけ）→ 3.23s 戻ると画面が割れている（GlassCrack）
  *  3.5s 腕を組んで「ふんっ。」
  *  4.6s 帰っていく
  */
-const T_ENTER = 700, T_STOP = 1400, T_WIND = 2400, T_HIT = 3000, T_HUFF = 3500, T_LEAVE = 4600, T_END = 5400;
-export const KIA_HIT_MS = T_HIT;
+const T_ENTER = 700, T_STOP = 1400, T_WIND = 2400, T_LUNGE = 2820, T_HIT = 3000, T_FLASH = 55, T_REV = 3230, T_HUFF = 3600, T_LEAVE = 4700, T_END = 5500;
+export const KIA_HIT_MS = T_REV;
 
 interface Props {
   volume: number;
@@ -23,18 +34,6 @@ interface Props {
   onImpact: () => void;
   onDone: () => void;
 }
-
-const Fist: React.FC = () => (
-  <svg viewBox="0 0 200 190" className="w-full h-full" aria-hidden="true">
-    <rect x="70" y="138" width="60" height="50" rx="14" fill="#fcd9b6" stroke="#7c2d12" strokeWidth="6" />
-    <rect x="36" y="52" width="128" height="100" rx="34" fill="#fde2c8" stroke="#7c2d12" strokeWidth="7" />
-    {[58, 86, 114, 142].map((x) => <circle key={x} cx={x} cy={60} r={19} fill="#fde2c8" stroke="#7c2d12" strokeWidth="6" />)}
-    <rect x="42" y="58" width="116" height="24" fill="#fde2c8" />
-    {[72, 100, 128].map((x) => <path key={x} d={`M${x} 64 L${x} 100`} stroke="#c2410c" strokeWidth="4" strokeLinecap="round" />)}
-    <path d="M44 112 Q46 96 70 98 L118 104 Q134 108 130 122 Q126 134 108 132 L62 130 Q44 128 44 112 Z" fill="#fcd9b6" stroke="#7c2d12" strokeWidth="6" strokeLinejoin="round" />
-    {[-1, 1].map((sd) => [0, 1, 2].map((k) => <line key={`${sd}${k}`} x1={100 + sd * (96 + k * 2)} y1={50 + k * 34} x2={100 + sd * (80 + k * 2)} y2={58 + k * 34} stroke="#fff" strokeWidth="6" strokeLinecap="round" />))}
-  </svg>
-);
 
 /** 怒りマーク（十字の血管）。絵文字は使わず SVG で描く */
 export const AngerMark: React.FC<{ size?: number; className?: string; style?: React.CSSProperties }> = ({ size = 44, className = '', style }) => (
@@ -73,15 +72,15 @@ const KiaKiaPunch: React.FC<Props> = ({ volume, onShout, onImpact, onDone }) => 
 
   useEffect(() => {
     const t0 = performance.now();
-    let raf = 0, hit = false, whoosh = false, stop = false, steps = 0, huff = false, leave = false, wind = false;
-    // 画面の外からの怒鳴り声：ドンッ（床を踏む）＋怒った声の代わりの「ブブッ」
+    let raf = 0, hit = false, rev = false, whoosh = false, stop = false, steps = 0, huff = false, leave = false, wind = false;
+    // 画面の外で、ドンッと床を踏みならす（画面がゆれる）
     playSfx('boom_low', { volume, gain: 0.55, rate: 1.5 });
     playSfx('metal', { volume, gain: 0.8, rate: 0.55 });
-    [0, 0.12, 0.24].forEach((d, i) => playSfx('poke_angry', { volume, delay: d, rate: 0.75 - i * 0.05, gain: 1.1 }));
     onShout?.();
     const slow = (window as any).__kiaSlow || 1;     // テストでゆっくり再生するとき
     const loop = () => {
-      const e = (performance.now() - t0) / slow;
+      const fixedT = (window as any).__kiaT;          // テストで時刻を止めて撮るとき
+      const e = typeof fixedT === 'number' ? fixedT : (performance.now() - t0) / slow;
       setT(e);
       // 足音：遠く（右・小さい）→ 近く（まん中・大きい）。止まるまで
       const stepEvery = 150;
@@ -93,7 +92,9 @@ const KiaKiaPunch: React.FC<Props> = ({ volume, onShout, onImpact, onDone }) => 
       if (!stop && e > T_STOP) { stop = true; playSfx('scratch', { volume, rate: 0.6, gain: 1 }); playSfx('swing', { volume, rate: 0.6, gain: 0.6 }); playSfx('knock', { volume, rate: 1.2 }); }
       if (!wind && e > T_WIND) { wind = true; playSfx('swing', { volume, rate: 0.75, gain: 0.8 }); }
       if (!whoosh && e > T_HIT - 380) { whoosh = true; sfxWhoosh(volume); }
-      if (!hit && e > T_HIT) { hit = true; sfxShatter(volume); onImpact(); }
+      // 当たった瞬間：重いパンチの音だけ → まっ暗の間は静か → 戻ったところでガラスが砕ける
+      if (!hit && e > T_HIT) { hit = true; playSfx('punch', { volume, gain: 1.3, rate: 0.9 }); playSfx('boom_low', { volume, gain: 0.8, rate: 1.25 }); }
+      if (!rev && e > T_REV) { rev = true; sfxShatter(volume, false); onImpact(); }
       if (!huff && e > T_HUFF) { huff = true; playSfx('poke_shy', { volume, rate: 0.7 }); }
       if (!leave && e > T_LEAVE) { leave = true; playSfx('swing', { volume, rate: 0.9, gain: 0.5 }); }
       if (e > T_END) { onDone(); return; }
@@ -108,39 +109,29 @@ const KiaKiaPunch: React.FC<Props> = ({ volume, onShout, onImpact, onDone }) => 
   const inK = ease((t - T_ENTER) / (T_STOP - T_ENTER));
   const windK = ease((t - T_WIND) / 550);
   const leaveK = ease((t - T_LEAVE) / 700);
+  const lungeK = t < T_REV ? Math.max(0, Math.min(1, (t - T_LUNGE) / (T_HIT - T_LUNGE))) ** 2 : 0;   // こっちへ飛び込んでくる
   const x = (1 - inK) * 120 + 6 - windK * 6;          // vw
-  const scale = 1 + windK * 0.6;
-  const y = leaveK * 75;
+  const scale = t < T_REV ? 1 + windK * 0.6 + lungeK * 1.4 : 1.25;
+  const y = leaveK * 75 - lungeK * 18;
   const skid = t > T_STOP && t < T_STOP + 250 ? Math.sin((t - T_STOP) / 25) * 6 : 0;
-  const showKia = t > T_ENTER - 50 && (t < T_HIT + 100 || t > T_HIT + 700);
-  const mood: ShiashiaMood = t < T_STOP ? 'run' : t < T_WIND ? 'angry' : t < T_HIT - 60 ? 'windup' : t < T_HUFF ? 'punch' : t < T_LEAVE ? 'huff' : 'walk';
-  const fistK = (t - T_HIT + 160) / 160;
-  const fistOn = t > T_HIT - 160 && t < T_HIT + 900;
+  const showKia = t > T_ENTER - 50 && (t < T_HIT || t > T_REV + 450);
+  const mood: ShiashiaMood = t < T_STOP ? 'run' : t < T_WIND ? 'angry' : t < T_LUNGE ? 'windup' : t < T_HUFF ? 'punch' : t < T_LEAVE ? 'huff' : 'walk';
+  // 当たった瞬間の演出：まっ白 → まっ暗（白い衝撃の光）→ 戻る
+  const white = t >= T_HIT && t < T_HIT + T_FLASH;
+  const black = t >= T_HIT + T_FLASH && t < T_REV;
+  const afterFlash = t >= T_REV && t < T_REV + 260 ? 1 - (t - T_REV) / 260 : 0;
   const say = t < T_STOP ? '' : t < T_WIND ? 'しあしあに なにしてんの！！' : t < T_HIT ? 'おらぁ！' : t > T_HUFF && t < T_LEAVE + 300 ? 'ふんっ。' : '';
-  // 画面の外からの怒鳴り声
-  const shoutOn = t < 1300;
-  const shoutK = ease(t / 180);
   const angry = t > T_STOP && t < T_HIT;
 
   return (
     <div className="fixed inset-0 z-[95] overflow-hidden" style={{ cursor: 'default' }}>
-      <div className="absolute inset-0 bg-black" style={{ opacity: t < T_HIT ? Math.min(0.4, t / 1800) : Math.max(0, 0.4 - (t - T_HIT) / 2500) }} />
-      {/* 集中線（怒鳴り声・パンチ前） */}
-      {(shoutOn || (t > T_WIND && t < T_HIT)) && (
-        <svg viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: shoutOn ? 0.5 * (1 - t / 1300) : 0.45 }} aria-hidden="true">
-          {Array.from({ length: 40 }).map((_, i) => { const a = (i / 40) * Math.PI * 2 + (i % 3) * 0.05; const r0 = 30 + (i * 37 % 10); return <line key={i} x1={Math.cos(a) * r0} y1={Math.sin(a) * r0} x2={Math.cos(a) * 80} y2={Math.sin(a) * 80} stroke="#fff" strokeWidth={0.5 + (i % 4) * 0.3} />; })}
+      <div className="absolute inset-0 bg-black" style={{ opacity: t < T_HIT ? Math.min(0.4, t / 1800) : Math.max(0, 0.4 - (t - T_REV) / 2500) }} />
+      {/* 集中線（振りかぶってから当たるまで） */}
+      {t > T_WIND && t < T_HIT && (
+        <svg viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 w-full h-full pointer-events-none" style={{ opacity: 0.35 + lungeK * 0.5 }} aria-hidden="true">
+          {Array.from({ length: 48 }).map((_, i) => { const a = (i / 48) * Math.PI * 2 + (i % 3) * 0.05; const r0 = 26 + (i * 37 % 12) - lungeK * 10; return <line key={i} x1={Math.cos(a) * r0} y1={Math.sin(a) * r0} x2={Math.cos(a) * 80} y2={Math.sin(a) * 80} stroke="#fff" strokeWidth={0.5 + (i % 4) * 0.3} />; })}
         </svg>
       )}
-      {shoutOn && (
-        <div className="absolute right-0 top-[16%] pointer-events-none" style={{ transform: `translateX(${(1 - shoutK) * 100}%) rotate(-8deg)`, opacity: t > 1000 ? 1 - (t - 1000) / 300 : 1 }}>
-          <div className="relative pr-3" style={{ transform: `translate(${Math.sin(t / 18) * 4}px, ${Math.cos(t / 15) * 3}px)` }}>
-            <div className="font-black text-orange-500 whitespace-nowrap leading-none" style={{ fontSize: 'clamp(40px, 13vw, 104px)', WebkitTextStroke: '6px #fff', paintOrder: 'stroke fill', filter: 'drop-shadow(0 6px 0 rgba(124,45,18,0.5))' }}>コラーーッ！！</div>
-            <div className="mt-2 ml-auto w-max bg-orange-500 text-white font-black text-xs px-3 py-1 rounded-full border-2 border-white">きあきあ（画面の外から）</div>
-          </div>
-        </div>
-      )}
-      {t > T_HIT && t < T_HIT + 220 && <div className="absolute inset-0 bg-white flash-white" />}
-
       {showKia && (
         <div className="absolute left-1/2 bottom-0 pointer-events-none" style={{ transform: `translate(calc(-50% + ${x}vw + ${skid}px), ${y}vh) scale(${scale})`, transformOrigin: '50% 100%' }}>
           <div className="relative">
@@ -165,13 +156,21 @@ const KiaKiaPunch: React.FC<Props> = ({ volume, onShout, onImpact, onDone }) => 
         </div>
       )}
 
-      {fistOn && (
-        <div className="absolute left-1/2 top-[46%] pointer-events-none" style={{ width: 220, height: 209, transform: `translate(-50%, -50%) scale(${t < T_HIT ? 0.25 + Math.max(0, fistK) * 2.6 : 2.85 - (t - T_HIT) / 900})`, opacity: t < T_HIT ? 1 : Math.max(0, 1 - (t - T_HIT) / 900) }}>
-          <Fist />
+      {/* 一瞬まっ白に光る */}
+      {white && <div className="absolute inset-0 bg-white" />}
+      {/* まっ暗：当たった所から白い衝撃の光と、放射状の線だけ（2 コマごとに形が変わる） */}
+      {black && (
+        <div className="absolute inset-0 bg-black">
+          <svg viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid slice" className="absolute w-full h-full" style={{ left: 0, top: '-4%' }} aria-hidden="true">
+            {Array.from({ length: 36 }).map((_, i) => { const a = (i / 36) * Math.PI * 2 + Math.floor(t / 40) * 0.37; const r1 = 8 + ((i * 53) % 9); return <line key={i} x1={Math.cos(a) * r1} y1={Math.sin(a) * r1} x2={Math.cos(a) * 90} y2={Math.sin(a) * 90} stroke="#fff" strokeWidth={0.25 + ((i * 7) % 5) * 0.18} />; })}
+            <g transform={`scale(${0.55 + ((t - T_HIT) / (T_REV - T_HIT)) * 0.6})`}><Burst seed={1 + Math.floor(t / 40)} /></g>
+            <circle r="2.6" fill="#000" />
+          </svg>
         </div>
       )}
+      {afterFlash > 0 && <div className="absolute inset-0 bg-white pointer-events-none" style={{ opacity: afterFlash * 0.7 }} />}
 
-      {t > T_HIT && t < T_HIT + 1400 && (
+      {t > T_REV && t < T_REV + 1400 && (
         <div className="absolute left-1/2 top-[18%] -translate-x-1/2 pointer-events-none">
           <div className="animate-impact text-5xl sm:text-7xl font-black text-red-500 whitespace-nowrap -rotate-6" style={{ WebkitTextStroke: '4px #fff', paintOrder: 'stroke fill' }}>ガシャーン！</div>
         </div>

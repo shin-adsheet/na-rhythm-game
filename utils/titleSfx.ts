@@ -51,8 +51,8 @@ export function sfxWhoosh(volume: number) {
   s.connect(fl); fl.connect(g); g.connect(m); s.start(t); s.stop(t + 0.45);
 }
 /** パンチ＋ガラスが割れる音 */
-export function sfxShatter(volume: number) {
-  if (playSfx('punch', { volume, gain: 1.2 })) {
+export function sfxShatter(volume: number, withPunch = true) {
+  if (withPunch ? playSfx('punch', { volume, gain: 1.2 }) : playSfx('glass_big', { volume, gain: 0.01 })) {
     // 素材：パンチ → ガラスが大きく割れる → 破片がばらばら落ちる。低い「ドン」だけ合成で重ねる
     playSfx('glass_big', { volume, gain: 1.1, delay: 0.02 });
     playSfx('glass_mid', { volume, delay: 0.09, rate: 0.9, pan: -0.4 });

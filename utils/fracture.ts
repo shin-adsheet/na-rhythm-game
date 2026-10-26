@@ -23,6 +23,7 @@ export interface Cell {
   time: number;       // ひびに囲まれる時刻
   hole: boolean;      // 抜け落ちる破片
   ring: number;       // 中心から何番目の輪か
+  micro?: boolean;    // 当たった所の、細かく砕けたかけら
 }
 export interface Fracture { cracks: Crack[]; cells: Cell[]; impact: Pt; r0: number; late: number[] }
 
@@ -34,7 +35,7 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
   const rr = (a: number, b: number) => a + (b - a) * rnd();
   const P = impact;
   const far = Math.max(Math.hypot(P.x, P.y), Math.hypot(W - P.x, P.y), Math.hypot(P.x, H - P.y), Math.hypot(W - P.x, H - P.y)) * 1.08;
-  const r0 = Math.max(12, Math.min(W, H) * 0.035);
+  const r0 = Math.max(14, Math.min(W, H) * 0.05);
 
   // 輪の半径（中心ほど細かく、外ほど広く）
   const rings: number[] = [r0];
@@ -59,9 +60,10 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
   const cracks: Crack[] = [];
   rays.forEach((ray) => {
     // 点を細かくして、少しギザギザに
-    const pts: Pt[] = [P];
-    for (let j = 0; j < ray.length; j++) {
-      const a = j === 0 ? P : ray[j - 1], b = ray[j];
+    // 当たった所（細かいかけらのモザイク）の外から走らせる。まん中に線が集まって「的」に見えないように
+    const pts: Pt[] = [ray[1]];
+    for (let j = 2; j < ray.length; j++) {
+      const a = ray[j - 1], b = ray[j];
       const n = Math.max(1, Math.round(Math.hypot(b.x - a.x, b.y - a.y) / 26));
       for (let k = 1; k <= n; k++) {
         const u = k / n, nx = -(b.y - a.y), ny = b.x - a.x, L = Math.hypot(nx, ny) || 1, jit = k < n ? rr(-2.2, 2.2) : 0;
@@ -110,13 +112,13 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
       const dish = 0.075 * Math.exp(-L / (Math.min(W, H) * 0.5));      // 当たった所へ向かって、くぼむように傾く
       const tilt: [number, number] = [-dx / L * dish + rr(-0.06, 0.06), -dy / L * dish + rr(-0.06, 0.06)];
       let bw = 0; for (const p of poly) bw = Math.max(bw, Math.hypot(p.x - c.x, p.y - c.y));
-      const small = bw < Math.min(W, H) * 0.12;
-      const hole = small && j0 >= 1 && (j0 <= 2 ? rnd() < 0.4 : j0 <= 3 ? rnd() < 0.15 : false);
+      const small = bw < Math.min(W, H) * 0.08;
+      const hole = small && j0 >= 1 && j0 <= 2 && rnd() < 0.2;     // 大きなくさび形の穴は出しすぎない
       cells.push({ poly, c, tilt, time: tOf(c) + 0.02, hole, ring: j0 });
     }
   }
   // 抜け落ちる破片は多すぎないように
-  let holesLeft = opt.lite ? 6 : 10;
+  let holesLeft = opt.lite ? 2 : 3;
   for (const c of cells) if (c.hole) { if (holesLeft > 0) holesLeft--; else c.hole = false; }
   // 放射状のひびが途中で二股に分かれる
   for (let k = 0; k < Math.round(N * 0.6); k++) {
@@ -129,14 +131,42 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
     for (let i = 0; i < 8; i++) { th += rr(-0.12, 0.12); x += Math.cos(th) * len / 8; y += Math.sin(th) * len / 8; pts.push({ x, y }); }
     cracks.push({ pts, times: pts.map((p) => tOf(p)), w0: 1.6, w1: 0.9, kind: 'branch' });
   }
-  // 中心の円（いちばん内側）は細かく砕ける：細かいひびを足す
-  const micro = opt.lite ? 26 : 48;
-  for (let k = 0; k < micro; k++) {
-    const a = rr(0, Math.PI * 2), r1 = rr(0, r0 * 0.6), r2 = r1 + rr(r0 * 0.35, r0 * 1.25);
-    const p1 = { x: P.x + Math.cos(a) * r1, y: P.y + Math.sin(a) * r1 };
-    const a2 = a + rr(-0.6, 0.6);
-    const p2 = { x: P.x + Math.cos(a2) * r2, y: P.y + Math.sin(a2) * r2 };
-    cracks.push({ pts: [p1, p2], times: [tOf(p1), tOf(p2)], w0: 1.1, w1: 0.8, kind: 'micro' });
+  // 当たった所：細かく砕けたかけらのモザイク。形はばらばら、かけらごとに大きく傾くのでキラキラ光る。
+  // ところどころ小さく欠けて、裏の液晶が見える
+  {
+    const Rc = rings[1] * 0.97;
+    const M = opt.lite ? 13 : 18;
+    const mR = [0, 0.2, 0.42, 0.68, 1];
+    // 頂点は扇と輪の交点。角度も半径も大きくずらして、的（まと）のように見えないようにする
+    const V: Pt[][] = [];
+    for (let i = 0; i < M; i++) {
+      V.push(mR.map((f, j) => {
+        if (j === 0) return { x: P.x + rr(-2, 2), y: P.y + rr(-2, 2) };
+        const a = ((i + rr(-0.42, 0.42)) / M) * Math.PI * 2;
+        const r = Rc * f * (j === mR.length - 1 ? rr(0.92, 1.05) : rr(0.72, 1.28));
+        return { x: P.x + Math.cos(a) * r, y: P.y + Math.sin(a) * r };
+      }));
+    }
+    const at = (i: number, j: number) => V[((i % M) + M) % M][j];
+    let chips = opt.lite ? 2 : 4;
+    for (let i = 0; i < M; i++) {
+      let j = 0;
+      while (j < mR.length - 1) {
+        // 輪のひびが無いところは、かけらを外へつなげる（大きさがそろわないように）
+        const span = j >= 1 && j < mR.length - 2 && rnd() < 0.35 ? 2 : 1;
+        const j1 = j + span;
+        const poly = j === 0 ? [at(i, 0), at(i, j1), at(i + 1, j1)] : [at(i, j), at(i, j1), at(i + 1, j1), at(i + 1, j)];
+        const c = poly.reduce((a, p) => ({ x: a.x + p.x / poly.length, y: a.y + p.y / poly.length }), { x: 0, y: 0 });
+        const hole = j >= 1 && chips > 0 && rnd() < 0.12;
+        if (hole) chips--;
+        cells.push({ poly, c, tilt: [rr(-0.3, 0.3), rr(-0.3, 0.3)], time: tOf(c) + 0.005, hole, ring: -1, micro: true });
+        // かけらの外側のふち（輪のひび）
+        { const a = at(i, j1), b = at(i + 1, j1); cracks.push({ pts: [a, b], times: [tOf(a) + 0.008, tOf(b) + 0.008], w0: 0.8, w1: 0.8, kind: 'micro' }); }
+        j = j1;
+      }
+      const ray: Pt[] = mR.map((_, jj) => at(i, jj));
+      cracks.push({ pts: ray, times: ray.map(tOf), w0: 0.9, w1: 0.8, kind: 'micro' });
+    }
   }
   // 枝分かれ（破片を分けない、途中で止まる細いひび）
   const branchN = opt.lite ? 14 : 30;
