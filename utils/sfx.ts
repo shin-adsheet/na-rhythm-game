@@ -1,13 +1,13 @@
 /**
  * 効果音（フリー素材）
- * 音源：Kenney（www.kenney.nl）の CC0 素材。sfx/ フォルダに mp3 で入っている（出典は README）
+ * 音源：Kenney（www.kenney.nl）と rubberduck（OpenGameArt）の CC0 素材。sfx/ フォルダに mp3 で入っている（出典は README）
  * - はじめて画面にさわったときに全部読み込む（合計 700KB くらい）
  * - まだ読み込めていない・読み込めなかったときは false を返すので、呼び出し側は今までの「その場で作る音」で鳴らす
  * - AudioBuffer はどの AudioContext でも鳴らせるので、曲と同じ時計で予約することもできる（playSfxAt）
  */
 export const SFX_IDS = [
   'achieve', 'ban', 'beam', 'bell', 'boom_low', 'buzz', 'card', 'coin', 'coins', 'computer', 'creak', 'crunch', 'door', 'down', 'fanfare',
-  'fire', 'fix', 'fortune_bad', 'fortune_good', 'fuel', 'glass_big', 'glass_mid', 'glass_small', 'glitch', 'hit', 'hit_big', 'hold_ok',
+  'fire', 'fix', 'fortune_bad', 'fortune_good', 'fuel', 'glass_big', 'glass_crash', 'glass_fall1', 'glass_fall2', 'glass_fall3', 'glass_mid', 'glass_small', 'glitch', 'hit', 'hit_big', 'hold_ok',
   'item', 'keys', 'knock', 'laser', 'laser_big', 'metal', 'milestone', 'mode_alert', 'mode_switch', 'nes_short', 'nes_up', 'page',
   'poke_angry', 'poke_cry', 'poke_fear', 'poke_giggle', 'poke_jump', 'poke_shy', 'poke_spin', 'poke_surprise', 'pop', 'pop_gold', 'punch',
   'quota', 'res_clear', 'res_fail', 'res_record', 'rewind', 'sad', 'scratch', 'slide', 'special', 'steel', 'swing', 'ui_back', 'ui_click',

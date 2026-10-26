@@ -129,6 +129,7 @@
 使った素材（すべて CC0、作者表記は任意ですが感謝をこめて記載）：
 
 - Kenney「Interface Sounds」「Digital Audio」「Impact Sounds」「Sci-fi Sounds」「Casino Audio」「RPG Audio」「Music Jingles」「Voiceover Pack」「Voiceover Pack: Fighter」— https://kenney.nl/assets （入手元のまとめ：https://github.com/kapishdima/soundcn ）
+- 画面が割れる「ガシャーン」（`sfx/glass_crash.mp3`）と破片が落ちる音（`sfx/glass_fall1〜3.mp3`）：rubberduck「75 CC0 breaking / falling / hit sfx」「100 CC0 SFX」（OpenGameArt・CC0）— https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx 。ガラスが割れる録音 5 本と、破片が落ちる・当たる音 5 本を時間をずらして重ね、2 秒の「ガシャーン → パラパラ」にした（入手元：https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds ）
 - 変換：ffmpeg でモノラル mp3（64〜80kbps）にし、頭の無音を削ってピークをそろえた
 
 ## 結果の共有・かるいモード

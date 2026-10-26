@@ -347,7 +347,7 @@ const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, fixin
         m.rotation.x += sh.w.x * dt; m.rotation.y += sh.w.y * dt; m.rotation.z += sh.w.z * dt;
         if (m.position.y < -H / 2 - 250 || m.position.z > camZ * 0.6) {
           sh.alive = false; m.visible = false;
-          if (m.position.y < -H / 2 - 250 && tinkles < 9) { tinkles++; playSfx('glass_small', { volume, gain: 0.3 + Math.random() * 0.3, rate: 0.9 + Math.random() * 0.7, pan: Math.max(-1, Math.min(1, sh.x0 / (W / 2))) }); }
+          if (m.position.y < -H / 2 - 250 && tinkles < 9) { tinkles++; playSfx((['glass_fall1', 'glass_fall2', 'glass_fall3'] as const)[tinkles % 3], { volume, gain: 0.25 + Math.random() * 0.25, rate: 0.9 + Math.random() * 0.4, pan: Math.max(-1, Math.min(1, sh.x0 / (W / 2))) }); }
         }
       }
       shardMat.uniforms.uFade.value = 1 - fix;

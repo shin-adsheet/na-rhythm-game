@@ -6,3 +6,10 @@ License: Creative Commons Zero (CC0) — http://creativecommons.org/publicdomain
 Packs: Interface Sounds, Digital Audio, Impact Sounds, Sci-fi Sounds, Casino Audio,
 RPG Audio, Music Jingles, Voiceover Pack, Voiceover Pack: Fighter
 Source mirror: https://github.com/kapishdima/soundcn (assets/kenney_*)
+
+glass_crash.mp3 / glass_fall1-3.mp3:
+  rubberduck (OpenGameArt) "75 CC0 breaking / falling / hit sfx" and "100 CC0 SFX" — CC0 1.0
+  https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+  https://opengameart.org/content/100-cc0-sfx
+  Downloaded from the CC0 mirror https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds
+  glass_crash.mp3 = bfh1_glass_breaking_01/03/04/06 + glass_05 + bfh1_glass_falling_02/03/04 + bfh1_glass_hit_01/02 mixed with ffmpeg
