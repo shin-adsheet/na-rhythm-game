@@ -10,8 +10,9 @@ import { makeRig, restAll } from './Shiashia3D';
  * 関節の角度をキーフレームで持ち、ゆっくりしたイージングでつなぐ。
  */
 
-import { STORY, STORY_LEN, PoseKey } from './ShiashiaSeated.story';
+import { STORY, STORY_LEN, PoseKey, Reaction } from './ShiashiaSeated.story';
 export { STORY, STORY_LEN };
+export type { Reaction };
 
 
 /** 関節の角度（度）。arm = [前へ, 開き]、ほかは [x, y, z] */
@@ -35,6 +36,20 @@ const POSES: Record<PoseKey, Pose> = {
   wave: P({ armL: [30, 12], armR: [20, 150], elbowL: -46, elbowR: -26, spine: [2, 0, -4], head: [-6, 0, 8], yaw: 4, mouth: 0.6 }),
   stretch: P({ armL: [170, 18], armR: [170, 18], elbowL: -10, elbowR: -10, spine: [-14, 0, 0], head: [-20, 0, 0], yaw: -10, mouth: 1, eyes: 1 }),
   kick: P({ armL: [10, 24], armR: [10, 24], elbowL: -20, elbowR: -20, spine: [-2, 0, 0], head: [-6, 0, 0], yaw: -16, mouth: 0.4 }),
+};
+
+/** つつかれたときの姿勢（お話の姿勢の上にかぶせる） */
+const REACT: Record<Reaction, { pose: Pose; dur: number }> = {
+  surprise: { pose: P({ armL: [150, 30], armR: [150, 30], elbowL: -20, elbowR: -20, spine: [-10, 0, 0], head: [-14, 0, 0], yaw: 0, mouth: 1 }), dur: 1.3 },
+  giggle: { pose: P({ armL: [70, 6], armR: [70, 6], elbowL: -128, elbowR: -128, spine: [12, 0, 0], head: [8, 0, 6], yaw: -6, mouth: 0.8, eyes: 1 }), dur: 1.6 },
+  shy: { pose: P({ armL: [92, -6], armR: [92, -6], elbowL: -142, elbowR: -142, spine: [10, 0, 0], head: [12, 0, 14], yaw: -26, mouth: 0.25, eyes: 0.5 }), dur: 1.8 },
+  angry: { pose: P({ armL: [64, -22], armR: [64, -22], elbowL: -118, elbowR: -118, spine: [-4, 0, 0], head: [-8, 0, -6], yaw: -58, mouth: 0.2 }), dur: 1.7 },
+  spin: { pose: P({ armL: [80, 40], armR: [80, 40], elbowL: -10, elbowR: -10, spine: [0, 0, 0], head: [-4, 0, 0], yaw: 0, mouth: 0.6 }), dur: 1.3 },
+  na: { pose: P({ armL: [30, 12], armR: [92, 0], elbowL: -46, elbowR: -6, spine: [0, 0, 0], head: [-8, 0, 0], yaw: 8, mouth: 1 }), dur: 1.2 },
+  dizzy: { pose: P({ armL: [24, 30], armR: [24, 30], elbowL: -20, elbowR: -20, spine: [6, 0, 0], head: [4, 0, 0], yaw: -10, mouth: 0.5, eyes: 0.4 }), dur: 2.0 },
+  jump: { pose: P({ armL: [160, 20], armR: [160, 20], elbowL: -10, elbowR: -10, spine: [-8, 0, 0], head: [-10, 0, 0], yaw: 0, mouth: 1 }), dur: 1.3 },
+  cry: { pose: P({ armL: [84, 4], armR: [84, 4], elbowL: -150, elbowR: -150, spine: [24, 0, 0], head: [26, 0, 0], yaw: -16, mouth: 0.9, eyes: 1 }), dur: 2.0 },
+  fear: { pose: P({ armL: [120, -10], armR: [120, -10], elbowL: -100, elbowR: -100, spine: [-6, 0, 0], head: [-6, 0, 0], yaw: 40, mouth: 0.7 }), dur: 1.8 },
 };
 
 const D2 = THREE.MathUtils.degToRad;
@@ -61,12 +76,16 @@ interface Props {
   size?: number;
   onPoke?: () => void;
   onBeat?: (i: number) => void;
+  /** 反応させる（Game から呼ぶ）。ref に関数が入る */
+  reactRef?: React.MutableRefObject<((r: Reaction) => void) | null>;
 }
 
-const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat }) => {
+const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const onBeatRef = useRef(onBeat); onBeatRef.current = onBeat;
   const pokeRef = useRef(0);
+  const reactionRef = useRef<{ r: Reaction; t0: number } | null>(null);
+  if (reactRef) reactRef.current = (r: Reaction) => { reactionRef.current = { r, t0: performance.now() }; };
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -192,14 +211,43 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat }) => {
       if (cur.pose === 'phone') pose.head[1] += 4 * Math.sin(time * 0.9);
       const poke = now - pokeRef.current < 700 ? Math.sin(((now - pokeRef.current) / 700) * Math.PI) : 0;
 
+      // つつかれた反応：お話の姿勢の上にかぶせる（入り 0.15 秒・抜け 0.3 秒）
+      let lift = 0, extraYaw = 0, headWobX = 0, headWobZ = 0, shake = 0;
+      const re = reactionRef.current;
+      if (re) {
+        const def = REACT[re.r];
+        const rt = (now - re.t0) / 1000;
+        if (rt > def.dur) reactionRef.current = null;
+        else {
+          const w = Math.min(1, rt / 0.15) * Math.min(1, (def.dur - rt) / 0.3);
+          const rp = mixPose(pose, def.pose, w);
+          Object.assign(pose, rp);
+          mouth = mix(mouth, def.pose.mouth, w);
+          swingL *= 1 - w * 0.7; swingR *= 1 - w * 0.7;
+          const k = rt / def.dur;
+          switch (re.r) {
+            case 'surprise': lift = 70 * Math.sin(Math.min(1, rt / 0.45) * Math.PI); break;
+            case 'jump': lift = 90 * Math.abs(Math.sin(k * Math.PI * 2)); break;
+            case 'spin': extraYaw = 360 * ease(clamp01(rt / 1.0)); break;
+            case 'giggle': shake = 5 * Math.sin(rt * 38) * w; break;
+            case 'dizzy': headWobX = 14 * Math.cos(rt * 9) * w; headWobZ = 14 * Math.sin(rt * 9) * w; break;
+            case 'cry': shake = 3 * Math.sin(rt * 26) * w; break;
+            case 'fear': shake = 2.5 * Math.sin(rt * 40) * w; break;
+            case 'na': mouth = (rt % 0.4) < 0.22 ? 1 : 0.2; break;
+            case 'angry': headWobZ = 4 * Math.sin(rt * 12) * w; break;
+            default: break;
+          }
+        }
+      }
+
       restAll(rig);
       sitLegs(swingL, swingR);
       J.upperArmL?.rotation.set(D2(-pose.armL[0]), 0, D2(pose.armL[1]), 'ZXY');
       J.upperArmR?.rotation.set(D2(-pose.armR[0]), 0, D2(-pose.armR[1] + waveZ), 'ZXY');
       if (J.elbowL) J.elbowL.rotation.x += D2(pose.elbowL);
       if (J.elbowR) J.elbowR.rotation.x += D2(pose.elbowR + (cur.pose === 'wave' ? waveZ * 0.6 : 0));
-      if (J.spine) { J.spine.rotation.x += D2(pose.spine[0] + breathe * 1.2); J.spine.rotation.z += D2(pose.spine[2]); }
-      if (J.head) { J.head.rotation.x += D2(pose.head[0] + breathe * 1.5); J.head.rotation.y += D2(pose.head[1]); J.head.rotation.z += D2(pose.head[2] + poke * 22); }
+      if (J.spine) { J.spine.rotation.x += D2(pose.spine[0] + breathe * 1.2); J.spine.rotation.z += D2(pose.spine[2] + shake); }
+      if (J.head) { J.head.rotation.x += D2(pose.head[0] + breathe * 1.5 + headWobX); J.head.rotation.y += D2(pose.head[1]); J.head.rotation.z += D2(pose.head[2] + poke * 22 + headWobZ); }
       if (J.mouth) { J.mouth.visible = mouth > 0.25 || poke > 0.3; const ms = rig.mouthS; J.mouth.scale.set(4.2 * ms, 3.4 * ms * (0.6 + mouth * 0.9), 1); }
       if (rig.setBlink) {
         const P2 = 3.8, n = Math.floor(time / P2), local = time - n * P2;
@@ -210,7 +258,8 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat }) => {
       const twitch = (cur.pose === 'idea' && since < 0.6 ? Math.sin((since / 0.6) * Math.PI) : 0) + poke;
       ears.forEach((e, i) => { const r = earRest[i]; e.rotation.set(r.x - 0.4 * twitch, r.y, r.z + (i ? 1 : -1) * 0.25 * twitch); });
       if (J.tail) J.tail.rotation.z += 0.25 * Math.sin(time * 2.2);
-      world.rotation.y = D2(pose.yaw + 3 * Math.sin(time * 0.35));
+      world.rotation.y = D2(pose.yaw + 3 * Math.sin(time * 0.35) + extraYaw);
+      g.position.y = lift;
       g.updateMatrixWorld(true);
       g.userData.cloth?.(dt);
       renderer.render(scene, camera);

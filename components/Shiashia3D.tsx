@@ -34,7 +34,8 @@ interface Props {
   withPartner?: boolean;
 }
 
-const PARTNER_COLORS: Record<string, number> = {
+/** きあきあ（コラボ相手・狐っ娘）の色：オレンジの髪・黄色のトップス */
+export const KIA_COLORS: Record<string, number> = {
   hair: 0xf59e42, hairIn: 0xd0702a, tail: 0xf59e42, sweater: 0xffd84d, sweaterIn: 0xe0b52a, suit: 0xffd84d,
   eye: 0xd0702a, eye2: 0xd0702a, lash: 0xa4531c, brow: 0xa4531c, line: 0xa4531c, under: 0x7a4a2a,
 };
@@ -108,7 +109,7 @@ const Shiashia3D: React.FC<Props> = ({
     const rigs: Rig[] = [makeRig(colors, 1)];
     scene.add(rigs[0].g);
     if (withPartner) {
-      const p = makeRig(PARTNER_COLORS, -1);
+      const p = makeRig(KIA_COLORS, -1);
       p.g.visible = false;
       scene.add(p.g);
       rigs.push(p);

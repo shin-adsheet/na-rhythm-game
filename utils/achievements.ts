@@ -9,8 +9,11 @@ export interface LifetimeStats {
   totalPokes: number;
   calibrated: boolean;
   itemsSeen: string[];
+  titlePops?: number;      // タイトル画面で割った「な」
+  screenBroken?: boolean;  // きあきあに画面を割られた
+  fortunes?: number;       // な占いを見た回数
 }
-const DEFAULT_LIFETIME: LifetimeStats = { plays: 0, totalHits: 0, totalPokes: 0, calibrated: false, itemsSeen: [] };
+const DEFAULT_LIFETIME: LifetimeStats = { plays: 0, totalHits: 0, totalPokes: 0, calibrated: false, itemsSeen: [], titlePops: 0, screenBroken: false, fortunes: 0 };
 
 /**
  * 実績はグループごとに「何を頑張れば取れるか」がはっきり分かるものだけ。
@@ -59,6 +62,9 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'power_10', group: 'うまさ', title: '強弱マスター', description: '1 回のプレイで、大きい「な」・小さい「な」を 10 回きめる', icon: '強', rarity: 'rare' },
   { id: 'voice_full', group: 'クリア', title: '声だけで登録者 1000 万人', description: '声で遊んでフルをクリアする', icon: '声', rarity: 'rare' },
   { id: 'arcade_tour', group: 'おまけ', title: 'ゲーセンめぐり', description: '1 回のプレイで、画面チェンジを 8 種類ぜんぶ見る', icon: '筐', rarity: 'uncommon' },
+  { id: 'kia_punch', group: 'おまけ', title: 'きあきあの鉄拳', description: 'しあしあをさわりすぎて、きあきあに画面を割られる', icon: '拳', rarity: 'rare', secret: true },
+  { id: 'title_pop_50', group: 'おまけ', title: '「な」割り職人', description: 'タイトル画面でふわふわの「な」を合計 50 点ぶん割る', icon: '割', rarity: 'uncommon' },
+  { id: 'fortune', group: 'おまけ', title: 'な占い', description: '今日のな占いを引く', icon: '占', rarity: 'normal' },
   { id: 'poke_20', group: 'おまけ', title: 'つつきすぎ', description: 'しあしあを合計 20 回つつく', icon: '突', rarity: 'uncommon', secret: true },
   { id: 'silent', group: 'おまけ', title: '無言配信', description: '一度も名を伝えずに終わる', icon: '黙', rarity: 'uncommon', secret: true },
 ];
@@ -118,7 +124,7 @@ export function evaluate(
 
   c('first_na', (r.hits ?? 0) >= 1 || life.totalHits >= 1);
   c('calibrated', life.calibrated);
-  c('poke_20', life.totalPokes >= 20);
+  c('poke_20', life.totalPokes >= 20); c('kia_punch', !!life.screenBroken); c('title_pop_50', (life.titlePops ?? 0) >= 50); c('fortune', (life.fortunes ?? 0) >= 1);
   c('silent', done && (r.hits ?? 1) === 0);
   return out;
 }

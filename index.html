@@ -485,6 +485,15 @@
       /* 画面チェンジのお知らせ */
       @keyframes mode-change { 0% { transform: translateY(14px) scale(0.85); opacity: 0; } 18% { transform: translateY(0) scale(1.04); opacity: 1; } 28% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
       .mode-change { animation: mode-change 3.1s cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+      /* タイトル画面のおまけ */
+      @keyframes bubble-rise { 0% { transform: translate(0, 0); } 25% { transform: translate(var(--sway), -30vh); } 50% { transform: translate(calc(var(--sway) * -1), -60vh); } 75% { transform: translate(var(--sway), -90vh); } 100% { transform: translate(0, -125vh); } }
+      .bubble-rise { animation: bubble-rise var(--dur, 8s) linear forwards; }
+      @keyframes pop-float { 0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0; } 20% { transform: translate(-50%, -70%) scale(1.15); opacity: 1; } 100% { transform: translate(-50%, -160%) scale(1); opacity: 0; } }
+      .pop-float { animation: pop-float 0.9s ease-out forwards; }
+      @keyframes shard-fall { 0% { transform: translate(0, 0) rotate(0); opacity: 1; } 100% { transform: translate(var(--dx), 110vh) rotate(var(--rot)); opacity: 0.6; } }
+      .shard-fall { animation: shard-fall 1.6s cubic-bezier(0.45, 0, 0.9, 0.6) forwards; }
+      @keyframes logo-spin { 0% { transform: rotate(0) scale(1); } 40% { transform: rotate(200deg) scale(1.35); } 100% { transform: rotate(360deg) scale(1); } }
+      .logo-spin { display: inline-block; animation: logo-spin 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
       /* 突拍子のないエンディング用 */
       @keyframes fleet-in { from { transform: translateY(-40vh) scale(0.6); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
       .fleet-in { animation: fleet-in 1.6s cubic-bezier(0.2, 0.9, 0.3, 1) both; }

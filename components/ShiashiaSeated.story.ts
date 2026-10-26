@@ -14,3 +14,6 @@ export const STORY: StoryBeat[] = [
   { t: 30.5, pose: 'kick', say: '' },
 ];
 export const STORY_LEN = 34;
+
+/** つつかれたときの反応 */
+export type Reaction = 'surprise' | 'giggle' | 'shy' | 'angry' | 'spin' | 'na' | 'dizzy' | 'jump' | 'cry' | 'fear';

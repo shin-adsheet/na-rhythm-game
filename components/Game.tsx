@@ -14,7 +14,10 @@ import { ACHIEVEMENTS, achievementById, evaluate, loadUnlocked, saveUnlocked, lo
 import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings } from '../utils/endings';
 import NaEffects from './NaEffects';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
-import ShiashiaSeated, { STORY } from './ShiashiaSeated';
+import ShiashiaSeated, { STORY, Reaction } from './ShiashiaSeated';
+import KiaKiaPunch, { ScreenCrack } from './KiaKiaPunch';
+import { NaBubbles, FortuneCard } from './TitleToys';
+import { sfxBoing } from '../utils/titleSfx';
 import Track from './Track';
 import { perf, guessLite } from '../utils/perf';
 import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO } from '../utils/arcade';
@@ -236,6 +239,15 @@ const Game: React.FC = () => {
   const [revealT, setRevealT] = useState(0);
   const [banFlash, setBanFlash] = useState(false);
   const [storyIdx, setStoryIdx] = useState(0);
+  // タイトル画面のおまけ
+  const seatedReactRef = useRef<((r: Reaction) => void) | null>(null);
+  const titlePokeRef = useRef({ n: 0, at: 0 });
+  const [reactSay, setReactSay] = useState<{ id: number; text: string } | null>(null);
+  const [kiaOn, setKiaOn] = useState(false);
+  const [crackSeed, setCrackSeed] = useState<number | null>(null);
+  const [showFortune, setShowFortune] = useState(false);
+  const [titlePops, setTitlePops] = useState(() => lifeRef.current.titlePops ?? 0);
+  const [logo, setLogo] = useState({ i: 0, id: 0 });
   const [showSettings, setShowSettings] = useState(false);
   // 画面チェンジ（譜面の見た目が音ゲー風に切り替わる）
   const scheduleRef = useRef<StyleSeg[]>([{ t: -1e9, style: 'lane' }]);
@@ -933,6 +945,38 @@ const Game: React.FC = () => {
     return () => { clearInterval(iv); clearTimeout(j1); clearTimeout(j2); clearTimeout(stop); };
   }, [gameState]);
 
+  /** タイトルのしあしあをつついたときの反応。さわりすぎると、きあきあが出てくる */
+  const showReact = (text: string, r: Reaction) => {
+    seatedReactRef.current?.(r);
+    const id = performance.now();
+    setReactSay({ id, text });
+    setTimeout(() => setReactSay((x) => (x && x.id === id ? null : x)), 1900);
+  };
+  const handleTitlePoke = () => {
+    handlePoke();
+    if (kiaOn) return;
+    const now = performance.now(), pk = titlePokeRef.current;
+    pk.n = Math.max(0, pk.n - Math.floor((now - pk.at) / 4000)) + 1;   // 4 秒さわらないと 1 つずつ落ち着く
+    pk.at = now;
+    sfxBoing(settingsRef.current.volume);
+    const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+    if (pk.n <= 4) {
+      const [r, t] = pick<[Reaction, string]>([['surprise', 'ひゃっ！'], ['giggle', 'くすぐったい〜'], ['shy', 'て、照れる…'], ['na', 'な！'], ['jump', 'ぴょん！'], ['spin', 'くるっ'], ['surprise', 'なになに？']]);
+      showReact(t, r);
+    } else if (pk.n <= 8) {
+      const [r, t] = pick<[Reaction, string]>([['angry', 'ちょっと…'], ['dizzy', '目がまわる〜'], ['angry', 'もう！'], ['surprise', 'またぁ！？'], ['dizzy', 'くらくら…']]);
+      showReact(t, r);
+    } else if (pk.n <= 11) {
+      const lines: Record<number, [Reaction, string]> = { 9: ['fear', 'これ以上さわったら…'], 10: ['cry', 'きあきあ呼ぶよ？'], 11: ['fear', 'ほんとに呼ぶよ！？'] };
+      const [r, t] = lines[pk.n];
+      showReact(t, r);
+    } else {
+      showReact('きあきあーー！！', 'fear');
+      pk.n = 0;
+      setTimeout(() => setKiaOn(true), 600);
+    }
+  };
+
   // しあしあをつつく
   const handlePoke = () => {
     bumpLife({ totalPokes: lifeRef.current.totalPokes + 1 });
@@ -1039,7 +1083,7 @@ const Game: React.FC = () => {
   );
 
   const renderReady = () => {
-    const say = STORY[storyIdx]?.say || '';
+    const say = reactSay?.text || STORY[storyIdx]?.say || '';
     const sceneSize = isMobile ? Math.round(Math.min(330, vp.w - 40, vp.h * 0.3)) : 340;
     return (
       <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
@@ -1049,22 +1093,25 @@ const Game: React.FC = () => {
             <div className="mb-1.5 bg-yellow-300 text-slate-800 px-4 py-1 rounded-full font-black text-xs md:text-sm border-2 md:border-4 border-white shadow-md -rotate-2">底辺チューバーからの脱却</div>
             <div className="flex flex-col items-center -rotate-1 select-none">
               <div className="flex items-end justify-center flex-wrap gap-x-1.5">
-                <span className="text-6xl sm:text-7xl md:text-8xl font-black text-pink-500 leading-none drop-shadow-xl" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>名</span>
+                <button key={logo.id} onClick={() => { setLogo((l) => ({ i: l.i + 1, id: performance.now() })); sfxBoing(settingsRef.current.volume); }}
+                  className={`text-6xl sm:text-7xl md:text-8xl font-black text-pink-500 leading-none drop-shadow-xl ${logo.id ? 'logo-spin' : ''}`} style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }} aria-label="名">
+                  {['名', 'な', 'ナ', '奈', '那', '菜', 'na'][logo.i % 7]}
+                </button>
                 <span className="text-xl sm:text-3xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>を</span>
                 <span className="text-3xl sm:text-5xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2.5px white', paintOrder: 'stroke fill' }}>たくさん</span>
                 <span className="text-2xl sm:text-4xl font-black text-slate-800 leading-none" style={{ WebkitTextStroke: '2px white', paintOrder: 'stroke fill' }}>伝えれる</span>
               </div>
               <span className="text-3xl sm:text-5xl md:text-6xl font-black text-slate-800 mt-1" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>画期的ツール</span>
             </div>
-            <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/60 px-3 py-0.5 rounded-full">的なもの</div>
+            <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/60 px-3 py-0.5 rounded-full">的なもの{titlePokeRef.current.n === 0 && !reactSay ? '　しあしあをタッチしてみて' : ''}</div>
 
             <div className="relative mt-2" style={{ width: sceneSize, height: sceneSize }}>
               <div className="absolute inset-[6%] rounded-full bg-white/70 border-4 border-white shadow-inner" />
               <div className="absolute inset-0">
-                <ShiashiaSeated size={sceneSize} onPoke={handlePoke} onBeat={setStoryIdx} />
+                <ShiashiaSeated size={sceneSize} onPoke={handleTitlePoke} onBeat={setStoryIdx} reactRef={seatedReactRef} />
               </div>
               {say && (
-                <div key={storyIdx} className="bubble-in absolute top-[3%] left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none">
+                <div key={reactSay?.id ?? storyIdx} className="bubble-in absolute top-[3%] left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none">
                   <div className="relative bg-white border-4 border-slate-800 rounded-2xl px-3.5 py-1.5 text-slate-800 font-black text-sm md:text-base whitespace-nowrap shadow-[4px_4px_0_rgba(30,41,59,0.25)]">
                     {say}
                     <span className="absolute left-1/2 -bottom-[12px] -translate-x-1/2 w-0 h-0 border-x-[9px] border-x-transparent border-t-[12px] border-t-slate-800" />
@@ -1147,6 +1194,11 @@ const Game: React.FC = () => {
                 <span className={`text-[10px] font-bold ${showSettings ? 'text-white/80' : 'text-slate-400'}`}>{input === 'mic' ? '声' : 'キー・タップ'}・補正 {offsets[input] == null ? '未設定' : `${Math.round(offsets[input]! * 1000)}ms`}</span>
               </button>
             </div>
+            <button onClick={() => { setShowFortune(true); bumpLife({ fortunes: (lifeRef.current.fortunes ?? 0) + 1 }); checkAchievements(null, false); }}
+              className="bg-white/90 rounded-2xl py-2.5 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex items-center justify-center gap-2">
+              <span className="font-black text-pink-500">今日のな占い</span>
+              <span className="text-[10px] font-bold text-slate-400">配信運を占う（1 日 1 回変わる）</span>
+            </button>
             {showSettings && <div ref={settingsBoxRef} className="scroll-mt-4">{renderSettings()}</div>}
             {error && !/マイク/.test(error) && <div className="bg-red-400 text-white font-bold p-3 rounded-xl border-4 border-white shadow-lg text-center text-sm">{error}</div>}
           </div>
@@ -1393,6 +1445,14 @@ const Game: React.FC = () => {
       {banFlash && playing && <div className="absolute inset-0 z-[58] bg-red-700/40 pointer-events-none flash-white" />}
 
       {gameState !== 'PLAYING' && <AchievementToasts toasts={toasts} />}
+      {gameState === 'READY' && <NaBubbles volume={settings.volume} total={titlePops} disabled={kiaOn}
+        onPop={(n) => { const v = (lifeRef.current.titlePops ?? 0) + n; bumpLife({ titlePops: v }); setTitlePops(v); if (v >= 50 && v - n < 50) checkAchievements(null, false); }} />}
+      {kiaOn && <KiaKiaPunch volume={settings.volume}
+        onImpact={() => { setCrackSeed((Date.now() % 99991) + 1); doShake('shake-hard', 700); bumpLife({ screenBroken: true }); checkAchievements(null, false); }}
+        onDone={() => { setKiaOn(false); setTimeout(() => showReact('いたた…ごめんね', 'cry'), 200); }} />}
+      {crackSeed && gameState === 'READY' && !kiaOn && <ScreenCrack seed={crackSeed} onFix={() => { setCrackSeed(null); showReact('直った！', 'jump'); }} />}
+      {crackSeed && gameState === 'READY' && kiaOn && <ScreenCrack seed={crackSeed} onFix={() => {}} />}
+      {showFortune && <FortuneCard onClose={() => setShowFortune(false)} />}
       {showBook && <CollectionBook unlocked={unlocked} seenEndings={seenEndings} itemsSeen={lifeRef.current.itemsSeen} onClose={() => setShowBook(false)} />}
     </div>
   );
