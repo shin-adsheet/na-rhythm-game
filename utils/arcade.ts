@@ -2,7 +2,7 @@
  * 画面チェンジ：プレイ中に譜面の見た目が、いろいろなゲームセンターの音ゲー風に切り替わる（飽き防止）。
  * 判定は見た目と関係なく「曲の時刻」で行うので、どの画面でも遊び方は同じ（丸が判定に重なった瞬間に「な」）。
  */
-import { timeOf, barPos, SWITCH_AT, SWITCH_REST } from './chart';
+import { timeOf, barPos, barNo, SWITCH_AT, SWITCH_REST } from './chart';
 
 export type TrackStyle = 'lane' | 'fall' | 'drum' | 'ring' | 'highway' | 'panel' | 'step' | 'rail' | 'pop';
 
@@ -50,7 +50,7 @@ export function segIndexAt(segs: StyleSeg[], t: number) {
  */
 export function laneOf(i: number, lanes: number) {
   const p = barPos(i);
-  if (lanes === 16) { const bar = Math.floor((i - 17) / 8); return (((bar % 2) + 2) % 2) * 8 + p; }
+  if (lanes === 16) { const bar = barNo(i); return (((bar % 2) + 2) % 2) * 8 + p; }
   if (lanes === 8) return p;
   if (lanes === 4) return p >> 1;
   return Math.round((p * (lanes - 1)) / 7);

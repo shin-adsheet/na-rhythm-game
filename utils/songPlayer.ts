@@ -82,6 +82,18 @@ export class SongPlayer {
     }
   }
 
+  /**
+   * スピーカー・イヤホンから実際に音が出るまでの遅れ（秒）。Bluetooth だと 0.1〜0.3 秒あることもある。
+   * 画面の譜面はこの分だけ遅らせて描く（耳で聞こえている音と、目で見る「な」をそろえる）
+   */
+  outLatency() {
+    const c = this.ctx as AudioContext & { outputLatency?: number };
+    const v = (c.outputLatency || 0) + (c.baseLatency || 0);
+    return Math.max(0, Math.min(0.5, v));
+  }
+  /** いま耳に聞こえている所の曲の時刻（秒） */
+  audibleTime() { return this.time() - this.outLatency() * this.rate; }
+
   /** いまの曲の時刻（秒） */
   time() {
     if (this.buffer) return this.anchorSong + (this.ctx.currentTime - this.anchorCtx) * this.rate;
@@ -124,7 +136,7 @@ export class SongPlayer {
         const o = this.ctx.createOscillator();
         const g = this.ctx.createGain();
         o.type = 'sine';
-        o.frequency.value = this.nextClickBeat % 4 === 0 ? 1320 : 880;
+        o.frequency.value = this.nextClickBeat % 4 === 1 ? 1320 : 880;   // 1 拍目（8 分の番号 19, 27 …）を高く
         g.gain.setValueAtTime(0.5, when);
         g.gain.exponentialRampToValueAtTime(0.001, when + 0.06);
         o.connect(g); g.connect(this.clickGain);

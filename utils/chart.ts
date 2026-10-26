@@ -55,25 +55,28 @@ export interface BurnSection { start: number; end: number; t0: number; t1: numbe
 export const burnAt = (i: number) => BURNS.findIndex(([a, b]) => i >= a && i <= b);
 
 /**
- * 曲の構成（8分の番号）。1 小節 = 8 個で、小節の頭は 17, 25, 33 …（小節の中の位置 0〜7。偶数＝4分の拍）
- * 解析：キックが 4 分で鳴り続けるのは 73〜200・225〜288・345〜415。サビでは位置 5（3 拍目のウラ）にもキック。
+ * 曲の構成（8分の番号）。1 小節 = 8 個で、小節の頭（1 拍目）は 19, 27, 35 …（小節の中の位置 0〜7。偶数＝4分の拍）
+ * 解析（キック・スネアの強さを 8 分ごとに測ったもの）：
+ *  - スネアは位置 2・6（2 拍目・4 拍目）、キックは位置 0・3・4（1 拍目・2 拍目のウラ・3 拍目）＝「ドン、ドドン」のパターン
+ *  - 盛り上がるパートの頭は 83（ここでキックが一番強い）。キックが鳴り続けるのは 75〜202・227〜290・347〜415
+ *  - 最初の音符（17）は 1 小節目に入る前の 4 拍目（弱起）
  */
 type Section = 'intro' | 'drive' | 'break' | 'drive2' | 'quiet' | 'final';
 export const sectionOf = (i: number): Section =>
-  i < 73 ? 'intro' : i <= 200 ? 'drive' : i <= 224 ? 'break' : i <= 288 ? 'drive2' : i <= 344 ? 'quiet' : 'final';
-const BAR0 = FIRST_NOTE;
+  i < 75 ? 'intro' : i <= 202 ? 'drive' : i <= 226 ? 'break' : i <= 290 ? 'drive2' : i <= 346 ? 'quiet' : 'final';
+export const BAR0 = 19;
 export const barPos = (i: number) => (((i - BAR0) % 8) + 8) % 8;
-const barNo = (i: number) => Math.floor((i - BAR0) / 8);
+export const barNo = (i: number) => Math.floor((i - BAR0) / 8);
 
 /** 画面チェンジの切り替え位置（小節の頭・8分の番号）。その前の 6 個は休みにして、切り替えの間に目を慣らす */
-export const SWITCH_AT = [49, 97, 137, 177, 225, 257, 305, 353, 385];
+export const SWITCH_AT = [51, 99, 139, 179, 227, 259, 307, 355, 387];
 export const SWITCH_REST = 6;
 const inSwitchRest = (i: number) => SWITCH_AT.some((s) => i >= s - SWITCH_REST && i < s);
 
 /**
  * 難易度ごとの「その 8 分に音符を置くか」
  *  かんたん：2 分〜4 分だけ（声でも無理なく言える。1 秒に 3 回まで）
- *  ふつう　：4 分＋曲のキックに合わせた 8 分（3 拍目のウラ）。4 小節ごとに息つぎ
+ *  ふつう　：4 分＋曲のキックに合わせた 8 分（2 拍目のウラ）。4 小節ごとに息つぎ
  *  むずかしい：8 分の連続（息つぎの休みだけ）
  */
 function place(i: number, d: Difficulty): boolean {
@@ -92,8 +95,8 @@ function place(i: number, d: Difficulty): boolean {
       if (sec === 'break') return p % 2 === 0;
       if (lastOf4 && p >= 6) return false;   // 息つぎ
       if (p % 2 === 0) return true;
-      if (p === 5) return true;              // キックのウラ
-      return sec === 'drive2' && p === 7 && bar % 2 === 1;
+      if (p === 3) return true;              // キックのウラ（2 拍目のウラ）
+      return sec === 'drive2' && p === 5 && bar % 2 === 1;
     case 'hard':
     default:
       if (lastOf4 && p === 7) return false;
@@ -106,11 +109,11 @@ function place(i: number, d: Difficulty): boolean {
  * 特殊譜面
  *  伸ばし：4 小節のまとまりの最後（3 拍目から小節の終わりまで「なーー」）・静かなパート（1 小節近く伸ばす）・曲の最後
  *  大きい「な」：盛り上がるパートの 4 小節ごとの頭
- *  だんだん大きく：ブレイク前（185〜200）と曲の最後（401〜415）
- *  だんだん小さく：静かなパートに入る前（273〜288）
+ *  だんだん大きく：ブレイク前（187〜202）と曲の最後（403〜415）
+ *  だんだん小さく：静かなパートに入る前（275〜290）
  */
-export const CRESC: [number, number][] = [[185, 200], [401, 415]];
-export const DECRESC: [number, number][] = [[273, 288]];
+export const CRESC: [number, number][] = [[187, 202], [403, 415]];
+export const DECRESC: [number, number][] = [[275, 290]];
 function addSpecials(notes: ChartNote[], mode: GameMode, endT: number, useBurns: boolean) {
   const blocked = (i: number) => (useBurns && burnAt(i) >= 0) || (mode !== '10s' && inSwitchRest(i));
   const remove = new Set<number>();

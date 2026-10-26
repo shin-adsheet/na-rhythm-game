@@ -17,10 +17,14 @@ interface Props {
   onTitle: () => void;
   onRetry: () => void;
   onBook: () => void;
+  /** このプレイのズレ（中央値・ms。プラス＝遅い）。8 回以上ヒットしたときだけ */
+  timing?: { ms: number; n: number } | null;
+  onApplyTiming?: (ms: number) => void;
 }
 
 /** 結果画面（登録者のカウントアップ・ランク・実績・ランキング・共有） */
-const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNewRecord, newlyIds, highScores, onTitle, onRetry, onBook }) => {
+const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNewRecord, newlyIds, highScores, onTitle, onRetry, onBook, timing, onApplyTiming }) => {
+    const [applied, setApplied] = React.useState(false);
     const show = (ms: number) => revealT >= ms;
     const countK = Math.min(1, Math.max(0, (revealT - 900) / 1500));
     const shownSubs = Math.round(run.subs * (1 - Math.pow(1 - countK, 3)));
@@ -112,6 +116,25 @@ const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNe
             </div>
           </div>
 
+          {timing && show(2300) && (
+            <div className="mt-4 w-full max-w-md bg-white/90 rounded-[1.5rem] border-4 border-white shadow-lg px-4 py-3 text-left animate-[pop_0.3s]">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-black text-slate-500">タイミングのズレ（{run.input === 'mic' ? '声' : 'キー・タップ'}）</div>
+                  <div className={`font-black text-lg ${Math.abs(timing.ms) <= 15 ? 'text-emerald-600' : 'text-orange-500'}`}>
+                    {Math.abs(timing.ms) <= 15 ? 'ぴったり' : timing.ms > 0 ? `${timing.ms}ms 遅め` : `${-timing.ms}ms 早め`}
+                  </div>
+                </div>
+                {Math.abs(timing.ms) > 15 && onApplyTiming && (
+                  <button disabled={applied} onClick={() => { onApplyTiming(timing.ms); setApplied(true); }}
+                    className="shrink-0 px-3 py-2 rounded-xl bg-sky-500 text-white text-xs font-black disabled:bg-emerald-500 active:scale-95 transition-transform">
+                    {applied ? '補正しました' : '次からこのズレを補正'}
+                  </button>
+                )}
+              </div>
+              {Math.abs(timing.ms) > 15 && <div className="text-[11px] text-slate-500 mt-1 leading-snug">いつも同じ向きにズレるなら、補正すると判定が音楽に合います（設定の「タイミング補正」でも直せます）。</div>}
+            </div>
+          )}
           {show(2400) && <ShareBox run={run} ending={ending} rank={rank} />}
 
           <div className="mt-7 flex flex-col sm:flex-row gap-3 items-center">

@@ -443,6 +443,17 @@ const Game: React.FC = () => {
   };
 
   /* ---------------- 入力 ---------------- */
+  /**
+   * 判定に使うタイミング補正（秒）。タイミング合わせをしていなければ、音が出るまでの遅れ＋押してから届くまでの目安を使う
+   */
+  const effOffset = (src: 'mic' | 'tap') => {
+    const v = offsetsRef.current[src];
+    if (v != null) return v;
+    return (playerRef.current?.outLatency() ?? 0) + (src === 'mic' ? 0.07 : 0.03);
+  };
+  /** 1 プレイのズレ（押した時刻 − 音符の時刻）。結果画面で「早い／遅い」と補正のおすすめを出す */
+  const dtsRef = useRef<number[]>([]);
+
   /** 強弱のボーナス（合っていたら登録者を上乗せ） */
   const curMul = () => {
     const fx = effectsRef.current;
@@ -490,7 +501,7 @@ const Game: React.FC = () => {
     }
     const t = p.time();
     if (t < chartRef.current.firstT - 0.6) return;     // カウント中は数えない
-    const off = (src === 'mic' ? offsetsRef.current.mic : offsetsRef.current.tap) ?? 0;
+    const off = effOffset(src);
     const tc = t - off * p.getRate();
     const r = e.input(tc);
     const run = runRef.current;
@@ -508,6 +519,7 @@ const Game: React.FC = () => {
       if (!flagsRef.current.buzz) setViewersV(viewersRef.current + VIEWERS.hit[j] * ch.viewerMul);
       // 伸ばし・強弱
       const n = r.note;
+      dtsRef.current.push(r.dt);
       lastHitRef.current = { note: n, at: performance.now(), src };
       if (n.kind === 'hold') { n.hold = 'on'; activeHoldRef.current = n; holdGapRef.current = null; }
       if (src === 'mic') {
@@ -652,6 +664,7 @@ const Game: React.FC = () => {
     scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false && mode !== '10s');
     segDirtyRef.current = new Set(); lastSegRef.current = 0;
     activeHoldRef.current = null; holdGapRef.current = null; lastHitRef.current = null; keysDownRef.current.clear(); pointersDownRef.current.clear();
+    dtsRef.current = [];
     setTrackStyle('lane'); setStyleBanner(null);
     const eng = new JudgeEngine(ch.notes, ch.burns);
     engineRef.current = eng;
@@ -805,7 +818,7 @@ const Game: React.FC = () => {
       if (!p || !e || finishingRef.current) return;
       const t = p.time();
       p.scheduleClicks();
-      const off = offsetsRef.current[TAP_ONLY ? 'tap' : settingsRef.current.input] ?? 0;
+      const off = effOffset(TAP_ONLY ? 'tap' : settingsRef.current.input);
       const tc = t - off * p.getRate();
       const ch = chartRef.current;
       const run = runRef.current;
@@ -881,7 +894,7 @@ const Game: React.FC = () => {
       // 画面の更新（重くならないよう 1 秒に 12 回）
       if (now - lastUi > 80) {
         lastUi = now;
-        const left = ch.firstT - t;
+        const left = ch.firstT - p.audibleTime();   // 数え始めも、耳に聞こえている曲に合わせる
         const cd = left > 2 * BEAT * 3 ? '準備して' : left > 0 ? String(Math.ceil(left / (2 * BEAT))) : left > -0.45 ? 'な！' : null;
         setCountdown((c) => (c === cd ? c : cd));
         const pct = Math.max(0, Math.min(1, (ch.endT - t) / (ch.endT - ch.firstT)));
@@ -932,7 +945,8 @@ const Game: React.FC = () => {
     if (!p || !p.started) return null;
     return (p.time() - 0.36) / BEAT;
   }, []);
-  const getTime = useCallback(() => playerRef.current?.time() ?? 0, []);
+  // 譜面は「耳に聞こえている所」に合わせて描く（スピーカー・イヤホンの遅れの分だけ遅らせる）
+  const getTime = useCallback(() => playerRef.current?.audibleTime() ?? 0, []);
 
   /* ============================================================
    * 画面
@@ -1329,6 +1343,8 @@ const Game: React.FC = () => {
         return (
           <ResultScreen run={runRef.current} revealT={revealT} ending={ending} endingIsNew={endingIsNew} isNewRecord={isNewRecordRef.current}
             newlyIds={runUnlockedRef.current} highScores={highScores}
+            timing={(() => { const a = [...dtsRef.current].sort((x, y) => x - y); return a.length >= 8 ? { ms: Math.round(a[a.length >> 1] * 1000), n: a.length } : null; })()}
+            onApplyTiming={(ms) => { const k = runRef.current.input; setOffset(k, Math.round((effOffset(k) + ms / 1000) * 1000) / 1000); dtsRef.current = []; }}
             onTitle={() => setGameState('READY')}
             onRetry={async () => { prepareSong(); if (input === 'mic' && !(await ensureMic())) return; setGameState('RULES'); }}
             onBook={() => setShowBook(true)} />

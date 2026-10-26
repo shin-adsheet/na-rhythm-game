@@ -51,7 +51,7 @@ const Calibration: React.FC<Props> = ({ input, mic, volume, onDone, onCancel }) 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      if (e.code === 'Space' || e.code === 'Enter' || e.key.toLowerCase() === 'n') { e.preventDefault(); recordRef.current(); }
+      if (['Space', 'Enter', 'KeyN', 'KeyF', 'KeyJ', 'KeyD', 'KeyK'].includes(e.code)) { e.preventDefault(); recordRef.current(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
