@@ -129,12 +129,22 @@ const Ufo: React.FC = () => (
 /* ---- しょぼいエンディング（10秒・30秒）の小道具：わざと安っぽく ---- */
 const Bulb: React.FC<{ on: boolean; w: number }> = ({ on, w }) => (
   <div className="relative flex flex-col items-center" style={{ width: w }}>
-    <svg viewBox="0 0 100 140" style={{ width: w * 0.7, height: w * 0.98 }} className={on ? 'sway' : ''} aria-hidden="true">
+    <svg viewBox="0 0 100 140" style={{ width: w * 0.55, height: w * 0.77 }} className={on ? 'sway' : ''} aria-hidden="true">
       <line x1="50" y1="0" x2="50" y2="48" stroke="#44403c" strokeWidth="3" />
       {on && <circle cx="50" cy="96" r="46" fill="#fde047" opacity="0.3" className="bulb-flicker" />}
       <rect x="40" y="46" width="20" height="18" rx="3" fill="#a8a29e" stroke="#57534e" strokeWidth="3" />
       <path d="M50 62 C 20 68 18 110 38 126 L 62 126 C 82 110 80 68 50 62 Z" fill={on ? '#fef08a' : '#52525b'} stroke={on ? '#ca8a04' : '#27272a'} strokeWidth="4" className={on ? 'bulb-flicker' : ''} />
       <path d="M41 104 l4.5 -9 l4.5 9 l4.5 -9 l4.5 9" stroke={on ? '#b45309' : '#18181b'} fill="none" strokeWidth="2.5" strokeLinejoin="round" />
+    </svg>
+    {/* 配信中のモニター：登録者グラフが急上昇（これで電力が足りなくなる） */}
+    <svg viewBox="0 0 80 56" style={{ width: w * 0.62, height: w * 0.43 }} className="-mt-1" aria-hidden="true">
+      <rect x="2" y="2" width="76" height="44" rx="4" fill={on ? '#0f172a' : '#18181b'} stroke="#475569" strokeWidth="3" />
+      {on && <>
+        <rect x="7" y="7" width="16" height="7" rx="2" fill="#dc2626" />
+        <text x="15" y="12.6" fontSize="5" fontWeight="900" fill="#fff" textAnchor="middle">LIVE</text>
+        <path d="M8 40 L22 37 L34 33 L46 28 L58 18 L72 6" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" />
+      </>}
+      <rect x="34" y="46" width="12" height="5" fill="#475569" /><rect x="24" y="50" width="32" height="4" rx="2" fill="#475569" />
     </svg>
     {!on && (
       <>
@@ -157,7 +167,7 @@ const Kairanban: React.FC<{ w: number; hot: boolean }> = ({ w, hot }) => (
     <text x="20" y="76" fontSize="7.5" fill="#57534e" textLength="62" lengthAdjust="spacingAndGlyphs">・草むしり 日曜 8時</text>
     <text x="20" y="92" fontSize="7.5" fill="#57534e" textLength="62" lengthAdjust="spacingAndGlyphs">・防犯灯の電球交換</text>
     {hot && <rect x="17" y="100" width="86" height="15" fill="#fef08a" />}
-    <text x="20" y="111" fontSize="6" fill="#57534e" textLength="80" lengthAdjust="spacingAndGlyphs">・3丁目の「な」の人が話題</text>
+    <text x="20" y="111" fontSize="6" fill="#57534e" textLength="80" lengthAdjust="spacingAndGlyphs">・3丁目の配信者が話題</text>
     <text x="96" y="132" fontSize="7" fill="#a8a29e" textAnchor="end">町内会</text>
   </svg>
 );
