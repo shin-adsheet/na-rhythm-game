@@ -17,6 +17,7 @@ import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import ShiashiaSeated, { STORY, Reaction } from './ShiashiaSeated';
 import KiaKiaPunch from './KiaKiaPunch';
 import GlassCrack from './GlassCrack';
+import ScreenDeath from './ScreenDeath';
 import { NaBubbles, FortuneCard } from './TitleToys';
 import { sfxBoing } from '../utils/titleSfx';
 import { playSfx, playSfxAt, preloadSfx, installButtonSfx, cancelPendingSfx, SfxId, SfxOpt } from '../utils/sfx';
@@ -256,6 +257,9 @@ const Game: React.FC = () => {
   const titlePokeRef = useRef({ n: 0, at: 0 });
   const [reactSay, setReactSay] = useState<{ id: number; text: string } | null>(null);
   const [kiaOn, setKiaOn] = useState(false);
+  /** きあきあを呼んだ回数（3 回で画面がこわれてゲームオーバー → きれいな画面に戻って 0 から） */
+  const kiaCountRef = useRef(0);
+  const [deathOn, setDeathOn] = useState(false);
   const [crackSeed, setCrackSeed] = useState<number | null>(null);
   const [crackFixing, setCrackFixing] = useState(false);
   const [showFortune, setShowFortune] = useState(false);
@@ -1009,7 +1013,7 @@ const Game: React.FC = () => {
   };
   const handleTitlePoke = () => {
     handlePoke();
-    if (kiaOn) return;
+    if (kiaOn || deathOn) return;
     const now = performance.now(), pk = titlePokeRef.current;
     pk.n = Math.max(0, pk.n - Math.floor((now - pk.at) / 4000)) + 1;   // 4 秒さわらないと 1 つずつ落ち着く
     pk.at = now;
@@ -1040,6 +1044,7 @@ const Game: React.FC = () => {
     } else {
       showReact('ひっ…！', 'fear');
       pk.n = 0;
+      kiaCountRef.current++;
       setTimeout(() => setKiaOn(true), 350);
     }
   };
@@ -1520,16 +1525,25 @@ const Game: React.FC = () => {
       {banFlash && playing && <div className="absolute inset-0 z-[58] bg-red-700/40 pointer-events-none flash-white" />}
 
       {gameState !== 'PLAYING' && <AchievementToasts toasts={toasts} />}
-      {gameState === 'READY' && <NaBubbles volume={settings.volume} total={titlePops} disabled={kiaOn}
+      {gameState === 'READY' && <NaBubbles volume={settings.volume} total={titlePops} disabled={kiaOn || deathOn}
         onPop={(n) => { const v = (lifeRef.current.titlePops ?? 0) + n; bumpLife({ titlePops: v }); setTitlePops(v); if (v >= 50 && v - n < 50) checkAchievements(null, false); }} />}
       {kiaOn && <KiaKiaPunch volume={settings.volume} onShout={() => doShake('shake-hard', 600)}
         onImpact={() => { setCrackSeed((Date.now() % 99991) + 1); doShake('shake-hard', 700); bumpLife({ screenBroken: true }); checkAchievements(null, false); }}
-        onDone={() => { setKiaOn(false); setTimeout(() => showReact('が、画面が…！', 'surprise'), 200); }} />}
+        onDone={() => {
+          setKiaOn(false);
+          const n = kiaCountRef.current;
+          if (n >= 3) { setTimeout(() => setDeathOn(true), 250); return; }
+          setTimeout(() => showReact(n === 2 ? 'つ、次はほんとに こわれちゃう…' : 'が、画面が…！', n === 2 ? 'fear' : 'surprise'), 200);
+        }} />}
+      {deathOn && <ScreenDeath volume={settings.volume}
+        achievement={unlockedRef.current.kia_gameover ? null : achievementById('kia_gameover') ?? null}
+        onRestore={() => { setCrackSeed(null); setCrackFixing(false); kiaCountRef.current = 0; titlePokeRef.current.n = 0; bumpLife({ screenDead: true }); checkAchievements(null, true); }}
+        onDone={() => { setDeathOn(false); setTimeout(() => showReact('ピカピカの 新しい画面！', 'jump'), 150); }} />}
       {crackSeed && gameState === 'READY' && (
         <GlassCrack key={crackSeed} seed={crackSeed} impact={{ x: vp.w / 2, y: vp.h * 0.46 }} volume={settings.volume} lite={lite} fixing={crackFixing}
           onFixed={() => { setCrackSeed(null); setCrackFixing(false); showReact('直った！', 'jump'); }} />
       )}
-      {crackSeed && gameState === 'READY' && !kiaOn && !crackFixing && (
+      {crackSeed && gameState === 'READY' && !kiaOn && !deathOn && !crackFixing && (
         <button data-nosfx onClick={() => { setCrackFixing(true); se('rewind', { rate: 0.8 }); se('glass_small', { rate: 2.2, delay: 0.25, gain: 0.5 }); se('fix', { delay: 0.6 }); }}
           style={{ top: 'max(10px, env(safe-area-inset-top))' }}
           className="fixed z-[86] right-3 bg-slate-900/85 text-white font-black text-sm px-5 py-2.5 rounded-full border-2 border-white shadow-xl active:scale-95 transition-transform">
