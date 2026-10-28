@@ -27,22 +27,25 @@ export interface StyleSeg { t: number; style: TrackStyle; games?: HeavenGame[]; 
 export interface HeavenDemo { t: number; t2?: number; i: number; game: HeavenGame; kind?: 'tap' | 'hold'; big?: boolean }
 
 
-/** 1プレイ分の画面チェンジの予定。最初は「いつもの」。順番は毎回シャッフル */
+/**
+ * 1プレイ分の画面チェンジの予定。最初は「いつもの」。
+ * 「してみた動画」（リズム天国風）は、ほかの画面をはさんで何度か出る（1 回の出番で 1 ゲームだけ。次の出番は別のゲーム）：
+ *   ほかの画面 → してみた動画（ゲーム A）→ ほかの画面 → してみた動画（ゲーム B）→ …
+ * ほかの画面の順番は毎回シャッフル
+ */
 export function buildStyleSchedule(endT: number, enabled: boolean): StyleSeg[] {
   const segs: StyleSeg[] = [{ t: -1e9, style: 'lane' }];
   if (!enabled) return segs;
-  const order = [...ARCADE_STYLES];
-  for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-  // 「してみた動画」（リズム天国風）は、30 秒モードでも見られるように前の方に入れる
-  const hv = order.indexOf('heaven'), to = Math.floor(Math.random() * 3);
-  if (hv > to) { order.splice(hv, 1); order.splice(to, 0, 'heaven'); }
+  const others = ARCADE_STYLES.filter((x) => x !== 'heaven');
+  for (let i = others.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [others[i], others[j]] = [others[j], others[i]]; }
+  const games = shuffledGames();
+  let oi = 0, gi = 0;
   SWITCH_AT.forEach((idx, k) => {
     // 休み（切り替え位置の前の 6 個）に入った所で切り替える。新しい画面の最初の音符は、奥から来るのが見える
     const t = timeOf(idx - SWITCH_REST) + 0.02;
-    if (t < endT - 1.5) {
-      const style = order[k % order.length];
-      segs.push(style === 'heaven' ? { t, style, games: shuffledGames() } : { t, style });
-    }
+    if (t >= endT - 1.5) return;
+    if (k % 2 === 1) segs.push({ t, style: 'heaven', games: [games[gi++ % games.length]] });
+    else segs.push({ t, style: others[oi++ % others.length] });
   });
   return segs;
 }

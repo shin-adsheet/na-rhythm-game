@@ -20,6 +20,8 @@ export type BurnState = BurnSection & { started: boolean; ended: boolean; fueled
 export type InputResult =
   | { type: 'hit'; note: NoteState; judge: Judge; dt: number }
   | { type: 'extra' }
+  /** 通常モード：タイミングは合っていたが、ノーツの場所を押していない（なにも起きない） */
+  | { type: 'wrongSpot' }
   | { type: 'fuel'; burn: BurnState; first: boolean }
   // 炎上チャレンジ（キーボード・タップ）
   | { type: 'burnHit'; burn: BurnState; cue: BurnCue; judge: Judge }
@@ -45,17 +47,21 @@ export class JudgeEngine {
     this.burns = burns.map((b) => ({ ...b, started: false, ended: false, fueled: false }));
   }
 
-  input(t: number): InputResult {
+  /** accept：通常モード（ノーツの場所をタップ）のとき、押した場所がその音符の上か */
+  input(t: number, accept?: (n: NoteState) => boolean): InputResult {
     const good = WIN_GOOD * this.winMul;
-    // まだ判定していない音符のうち、いちばん近いもの
-    let best: NoteState | null = null, bestD = Infinity;
+    // まだ判定していない音符のうち、いちばん近いもの（通常モードは、押した場所にある音符だけ）
+    let best: NoteState | null = null, bestD = Infinity, rejected = false;
     for (let k = this.cursor; k < this.notes.length; k++) {
       const n = this.notes[k];
       if (n.t - t > good) break;
       if (n.res) continue;
       const d = Math.abs(n.t - t);
-      if (d <= good && d < bestD) { best = n; bestD = d; }
+      if (d > good) continue;
+      if (accept && !accept(n)) { rejected = true; continue; }
+      if (d < bestD) { best = n; bestD = d; }
     }
+    if (!best && rejected) return { type: 'wrongSpot' };
     if (best) {
       const j: Judge = bestD <= WIN_PERFECT * this.winMul ? 'perfect' : bestD <= WIN_GREAT * this.winMul ? 'great' : 'good';
       best.res = j; best.at = t;

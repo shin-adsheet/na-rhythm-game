@@ -20,6 +20,8 @@ interface Props {
   height?: number;
   /** 何をすればいいか（声：「な」と言う／キーボード：押す）。画面チェンジ直後の案内に出す */
   action?: string;
+  /** 通常モード用：音符のいまの場所（画面の座標・当たりの半径）を返す関数を入れる。null＝どこを押してもよい */
+  hitPosRef?: React.MutableRefObject<((n: NoteState) => { x: number; y: number; r: number } | null) | null>;
 }
 
 const FONT = "'Mochiy Pop One', sans-serif";
@@ -34,7 +36,7 @@ interface D {
   segs: StyleSeg[];
 }
 
-const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, scheduleRef, height = 104, action = '「な」' }) => {
+const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, scheduleRef, height = 104, action = '「な」', hitPosRef }) => {
   const ref = useRef<HTMLCanvasElement>(null);
   const actionRef = useRef(action); actionRef.current = action;
 
@@ -84,6 +86,17 @@ const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, schedul
         guides(st, { ...base, A: 1, style: st }, k > 0 ? into : -1, actionRef.current);
       }
       ctx.globalAlpha = 1;
+      // 通常モード：いまの画面で、その音符がどこにあるか（押した場所と比べる）
+      if (hitPosRef) {
+        const st = segs[k].style, mir = f.mirror;
+        hitPosRef.current = st === 'heaven' ? null : (n: NoteState) => {
+          const tt = getTime();
+          const p = GEOM[st]({ ...base, t: tt, A: 1, style: st }, n.i, Math.max(0, (n.t - tt) / LEAD_ALL));
+          const r = cv.getBoundingClientRect();
+          const x = mir ? W - p.x : p.x;
+          return { x: r.left + x, y: r.top + p.y, r: Math.max(52, (p.size || 30) * 1.5) };
+        };
+      }
     };
     draw();
     return () => { cancelAnimationFrame(raf); ro.disconnect(); };
@@ -839,173 +852,16 @@ function guides(style: TrackStyle, d: D, into: number, action: string) {
  *     キャラクターと投げるものは 3D（HeavenStage）。ここでは舞台・動画っぽい飾り・床の下の「な」の帯を描く。
  *     押す所に迷わないように：下の帯の「な」が、しあしあの真下の印に重なった瞬間に押す（＝投げたものが届く瞬間）
  * ============================================================ */
-function heavenDeco(d: D, game: string, L: ReturnType<typeof heavenLayout>, bp: number) {
-  const { c, H, t } = d;
-  const { x0, SW } = L;
-  c.save();
-  switch (game) {
-    case 'lift': {    // サッカーゴール
-      const gx = x0 + SW * 0.5, gy = L.floorY, gw = SW * 0.3, gh = L.charH * 0.5;
-      ga(d, 0.5); c.strokeStyle = '#fff'; c.lineWidth = 4; c.strokeRect(gx - gw / 2, gy - gh, gw, gh);
-      c.lineWidth = 1; for (let k = 1; k < 8; k++) { c.beginPath(); c.moveTo(gx - gw / 2 + (gw * k) / 8, gy - gh); c.lineTo(gx - gw / 2 + (gw * k) / 8, gy); c.stroke(); }
-      for (let k = 1; k < 5; k++) { c.beginPath(); c.moveTo(gx - gw / 2, gy - (gh * k) / 5); c.lineTo(gx + gw / 2, gy - (gh * k) / 5); c.stroke(); }
-      break;
-    }
-    case 'selfie': {   // 映える背景：きらきら
-      for (let k = 0; k < 9; k++) {
-        const x = x0 + SW * ((k * 0.137 + 0.05) % 1), y = H * (0.12 + ((k * 0.29) % 0.5)), r = 5 + (k % 3) * 3 + 2 * bp;
-        ga(d, 0.6 + 0.4 * Math.sin(t * 4 + k)); c.fillStyle = '#fff';
-        c.beginPath(); c.moveTo(x, y - r); c.lineTo(x + r * 0.3, y - r * 0.3); c.lineTo(x + r, y); c.lineTo(x + r * 0.3, y + r * 0.3); c.lineTo(x, y + r); c.lineTo(x - r * 0.3, y + r * 0.3); c.lineTo(x - r, y); c.lineTo(x - r * 0.3, y - r * 0.3); c.closePath(); c.fill();
-      }
-      break;
-    }
-    case 'fish': {     // 池（ふたりの間）と波
-      const px = (L.kiaX + L.shiaX) / 2, pw = (L.shiaX - L.kiaX) * 0.72;
-      ga(d, 0.95); c.fillStyle = '#38bdf8'; c.beginPath(); c.ellipse(px, L.floorY + 6, pw / 2, Math.max(8, (d.H - L.floorY) * 0.22), 0, 0, Math.PI * 2); c.fill();
-      ga(d, 0.8); c.strokeStyle = '#e0f2fe'; c.lineWidth = 2;
-      for (let k = 0; k < 3; k++) { c.beginPath(); c.arc(px - pw * 0.2 + k * pw * 0.2, L.floorY + 4, 6 + 2 * Math.sin(t * 3 + k), Math.PI * 1.1, Math.PI * 1.9); c.stroke(); }
-      break;
-    }
-    case 'donut': {    // ドーナツ屋さんのしましま
-      ga(d, 0.35); c.fillStyle = '#fff';
-      for (let k = 0; k < 10; k++) c.fillRect(x0 + (SW / 10) * k, 0, SW / 20, L.floorY * 0.34);
-      break;
-    }
-    case 'cook': {     // キッチン：タイルの壁
-      ga(d, 0.35); c.strokeStyle = '#fff'; c.lineWidth = 2;
-      const s = Math.max(18, SW / 14);
-      for (let y = s; y < L.floorY; y += s) { c.beginPath(); c.moveTo(x0, y); c.lineTo(x0 + SW, y); c.stroke(); }
-      for (let x = x0 + s; x < x0 + SW; x += s) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, L.floorY); c.stroke(); }
-      break;
-    }
-    case 'gamer': {    // 後ろに大きなモニター
-      const mw = SW * 0.36, mh = mw * 0.56, mx = x0 + SW * 0.5 - mw / 2, my = L.floorY - L.charH * 0.95;
-      ga(d, 0.9); c.fillStyle = '#0f172a'; roundRect(c, mx, my, mw, mh, 8); c.fill();
-      c.fillStyle = `hsl(${(t * 80) % 360}, 80%, 60%)`; ga(d, 0.6); roundRect(c, mx + 5, my + 5, mw - 10, mh - 10, 5); c.fill();
-      ga(d, 1); text(d, 'LIVE', mx + mw / 2, my + mh / 2, Math.round(mh * 0.28), '#fff', '#be123c');
-      break;
-    }
-    case 'sing': {     // 五線
-      ga(d, 0.4); c.strokeStyle = '#fff'; c.lineWidth = 2;
-      for (let k = 0; k < 5; k++) { const y = L.floorY * 0.18 + k * 9; c.beginPath(); for (let x = x0; x <= x0 + SW; x += 8) c.lineTo(x, y + Math.sin(x * 0.03 + t * 2) * 5); c.stroke(); }
-      break;
-    }
-    case 'unbox': {    // 段ボールの山
-      ga(d, 0.6); c.fillStyle = '#d6a36b';
-      for (const [fx, w, h] of [[0.04, 0.12, 0.1], [0.06, 0.08, 0.08], [0.86, 0.1, 0.12]] as [number, number, number][]) {
-        const bx = x0 + SW * fx, bw = SW * w, bh = L.charH * h * 2;
-        c.fillRect(bx, L.floorY - bh, bw, bh);
-      }
-      break;
-    }
-    case 'workout': {  // ジムの鏡のライン
-      ga(d, 0.3); c.fillStyle = '#fff';
-      for (let k = 0; k < 4; k++) c.fillRect(x0 + SW * (0.1 + k * 0.24), L.floorY * 0.1, SW * 0.16, L.floorY * 0.62);
-      break;
-    }
-    case 'dance': {    // ミラーボールの光
-      for (let k = 0; k < 8; k++) {
-        const a = t * 0.8 + k * 0.8, x = x0 + SW * 0.5 + Math.cos(a) * SW * 0.4, y = L.floorY * 0.4 + Math.sin(a * 1.3) * L.floorY * 0.3;
-        ga(d, 0.4); c.fillStyle = ['#fff', '#fde68a', '#a5f3fc', '#f9a8d4'][k % 4]; c.beginPath(); c.arc(x, y, 6 + 3 * bp, 0, Math.PI * 2); c.fill();
-      }
-      break;
-    }
-  }
-  c.restore();
-}
 function drawHeaven(d: D) {
+  // 舞台・キャラクター・文字は HeavenStage（画面いっぱい）が描く。ここでは炎上のときの合図の帯だけ
   const { c, W, H, t } = d;
   const L = heavenLayout(W, H);
-  const { SW, x0 } = L;
-  const cur = heavenGameAt(d.segs, t);
-  const def = HEAVEN_GAMES[cur.game];
-  const bp = Math.pow(1 - d.beatPh, 3);
-  const span = L.shiaX - L.kiaX;
-  c.save();
-  roundRect(c, x0 - 6, 0, SW + 12, H, 22); c.clip();
-  // 舞台（ゲームごとの色）
-  ga(d, 0.97);
-  const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, def.bg[0]); g.addColorStop(1, def.bg[1]);
-  c.fillStyle = g; c.fillRect(x0 - 6, 0, SW + 12, H);
-  heavenDeco(d, cur.game, L, bp);
-  ga(d, 1);
-  c.fillStyle = def.floor; c.fillRect(x0 - 6, L.floorY - 2, SW + 12, H);
-  c.fillStyle = 'rgba(0,0,0,0.15)'; c.fillRect(x0 - 6, L.floorY - 2, SW + 12, 3);
-  if (cur.game === 'fish') heavenDeco(d, 'fish', L, bp);
-  // スポットライト
-  ga(d, 0.45); c.fillStyle = '#fff';
-  for (const x of [L.kiaX, L.shiaX]) { c.beginPath(); c.ellipse(x, L.floorY + 2, L.charH * 0.26, L.charH * 0.045, 0, 0, Math.PI * 2); c.fill(); }
-
-  // 動画っぽい飾り：左上に REC と動画のタイトル
-  ga(d, 0.95);
-  const recOn = Math.floor(t * 1.6) % 2 === 0;
-  c.fillStyle = 'rgba(15,23,42,0.6)'; roundRect(c, x0 + 8, 8, 52, 20, 10); c.fill();
-  c.fillStyle = recOn ? '#ef4444' : '#7f1d1d'; c.beginPath(); c.arc(x0 + 20, 18, 4.5, 0, Math.PI * 2); c.fill();
-  text(d, 'REC', x0 + 40, 18.5, 11, '#fff');
-  c.font = `900 13px ${FONT}`;
-  const tw = c.measureText(def.title).width + 18;
-  c.fillStyle = 'rgba(255,255,255,0.85)'; roundRect(c, x0 + 66, 8, tw, 20, 10); c.fill();
-  text(d, def.title, x0 + 66 + tw / 2, 18.5, 13, '#334155');
-
-  // 音符は出さない。炎上のときだけ、床の下に帯を出して炎上の合図を流す
-  const burnNear = d.burns.some((b) => t > b.t0 - LEAD_ALL - 0.3 && t < b.t1 + 0.4);
-  if (burnNear) {
-    const bandH = Math.max(26, Math.min(44, (H - L.floorY) * 0.78));
-    ga(d, 0.9);
-    c.fillStyle = 'rgba(127,29,29,0.6)'; roundRect(c, x0 + 6, L.stripY - bandH / 2, SW - 12, bandH, bandH / 2); c.fill();
-    ga(d, 1); c.lineWidth = 3; c.strokeStyle = '#fff';
-    c.beginPath(); c.arc(L.shiaX, L.stripY, bandH * 0.42, 0, Math.PI * 2); c.stroke();
-  }
-  c.restore();
-
-  // 番の案内：きあきあの番（お手本）→ あなたの番（まね）。2 小節のゲームの 1 小節目と 2 小節目
-  const BARs = BEAT * 4;
-  const inG = t - cur.bar0;
-  const myTurn = inG >= BARs;
-  const hasDemo = (d.segs[segIndexAt(d.segs, t)].demos ?? []).some((x) => x.t >= cur.bar0 - 0.02 && x.t < cur.bar0 + BARs);
-  if (!burnNear && inG >= 0 && inG < BARs * 2 && hasDemo) {
-    const tagY = Math.max(40, L.floorY - L.charH * 1.08);
-    const pulseK = 1 + 0.08 * bp;
-    for (const [who, x, on, label, col] of [[0, L.kiaX, !myTurn, 'お手本', '#f59e0b'], [1, L.shiaX, myTurn, 'まねして！', '#db2777']] as [number, number, boolean, string, string][]) {
-      ga(d, on ? 1 : 0.35);
-      c.save(); c.translate(x, tagY); if (on) c.scale(pulseK, pulseK);
-      c.font = `900 13px ${FONT}`;
-      const w = c.measureText(label).width + 18;
-      c.fillStyle = on ? col : '#94a3b8'; roundRect(c, -w / 2, -12, w, 24, 12); c.fill();
-      c.restore();
-      text(d, label, x, tagY + 0.5, 13, '#fff');
-      void who;
-    }
-    // 何拍目か（1 小節 4 つの点。いまの拍が光る）
-    const bi = Math.floor(((inG % BARs) / BEAT) + 1e-6);
-    const cxp = myTurn ? L.shiaX : L.kiaX;
-    for (let k = 0; k < 4; k++) {
-      ga(d, k === bi ? 1 : 0.4);
-      c.fillStyle = k === bi ? '#fff' : 'rgba(255,255,255,0.7)';
-      c.beginPath(); c.arc(cxp - 24 + k * 16, tagY + 22, k === bi ? 4.5 : 3, 0, Math.PI * 2); c.fill();
-    }
-  }
-
-  // 動いた瞬間：ゲームごとの効果音の文字（ポン！ カシャ！…）。お手本はきあきあの前、まねはしあしあの前
-  const onoAt = (game: string, side: number, age: number) => {
-    if (age < 0 || age > 0.45) return;
-    const gd = HEAVEN_GAMES[game as keyof typeof HEAVEN_GAMES];
-    const tx = side ? L.shiaX + gd.target[0] * L.charH : L.kiaX - gd.target[0] * L.charH, ty = L.floorY - gd.target[1] * L.charH;
-    if (game === 'selfie' && age < 0.12) { ga(d, 0.6 * (1 - age / 0.12)); c.fillStyle = '#fff'; c.fillRect(side ? W / 2 : x0, 0, SW / 2, H); }
-    const k = Math.min(1, age / 0.45);
-    ga(d, (1 - k * k) * (side ? 1 : 0.85));
-    const sz = Math.round(Math.min(32, L.charH * 0.15) * (1 + 0.35 * (1 - k)) * (side ? 1 : 0.85));
-    text(d, gd.ono + '！', tx + (side ? 1 : -1) * L.charH * 0.12, ty - L.charH * 0.12 - age * 60, sz, '#fff', side ? '#db2777' : '#d97706');
-  };
-  for (const sg of d.segs) if (sg.demos) for (const x of sg.demos) { if (x.t > t) break; if (t - x.t < 0.5) onoAt(x.game, 0, t - x.t); }
-  eachHit(d, (n, age) => onoAt(heavenGameAt(d.segs, n.t).game, 1, t - (n.at ?? n.t)));
-  for (const n of d.notes) {
-    if (n.t > t) break;
-    if (n.res !== 'miss' || t - n.t > 0.7) continue;
-    ga(d, 1 - (t - n.t) / 0.7);
-    text(d, 'あっ…', L.shiaX + L.charH * 0.3, L.floorY - L.charH * 1.02 - (t - n.t) * 20, 16, '#fff', '#64748b');
-  }
-
+  if (!d.burns.some((b) => t > b.t0 - LEAD_ALL - 0.3 && t < b.t1 + 0.4)) return;
+  const bandH = Math.max(26, Math.min(44, (H - L.floorY) * 0.78));
+  ga(d, 0.9);
+  c.fillStyle = 'rgba(127,29,29,0.6)'; roundRect(c, L.x0 + 6, L.stripY - bandH / 2, L.SW - 12, bandH, bandH / 2); c.fill();
+  ga(d, 1); c.lineWidth = 3; c.strokeStyle = '#fff';
+  c.beginPath(); c.arc(L.shiaX, L.stripY, bandH * 0.42, 0, Math.PI * 2); c.stroke();
 }
 
 /* ============================================================

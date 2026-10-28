@@ -26,7 +26,7 @@ import HeavenStage from './HeavenStage';
 import BurnFx, { BurnFxData } from './BurnFx';
 import { pickBurnPatterns, planBurn, judgeBurn, BURN_INFO, BurnPattern } from '../utils/burnChallenge';
 import { perf, guessLite } from '../utils/perf';
-import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO, heavenCallResponse, heavenGameAt, HEAVEN_SFX } from '../utils/arcade';
+import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO, heavenCallResponse, heavenGameAt, HEAVEN_SFX, HEAVEN_GAMES } from '../utils/arcade';
 import EventCutIn, { CutInData } from './EventCutIn';
 import CommentStream, { CommentMood } from './CommentStream';
 import Calibration from './Calibration';
@@ -52,8 +52,8 @@ const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
   { id: 'original', label: '原曲', file: 'bgm/top.mp3' },
 ];
 
-interface Settings { volume: number; input: 'mic' | 'tap'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean; hitSound: boolean; voice: boolean }
-const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: 'tap', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite(), hitSound: true, voice: true };
+interface Settings { volume: number; input: 'mic' | 'tap'; tapMode: 'easy' | 'normal'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean; hitSound: boolean; voice: boolean }
+const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: 'tap', tapMode: 'easy', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite(), hitSound: true, voice: true };
 const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 type Offsets = { mic: number | null; tap: number | null };
@@ -551,7 +551,8 @@ const Game: React.FC = () => {
   };
 
   const segsStyleAt = (tt: number) => { const sg = scheduleRef.current; return sg[segIndexAt(sg, tt)].style; };
-  const handleInput = (src: 'mic' | 'tap') => {
+  const hitPosRef = useRef<((n: NoteState) => { x: number; y: number; r: number } | null) | null>(null);
+  const handleInput = (src: 'mic' | 'tap', pos?: { x: number; y: number }) => {
     if (gameStateRef.current !== 'PLAYING' || finishingRef.current) return;
     const p = playerRef.current, e = engineRef.current;
     if (!p || !e) return;
@@ -569,7 +570,10 @@ const Game: React.FC = () => {
     if (t < chartRef.current.firstT - 0.6) return;     // カウント中は数えない
     const off = effOffset(src);
     const tc = t - off * p.getRate();
-    const r = e.input(tc);
+    // 通常モード（タップ・クリック）：ノーツの場所を押したときだけ当たり。キーボードは場所がないので、どこでもよい
+    const posCheck = src === 'tap' && pos && settingsRef.current.tapMode === 'normal' && hitPosRef.current;
+    const r = e.input(tc, posCheck ? (n) => { const hp = hitPosRef.current?.(n); return !hp || Math.hypot(hp.x - pos!.x, hp.y - pos!.y) <= hp.r; } : undefined);
+    if (r.type === 'wrongSpot') { showJudge('そこじゃない', 'text-slate-400'); return; }
     const run = runRef.current;
     if (r.type === 'hit') {
       const j: Judge = r.judge;
@@ -774,7 +778,7 @@ const Game: React.FC = () => {
     engineRef.current = eng;
     notesRef.current = eng.notes;
     burnsRef.current = eng.burns;
-    if ((window as any).__forceBurn) { (window as any).__engBurns = eng.burns; (window as any).__engNotes = eng.notes; }
+    if ((window as any).__forceBurn) { (window as any).__engBurns = eng.burns; (window as any).__engNotes = eng.notes; (window as any).__hitPosRef = hitPosRef; }
     runRef.current = emptyRun(mode, ch.difficulty, ch.notes.length);
     runRef.current.input = TAP_ONLY ? 'tap' : settingsRef.current.input;
     runRef.current.holdsTotal = ch.notes.filter((n) => n.kind === 'hold').length;
@@ -1359,6 +1363,17 @@ const Game: React.FC = () => {
                   {error && /マイク/.test(error) && <div className="text-[11px] text-center font-bold text-white bg-red-400 rounded-lg px-2 py-1.5">{error}</div>}
                 </>
               )}
+              {input === 'tap' && (
+                <div className="grid grid-cols-2 gap-2">
+                  {(['easy', 'normal'] as const).map((m) => (
+                    <button key={m} onClick={() => setSettings({ tapMode: m })}
+                      className={`py-1.5 px-1 rounded-xl transition-all flex flex-col items-center leading-tight border-2 ${(settings.tapMode ?? 'easy') === m ? 'bg-cyan-500 border-cyan-500 text-white shadow-[0_3px_0_#0e7490] -translate-y-px' : 'bg-white border-gray-200 text-gray-500'}`}>
+                      <span className="font-black text-sm">{m === 'easy' ? '簡単モード' : '通常モード'}</span>
+                      <span className={`text-[10px] font-bold ${(settings.tapMode ?? 'easy') === m ? 'text-white/85' : 'text-gray-400'}`}>{m === 'easy' ? 'どこをタップしてもOK' : 'ノーツの場所をタップ'}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="text-cyan-600 font-bold text-center text-sm mt-0.5">モードとむずかしさ</div>
               <div className="grid grid-cols-3 gap-2">
                 {(['10s', '30s', 'FULL'] as GameMode[]).map((m) => (
@@ -1532,13 +1547,13 @@ const Game: React.FC = () => {
 
         {/* 譜面 */}
         <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
-          <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} action={actionWord} />
+          <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} action={actionWord} hitPosRef={hitPosRef} />
         </div>
         <BurnFx data={burnFx} textTop={(() => { const A = playAreas(); return A.top.y + A.top.h * 0.5; })()} />
-        {/* してみた動画（リズム天国風）：きあきあとしあしあの 3D を譜面の上に重ねる（予定に入っているときだけ用意） */}
+        {/* してみた動画（リズム天国風）：画面いっぱいに切り替わる舞台（背景・3D のきあきあとしあしあ・手前の飾り）。譜面より奥 */}
         {scheduleRef.current.some((sg) => sg.style === 'heaven') && (
-          <div className="absolute left-0 right-0 z-[21] pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
-            <HeavenStage getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} scheduleRef={scheduleRef} visible={trackStyle === 'heaven'} height={trackH} />
+          <div className="absolute inset-0 z-[19] pointer-events-none">
+            <HeavenStage getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} scheduleRef={scheduleRef} visible={trackStyle === 'heaven'} band={(() => { const A = playAreas(); return { y0: A.tTop, y1: A.tBot }; })()} />
           </div>
         )}
         {/* 画面チェンジのお知らせ（譜面の下に出す。譜面は隠さない） */}
@@ -1547,9 +1562,9 @@ const Game: React.FC = () => {
             <div className="mode-change flex items-center gap-3 bg-slate-900/92 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
               <span className="shrink-0 text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
               <span className="flex flex-col leading-tight min-w-0">
-                <span className="font-black text-lg">{STYLE_INFO[styleBanner.style].label}<span className="text-xs font-bold text-white/60 ml-2">やることは同じ</span></span>
+                <span className="font-black text-lg">{styleBanner.style === 'heaven' ? HEAVEN_GAMES[scheduleRef.current[styleBanner.id]?.games?.[0] ?? 'lift'].title : STYLE_INFO[styleBanner.style].label}<span className="text-xs font-bold text-white/60 ml-2">やることは同じ</span></span>
                 <span className="text-[11px] font-bold text-white/85">{STYLE_INFO[styleBanner.style].hint}</span>
-                <span className="text-sm font-black text-yellow-300">→ {input === 'mic' ? `${nuNow ? '「ぬ」' : '「な」'}と言う` : isMobile ? '画面をタップ' : 'キーを押す'}</span>
+                <span className="text-sm font-black text-yellow-300">→ {input === 'mic' ? `${nuNow ? '「ぬ」' : '「な」'}と言う` : settings.tapMode === 'normal' ? (styleBanner.style === 'heaven' ? 'どこでもタップ' : 'ノーツの場所をタップ') : isMobile ? '画面をタップ' : 'キーを押す'}</span>
               </span>
             </div>
           </div>
@@ -1647,7 +1662,7 @@ const Game: React.FC = () => {
     <div
       className={`w-full h-full flex items-center justify-center relative overflow-hidden ${bgClass} select-none ${shake}`}
       style={{ touchAction: playing ? 'none' : undefined }}
-      onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); pointersDownRef.current.add(e.pointerId); handleInputRef.current('tap'); } : undefined}
+      onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); pointersDownRef.current.add(e.pointerId); handleInputRef.current('tap', { x: e.clientX, y: e.clientY }); } : undefined}
     >
       <audio ref={menuBgmRef} loop preload="auto" src={ASSET_BASE + (MENU_BGMS.find((x) => x.id === settings.menuBgm) || MENU_BGMS[0]).file} />
 
