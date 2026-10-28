@@ -23,6 +23,8 @@ import { sfxBoing } from '../utils/titleSfx';
 import { playSfx, playSfxAt, preloadSfx, installButtonSfx, cancelPendingSfx, SfxId, SfxOpt } from '../utils/sfx';
 import Track from './Track';
 import HeavenStage from './HeavenStage';
+import BurnFx, { BurnFxData } from './BurnFx';
+import { pickBurnPatterns, planBurn, judgeBurn, BURN_INFO, BurnPattern } from '../utils/burnChallenge';
 import { perf, guessLite } from '../utils/perf';
 import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO } from '../utils/arcade';
 import EventCutIn, { CutInData } from './EventCutIn';
@@ -261,6 +263,10 @@ const Game: React.FC = () => {
   /** きあきあを呼んだ回数（3 回で画面がこわれてゲームオーバー → きれいな画面に戻って 0 から） */
   const kiaCountRef = useRef(0);
   const [deathOn, setDeathOn] = useState(false);
+  /** 炎上の結果の演出（大炎上・鎮火） */
+  const [burnFx, setBurnFx] = useState<BurnFxData | null>(null);
+  const burnFxShownRef = useRef(new Set<number>());
+  const holdGapBurnRef = useRef<number | null>(null);
   const [crackSeed, setCrackSeed] = useState<number | null>(null);
   const [crackFixing, setCrackFixing] = useState(false);
   const [showFortune, setShowFortune] = useState(false);
@@ -578,7 +584,29 @@ const Game: React.FC = () => {
       setViewersV(viewersRef.current + VIEWERS.extra);
       showJudge('空振り', 'text-slate-400');
       checkViewers(t);
+    } else if (r.type === 'burnHit') {
+      // 炎上チャレンジの合図に合わせられた
+      const pat = r.burn.plan?.pattern;
+      showJudge(pat === 'apology' ? 'ペコリ！' : pat === 'delete' ? '削除！' : pat === 'dodge' ? 'よけた！' : 'ごめん！', 'text-orange-500');
+      se(pat === 'dodge' ? 'poke_jump' : pat === 'delete' ? 'ui_close' : 'hit_big', { gain: 0.8 }, true);
+      setViewersV(viewersRef.current + 2);
+      hitRef.current = performance.now();
+    } else if (r.type === 'burnMash') {
+      se('pop', { rate: 1.4 + Math.random() * 0.4, gain: 0.45 }, true);
+      hitRef.current = performance.now();
+      const pl = r.burn.plan; if (pl && pl.mash === pl.mashTarget) { showJudge('消えた！', 'text-sky-500'); se('fix', {}, true); }
+    } else if (r.type === 'burnJump') {
+      se('poke_jump', { gain: 0.5 }, true);
+    } else if (r.type === 'burnHold') {
+      holdGapBurnRef.current = null;
     } else if (r.type === 'fuel') {
+      onFuel(r.burn.id, r.first, t);
+    }
+  };
+  /** 火に油：登録者・視聴者が減る。その炎上で初めてなら警告 1 つ（3 つで BAN）。大炎上の演出 */
+  const onFuel = (burnId: number, first: boolean, t: number) => {
+    const run = runRef.current;
+    {
       comboRef.current = 0; setCombo(0);
       addSubs(-subsRef.current * FUEL_LOSS);
       setViewersV(viewersRef.current + VIEWERS.fuel);
@@ -587,7 +615,8 @@ const Game: React.FC = () => {
       doShake('shake', 350);
       flashMood('shock', 700);
       playJingle(playerRef.current?.ctx ?? null, 'buzz', settingsRef.current.volume);
-      if (r.first) {
+      if (!burnFxShownRef.current.has(burnId)) { burnFxShownRef.current.add(burnId); setBurnFx({ id: performance.now(), kind: 'fail' }); se('fire', { gain: 0.9 }); se('boom_low', { gain: 0.5, rate: 1.4 }); }
+      if (first) {
         run.fuels++;
         strikesRef.current++;
         setStrikes(strikesRef.current);
@@ -706,9 +735,15 @@ const Game: React.FC = () => {
     dtsRef.current = [];
     setTrackStyle('lane'); setStyleBanner(null); styleBannerIdRef.current = -1;
     const eng = new JudgeEngine(ch.notes, ch.burns);
+    // 炎上チャレンジ：炎上ごとにパターンを決める（声で遊ぶときはいつも「黙れ」）
+    const forcedBurn = (window as any).__forceBurn as BurnPattern | undefined;      // テスト用：炎上のパターンを固定
+    const pats = forcedBurn ? eng.burns.map(() => forcedBurn) : pickBurnPatterns(eng.burns.length, !TAP_ONLY && settingsRef.current.input === 'mic');
+    eng.burns.forEach((b, k) => { b.plan = planBurn(b.start, b.end, b.t0, b.t1, pats[k]); });
+    burnFxShownRef.current = new Set(); holdGapBurnRef.current = null; setBurnFx(null);
     engineRef.current = eng;
     notesRef.current = eng.notes;
     burnsRef.current = eng.burns;
+    if ((window as any).__forceBurn) (window as any).__engBurns = eng.burns;
     runRef.current = emptyRun(mode, ch.difficulty, ch.notes.length);
     runRef.current.input = TAP_ONLY ? 'tap' : settingsRef.current.input;
     runRef.current.holdsTotal = ch.notes.filter((n) => n.kind === 'hold').length;
@@ -901,24 +936,47 @@ const Game: React.FC = () => {
           showJudge('MISS', 'text-slate-400');
           checkViewers(t);
           if (finishingRef.current) return;
+        } else if (ev.type === 'burnMiss') {
+          setViewersV(viewersRef.current - 3);
+          showJudge('おそい…', 'text-slate-400');
         } else if (ev.type === 'burnEnd') {
-          if (!ev.burn.fueled) {
+          const plan = ev.burn.plan;
+          const res = plan ? judgeBurn(plan, ev.burn.fueled) : ev.burn.fueled ? 'fail' : 'ok';
+          if (plan) plan.result = res;
+          if (res === 'ok') {
             run.burnsKept++;
             setViewersV(viewersRef.current + VIEWERS.calmed);
             showJudge('鎮火', 'text-emerald-500');
+            setBurnFx({ id: performance.now(), kind: 'ok' });
+            se('fix', { gain: 0.9 }); se('item', { delay: 0.15, gain: 0.6 });
             checkViewers(t);
+          } else if (!ev.burn.fueled) {
+            // 合図をのがした・消しきれなかった：終わったところで火に油
+            ev.burn.fueled = true;
+            onFuel(ev.burn.id, true, t);
+            if (finishingRef.current) return;
           }
         }
       }
 
-      // 炎上の予告カットイン（帯が円に届く少し前）
+      // 炎上の予告カットイン：やること（パターン）を見せる。炎上が始まるころには引っこめて、画面の合図を見せる
       for (const b of e.burns) {
-        if (!announcedRef.current.has(b.id) && t >= b.t0 - 0.85) {
+        if (!announcedRef.current.has(b.id) && t >= b.t0 - 1.5) {
           announcedRef.current.add(b.id);
-          const dur = Math.max(1700, ((b.t1 - t) / p.getRate()) * 1000);
-          queueCut({ event: 'burn', title: '炎上した！', sub: '黙れ！ 声を出すと火に油', durationMs: dur }, true);
+          const info = BURN_INFO[b.plan?.pattern ?? 'silent'];
+          const silent = !b.plan || b.plan.pattern === 'silent';
+          queueCut({ event: 'burn', title: silent ? '炎上した！' : `炎上！${info.title}`, sub: silent ? '黙れ！ 声を出すと火に油' : info.how, durationMs: silent ? Math.max(1700, ((b.t1 - t) / p.getRate()) * 1000) : 1650 }, true);
           se('fire', { gain: 0.7 }, true);
         }
+      }
+      // がまん：押しっぱなしでないと火に油
+      for (const b of e.burns) {
+        if (b.plan?.pattern !== 'hold' || b.fueled || t < b.plan.holdFrom || t > b.t1 - 0.04) continue;
+        const holding = keysDownRef.current.size > 0 || pointersDownRef.current.size > 0;
+        const nowP = performance.now();
+        if (holding) holdGapBurnRef.current = null;
+        else if (holdGapBurnRef.current == null) holdGapBurnRef.current = nowP;
+        else if (nowP - holdGapBurnRef.current > 220) { const r = e.fuelNow(b); if (r.type === 'fuel') onFuel(b.id, r.first, t); if (finishingRef.current) return; }
       }
 
       // バズの終わり
@@ -1388,10 +1446,11 @@ const Game: React.FC = () => {
         <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
           <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} action={actionWord} />
         </div>
-        {/* お手本ダンス（リズム天国風）：きあきあとしあしあの 3D を譜面の上に重ねる（予定に入っているときだけ用意） */}
+        <BurnFx data={burnFx} />
+        {/* してみた動画（リズム天国風）：きあきあとしあしあの 3D を譜面の上に重ねる（予定に入っているときだけ用意） */}
         {scheduleRef.current.some((sg) => sg.style === 'heaven') && (
           <div className="absolute left-0 right-0 z-[21] pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
-            <HeavenStage getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} visible={trackStyle === 'heaven'} height={trackH} />
+            <HeavenStage getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} scheduleRef={scheduleRef} visible={trackStyle === 'heaven'} height={trackH} />
           </div>
         )}
         {/* 画面チェンジのお知らせ（譜面の下に出す。譜面は隠さない） */}

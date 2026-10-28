@@ -343,6 +343,16 @@
       .rules-in { animation: pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
       .bubble-in { animation: bubble-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
       @keyframes bubble-in { from { transform: translate(-50%, 10px) scale(0.6); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+      /* 炎上の結果（大炎上・鎮火） */
+      .burnfx-wrap { animation: burnfx-wrap 1.7s ease-out forwards; }
+      @keyframes burnfx-wrap { 0% { opacity: 0; } 8% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+      .burnfx-red { background: radial-gradient(ellipse at 50% 120%, rgba(220,38,38,0.65), rgba(127,29,29,0.35) 55%, transparent 80%); }
+      .burnfx-flame { animation: burnfx-flame 1.7s cubic-bezier(.2,.9,.3,1) both; }
+      @keyframes burnfx-flame { 0% { transform: translateY(60%) scaleY(0.3); } 25% { transform: translateY(0) scaleY(1.15); } 40% { transform: scaleY(0.92) skewX(4deg); } 55% { transform: scaleY(1.08) skewX(-5deg); } 70% { transform: scaleY(0.95) skewX(3deg); } 100% { transform: translateY(30%) scaleY(0.6); } }
+      .burnfx-drop { animation: burnfx-drop 0.9s cubic-bezier(.5,0,.9,.6) both; }
+      @keyframes burnfx-drop { 0% { transform: translateY(-40px); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(100vh); opacity: 0.8; } }
+      .burnfx-text { animation: burnfx-text 1.7s cubic-bezier(.34,1.56,.64,1) both; }
+      @keyframes burnfx-text { 0% { transform: scale(2.4) rotate(-6deg); opacity: 0; } 18% { transform: scale(1) rotate(-6deg); opacity: 1; } 80% { opacity: 1; } 100% { transform: scale(1.05) rotate(-6deg); opacity: 0; } }
       .bubble-pop { animation: bubble-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
       @keyframes bubble-pop { from { transform: translateY(10px) scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
 

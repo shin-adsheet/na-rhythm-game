@@ -1,21 +1,21 @@
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { makeRig, restAll, Rig } from './Shiashia3D';
-import type { NoteState, BurnState } from '../utils/judge';
+import type { NoteState } from '../utils/judge';
 import { BEAT, barPos } from '../utils/chart';
-import { heavenLayout, HEAVEN_LEAD_BEATS } from '../utils/arcade';
+import { heavenLayout, heavenGameAt, HEAVEN_GAMES, HeavenGame, StyleSeg, HEAVEN_LEAD_BEATS } from '../utils/arcade';
 import { pixelRatioCap } from '../utils/perf';
 
 /**
- * 「お手本ダンス」（リズム天国風）の 3D の舞台。譜面の canvas の上に重ねる（配置は heavenLayout で共通）。
- *  - 左：きあきあ（お手本）。音符の 1 拍前に、ポーズをびしっと決める（自動）
- *  - 右：しあしあ（あなた）。音符の少し前に「ため」、打った瞬間に同じポーズを決める。のがすと「あっ」とよろける
- * ポーズと動きの緩急は、enchanted love の再現で作ったアニメーション（「しあ 調整台」の EL アニメ）と同じ考え方：
- *  原作から測ったイージング（さっと決めて、ゆっくり戻る）、バンザイ着地・腕をのばす・スキップ・かさでふわふわ。
- * カメラは正射影（遠近なし）で、3D を 2D のアニメのように見せる。
+ * 「してみた動画」（リズム天国風）の 3D の舞台。譜面の canvas の上に重ねる（配置は heavenLayout で共通）。
+ * 2 小節ごとにミニゲームが切り替わる（リフティング・自撮り・釣り・ドーナツ・料理・ゲーム実況・歌・開封・筋トレ・ダンス）。
+ * どのゲームも「左のきあきあが 1 拍前に投げる（送る）→ 右のしあしあに届いた瞬間に『な』」。
+ *  - 投げたものは、ちょうど『な』の瞬間にしあしあの所へ着く山なりで飛ぶので、見ていれば押す所が分かる
+ *  - 打った瞬間に、しあしあがそのゲームの動き（蹴る・かじる・切る…）をする。のがすと当たって落ちる
+ * ポーズと緩急は「Keep it alive MV 編集台」（enchanted love 再現）のミニゲームと同じ考え方：ため → さっと決める → ゆっくり戻る。
+ * キャラは拡大縮小せず（服のゆれの計算がくずれないように）、正射影のカメラの広さで大きさを合わせる。
  */
 
-// enchanted love から測ったイージング（「しあ 調整台」と同じ数字）
 const bz = (x1: number, y1: number, x2: number, y2: number) => (x: number) => {
   if (x <= 0) return 0; if (x >= 1) return 1;
   let lo = 0, hi = 1;
@@ -27,78 +27,146 @@ const ELE = { out: bz(0.09, 0.63, 0.26, 1), inout: bz(0.33, 0, 0.67, 0.98), in: 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const D2 = THREE.MathUtils.degToRad;
 
-/** ポーズ：arm = [前へ, 開き（0 下・90 横・170 真上）]、ほかは度 */
+/* ---------- ポーズ ---------- */
 interface Pose { armL: [number, number]; armR: [number, number]; elbowL: number; elbowR: number; thighL: number; thighR: number; kneeL: number; kneeR: number; spine: [number, number, number]; head: [number, number, number]; lift: number; mouth: number; eyes: number }
 const P = (p: Partial<Pose>): Pose => ({ armL: [0, 22], armR: [0, 22], elbowL: -10, elbowR: -10, thighL: 0, thighR: 0, kneeL: 0, kneeR: 0, spine: [0, 0, 0], head: [0, 0, 0], lift: 0, mouth: 0, eyes: 0, ...p });
-type MoveKey = 'pointR' | 'pointL' | 'kneeL' | 'kneeR' | 'banzai' | 'crouch' | 'float' | 'whoops' | 'shh';
-const IDLE = P({});
-const WIND = P({ armL: [12, 10], armR: [12, 10], elbowL: -40, elbowR: -40, thighL: -14, thighR: -14, kneeL: 28, kneeR: 28, spine: [8, 0, 0], head: [6, 0, 0], lift: -10 });
-const MOVES: Record<MoveKey, Pose> = {
-  // 腕をのばす（右・左）：横からぱっと真上へ（EL「腕をのばす」）
-  pointR: P({ armR: [6, 150], elbowR: -4, armL: [0, 14], head: [-12, 8, 8], spine: [0, 0, 4], mouth: 1 }),
-  pointL: P({ armL: [6, 150], elbowL: -4, armR: [0, 14], head: [-12, -8, -8], spine: [0, 0, -4], mouth: 1 }),
-  // ひざを上げる（EL「スキップ」）
-  kneeL: P({ thighL: -66, kneeL: 96, thighR: 6, armL: [28, 42], armR: [-24, 42], elbowL: -24, elbowR: -24, head: [-4, 0, 6], spine: [4, 0, -3], lift: 26, mouth: 1 }),
-  kneeR: P({ thighR: -66, kneeR: 96, thighL: 6, armR: [28, 42], armL: [-24, 42], elbowL: -24, elbowR: -24, head: [-4, 0, -6], spine: [4, 0, 3], lift: 26, mouth: 1 }),
-  // バンザイで跳んで、着地でひざを曲げる（EL「バンザイ着地」）
-  banzai: P({ armL: [0, 128], armR: [0, 128], elbowL: -6, elbowR: -6, thighL: -20, thighR: -20, kneeL: 40, kneeR: 40, spine: [8, 0, 0], head: [-10, 0, 0], lift: 0, mouth: 1 }),
-  // しゃがんで、ささやく（小さい「な」）
-  crouch: P({ thighL: -46, thighR: -46, kneeL: 88, kneeR: 88, spine: [22, 0, 0], head: [-6, 0, 0], armL: [50, 8], armR: [84, -6], elbowL: -40, elbowR: -128, lift: -46, mouth: 0.5 }),
-  // かさを持ってふわふわ（伸ばし。EL「ふわふわ（かさ）」）
-  float: P({ armR: [0, 142], elbowR: -12, armL: [0, 70], elbowL: -8, thighL: -16, thighR: -10, kneeL: 34, kneeR: 22, head: [-8, 0, 6], lift: 36, mouth: 1 }),
-  // のがした：よろけて、目をつぶる
-  whoops: P({ armL: [30, 62], armR: [-10, 48], elbowL: -30, elbowR: -10, thighL: -10, kneeL: 22, head: [14, 0, 20], spine: [6, 0, -10], eyes: 1, mouth: 0.4 }),
-  // 炎上中は「しーっ」（口に指）
-  shh: P({ armR: [82, -8], elbowR: -142, armL: [0, 16], head: [8, 0, 0], spine: [6, 0, 0], eyes: 0.5 }),
-};
 const mix = (a: number, b: number, k: number) => a + (b - a) * k;
-const mixPose = (a: Pose, b: Pose, k: number): Pose => ({
+const mixPose = (a: Pose, b: Pose, k: number): Pose => k <= 0 ? a : ({
   armL: [mix(a.armL[0], b.armL[0], k), mix(a.armL[1], b.armL[1], k)], armR: [mix(a.armR[0], b.armR[0], k), mix(a.armR[1], b.armR[1], k)],
   elbowL: mix(a.elbowL, b.elbowL, k), elbowR: mix(a.elbowR, b.elbowR, k), thighL: mix(a.thighL, b.thighL, k), thighR: mix(a.thighR, b.thighR, k),
   kneeL: mix(a.kneeL, b.kneeL, k), kneeR: mix(a.kneeR, b.kneeR, k),
   spine: a.spine.map((v, i) => mix(v, b.spine[i], k)) as Pose['spine'], head: a.head.map((v, i) => mix(v, b.head[i], k)) as Pose['head'],
   lift: mix(a.lift, b.lift, k), mouth: mix(a.mouth, b.mouth, k), eyes: mix(a.eyes, b.eyes, k),
 });
-
-/** 音符ごとの動き：伸ばし＝かさでふわふわ、大きい＝バンザイ、小さい＝しゃがむ、ほかは拍の位置で決まる */
-function moveOf(n: NoteState): MoveKey {
-  if (n.kind === 'hold') return 'float';
-  if (n.power === 'big') return 'banzai';
-  if (n.power === 'small') return 'crouch';
-  const p = barPos(n.i);
-  if (p % 2 === 0) return p % 4 === 0 ? 'pointR' : 'pointL';
-  return (p >> 1) % 2 ? 'kneeR' : 'kneeL';
+/** 決めの重み：ため（pre 秒）でふくらみ、着く瞬間にピタッ、hold 秒止めて post 秒で戻る */
+function hitW(t: number, at: number, hold = 0.12, post = 0.32) {
+  const k = t - at;
+  if (k < 0) return 0;
+  if (k < 0.07) return ELE.out(k / 0.07);
+  if (k < 0.07 + hold) return 1;
+  if (k < 0.07 + hold + post) return 1 - ELE.inout((k - 0.07 - hold) / post);
+  return 0;
 }
+const windW = (t: number, at: number, pre = 0.22) => (t < at && t > at - pre ? ELE.in(1 - (at - t) / pre) : 0);
+const WHOOPS = P({ armL: [30, 62], armR: [-10, 48], elbowL: -30, elbowR: -10, thighL: -10, kneeL: 22, head: [14, 0, 20], spine: [6, 0, -10], eyes: 1, mouth: 0.4 });
+const THROW_WIND = P({ armR: [-50, 30], elbowR: -60, spine: [-6, 0, 0], thighL: -10, kneeL: 20, head: [-4, 0, 0] });
+const THROW = P({ armR: [80, 20], elbowR: -6, spine: [10, 0, 0], head: [-6, 0, 0], thighR: -20, kneeR: 10, mouth: 1 });
+const SHH = P({ armR: [82, -8], elbowR: -142, armL: [0, 16], head: [8, 0, 0], spine: [6, 0, 0], eyes: 0.5 });
+// 踊ってみた：拍の位置で決めポーズが変わる
+const DANCE: Pose[] = [
+  P({ armR: [6, 150], elbowR: -4, armL: [0, 14], head: [-12, 8, 8], spine: [0, 0, 4], mouth: 1 }),
+  P({ thighL: -66, kneeL: 96, thighR: 6, armL: [28, 42], armR: [-24, 42], elbowL: -24, elbowR: -24, head: [-4, 0, 6], lift: 26, mouth: 1 }),
+  P({ armL: [6, 150], elbowL: -4, armR: [0, 14], head: [-12, -8, -8], spine: [0, 0, -4], mouth: 1 }),
+  P({ thighR: -66, kneeR: 96, thighL: 6, armR: [28, 42], armL: [-24, 42], elbowL: -24, elbowR: -24, head: [-4, 0, -6], lift: 26, mouth: 1 }),
+];
 
-interface Act { key: MoveKey; land: number; until: number }
-/**
- * いまの姿勢：直前に決めたポーズ（land）と、次のポーズの「ため」を時刻から計算する
- *  ため 0.2 秒（ゆっくり沈む）→ 決め 0.08 秒（さっと）→ 止め → 0.3 秒でもどる
- */
-function poseAt(now: number, prev: Act | null, next: { key: MoveKey; land: number } | null, beat: number): Pose {
-  // ふだん：拍に合わせて小さく縦ノリ
-  const b = (1 - Math.cos(Math.PI * 2 * beat)) / 2;
-  let pose = mixPose(IDLE, P({ thighL: -8, thighR: -8, kneeL: 16, kneeR: 16, spine: [4, 0, 0], head: [6, 0, 0], lift: -4 }), b * 0.8);
-  if (prev) {
-    const k = now - prev.land;
-    const target = MOVES[prev.key];
-    const hold = Math.max(0.18, prev.until - prev.land);
-    let w = 0;
-    if (k < 0.08) w = ELE.out(k / 0.08);
-    else if (k < hold) w = 1;
-    else if (k < hold + 0.32) w = 1 - ELE.inout((k - hold) / 0.32);
-    if (w > 0) {
-      const tp = { ...target };
-      if (prev.key === 'banzai') tp.lift = 70 * Math.max(0, 1 - Math.abs(k - 0.1) / 0.16);   // 一瞬はねる
-      if (prev.key === 'float') tp.lift = target.lift + 10 * Math.sin(now * 5);
-      pose = mixPose(pose, tp, w);
-    }
-  }
-  if (next) {
-    const left = next.land - now;
-    if (left < 0.2 && left > 0) pose = mixPose(pose, WIND, ELE.in(1 - left / 0.2) * 0.85);
-  }
-  return pose;
+/** ゲームごとの動き：kia＝投げる（送る）、hold＝持っているときの姿勢、wind＝ため、act＝届いた瞬間 */
+interface GameMotion { kia?: { wind: Pose; act: Pose }; hold?: Pose; wind?: Pose; act: Pose }
+const KICK = (s: 'L' | 'R') => P({ ['thigh' + s]: -70, ['knee' + s]: 60, armL: [-10, 50], armR: [-10, 50], spine: [-6, 0, 0], mouth: 1 } as any);
+const MOTION: Record<HeavenGame, GameMotion> = {
+  lift: { kia: { wind: P({ thighR: 25, kneeR: 50, spine: [6, 0, 0] }), act: KICK('R') }, wind: P({ thighR: 18, kneeR: 40 }), act: KICK('R') },
+  // 腕を顔の前に出すと、大きなそででお顔がかくれるので、腕は横・上に
+  selfie: { hold: P({ armR: [40, 118], elbowR: -30, head: [-10, 0, -8], armL: [0, 22] }), wind: P({ armR: [40, 118], elbowR: -30, head: [-6, 0, -4], thighL: -10, kneeL: 20 }),
+    act: P({ armR: [40, 128], elbowR: -20, armL: [10, 75], elbowL: -60, head: [-14, 0, -12], spine: [0, 0, 6], mouth: 1, lift: 10 }) },
+  fish: { hold: P({ armL: [22, 26], armR: [22, 26], elbowL: -70, elbowR: -70, spine: [8, 0, 0] }), wind: P({ armL: [12, 26], armR: [12, 26], elbowL: -50, elbowR: -50, spine: [16, 0, 0], head: [10, 0, 0] }),
+    act: P({ armL: [105, 85], armR: [105, 85], elbowL: -20, elbowR: -20, spine: [-14, 0, 0], head: [-18, 0, 0], mouth: 1, lift: 14 }) },
+  donut: { hold: P({ armL: [30, 30], armR: [30, 30], elbowL: -60, elbowR: -60 }), wind: P({ head: [-14, 0, 0], mouth: 1 }), act: P({ head: [16, 0, 0], spine: [12, 0, 0], mouth: 1, armL: [40, 30], armR: [40, 30], elbowL: -80, elbowR: -80 }) },
+  cook: { hold: P({ armR: [36, 40], elbowR: -70, armL: [18, 48], elbowL: -60, spine: [10, 0, 0], head: [16, 0, 0] }), wind: P({ armR: [70, 50], elbowR: -110, armL: [18, 48], elbowL: -60, spine: [6, 0, 0], head: [12, 0, 0] }),
+    act: P({ armR: [30, 40], elbowR: -30, armL: [18, 48], elbowL: -60, spine: [16, 0, 0], head: [20, 0, 0], mouth: 1 }) },
+  gamer: { kia: { wind: P({ armR: [-30, 20], spine: [10, 0, 0] }), act: P({ armR: [40, 30], spine: [14, 0, 0], mouth: 1 }) },
+    hold: P({ armL: [30, 14], armR: [30, 14], elbowL: -85, elbowR: -85, spine: [10, 0, 0], head: [8, 0, 0] }), wind: P({ armL: [30, 14], armR: [30, 14], elbowL: -85, elbowR: -85, spine: [16, 0, 0], head: [14, 0, 0] }),
+    act: P({ armL: [36, 30], armR: [36, 30], elbowL: -60, elbowR: -60, spine: [-8, 0, 0], head: [-12, 0, 0], mouth: 1, lift: 8 }) },
+  sing: { hold: P({ armR: [46, 30], elbowR: -120, armL: [0, 30], head: [-4, 0, 0] }), wind: P({ armR: [46, 30], elbowR: -120, armL: [0, 30], spine: [6, 0, 0], head: [6, 0, 0] }),
+    act: P({ armR: [46, 30], elbowR: -120, armL: [20, 80], elbowL: -10, spine: [-14, 0, 0], head: [-20, 0, 0], mouth: 1 }) },
+  unbox: { kia: { wind: P({ thighL: -20, kneeL: 40, spine: [20, 0, 0], armR: [40, 10] }), act: P({ spine: [30, 0, 0], head: [10, 0, 0], armR: [90, 10], elbowR: 0 }) },
+    hold: P({ thighL: -50, thighR: -50, kneeL: 90, kneeR: 90, spine: [20, 0, 0], lift: -60 }), wind: P({ thighL: -50, thighR: -50, kneeL: 90, kneeR: 90, spine: [24, 0, 0], armL: [60, 20], armR: [60, 20], lift: -60 }),
+    act: P({ thighL: -30, thighR: -30, kneeL: 50, kneeR: 50, armL: [150, 75], armR: [150, 75], elbowL: -10, elbowR: -10, spine: [-6, 0, 0], head: [-12, 0, 0], mouth: 1, lift: -20 }) },
+  workout: { hold: P({ thighL: -16, thighR: -16, kneeL: 30, kneeR: 30 }), wind: P({ thighL: -50, thighR: -50, kneeL: 90, kneeR: 90, spine: [18, 0, 0], armL: [70, 20], armR: [70, 20], elbowL: -90, elbowR: -90, lift: -60 }),
+    act: P({ armL: [172, 14], armR: [172, 14], elbowL: -8, elbowR: -8, head: [-10, 0, 0], mouth: 1 }) },
+  dance: { act: DANCE[0] },
+};
+
+/* ---------- 投げるもの（3D の小物。すべて自作の形） ---------- */
+const M = (c: number) => new THREE.MeshBasicMaterial({ color: c });
+function ballObj() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d')!;
+  ['#ff6a8a', '#ffffff', '#ffd23f', '#ffffff', '#5ac8ff', '#ffffff'].forEach((col, i) => { x.fillStyle = col; x.fillRect(i * 256 / 6, 0, 256 / 6 + 1, 128); });
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.NoColorSpace;
+  return new THREE.Mesh(new THREE.SphereGeometry(52, 20, 14), new THREE.MeshBasicMaterial({ map: t }));
+}
+function starObj(color = 0xffd23f, r = 50) {
+  const s = new THREE.Shape(); for (let i = 0; i < 10; i++) { const a = Math.PI / 2 + (i * Math.PI) / 5, rr = i % 2 ? r * 0.45 : r; i ? s.lineTo(Math.cos(a) * rr, Math.sin(a) * rr) : s.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); }
+  return new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: 14, bevelEnabled: false }), M(color));
+}
+function heartObj() {
+  const s = new THREE.Shape(); s.moveTo(0, -40); s.bezierCurveTo(-70, 10, -36, 64, 0, 34); s.bezierCurveTo(36, 64, 70, 10, 0, -40);
+  return new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: 16, bevelEnabled: false }), M(0xff6fa8));
+}
+function fishObj() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), M(0x5ac8ff)); body.scale.set(70, 36, 26); g.add(body);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(30, 50, 3), M(0x3b8fd8)); tail.rotation.z = -Math.PI / 2; tail.position.x = 82; g.add(tail);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(7, 8, 6), M(0x1b1830)); eye.position.set(-40, 10, 22); g.add(eye);
+  return g;
+}
+function donutObj() {
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.TorusGeometry(40, 20, 10, 24), M(0xd99a5b)); g.add(base);
+  const icing = new THREE.Mesh(new THREE.TorusGeometry(40, 16, 8, 24), M(0xff8fc0)); icing.position.z = 8; g.add(icing);
+  for (let i = 0; i < 9; i++) { const sp = new THREE.Mesh(new THREE.BoxGeometry(12, 4, 4), M([0xffffff, 0x7df0c6, 0xffe066][i % 3])); const a = i * 0.7; sp.position.set(Math.cos(a) * 40, Math.sin(a) * 40, 24); sp.rotation.z = a * 2; g.add(sp); }
+  return g;
+}
+function carrotObj() {
+  const g = new THREE.Group();
+  for (const k of [0, 1]) { const half = new THREE.Mesh(new THREE.CylinderGeometry(k ? 16 : 24, k ? 4 : 16, 50, 10), M(0xff8a3c)); half.position.y = k ? -50 : 0; half.name = k ? 'b' : 'a'; g.add(half); }
+  const leaf = new THREE.Mesh(new THREE.ConeGeometry(18, 46, 6), M(0x58c98e)); leaf.position.y = 46; g.getObjectByName('a')!.add(leaf);
+  g.rotation.z = Math.PI / 2;
+  return g;
+}
+function slimeObj() {
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.SphereGeometry(1, 18, 12), M(0x7be07b)); b.scale.set(56, 44, 44); g.add(b);
+  for (const s of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(7, 8, 6), M(0x1b1830)); e.position.set(s * 18, 10, 42); g.add(e); }
+  return g;
+}
+function noteObj() {
+  const g = new THREE.Group(), col = M(0x6d28d9);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), col); head.scale.set(30, 22, 16); g.add(head);
+  const stem = new THREE.Mesh(new THREE.BoxGeometry(9, 90, 9), col); stem.position.set(24, 44, 0); g.add(stem);
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(34, 12, 9), col); flag.position.set(38, 84, 0); flag.rotation.z = -0.5; g.add(flag);
+  return g;
+}
+function boxObj() {
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.BoxGeometry(120, 80, 90), M(0xc98a4b)); b.position.y = 40; g.add(b);
+  const lid = new THREE.Group(); lid.name = 'lid';
+  const l = new THREE.Mesh(new THREE.BoxGeometry(130, 22, 100), M(0xe3a868)); lid.add(l);
+  const rib = new THREE.Mesh(new THREE.BoxGeometry(22, 24, 102), M(0xff4fa3)); lid.add(rib);
+  lid.position.y = 90; g.add(lid);
+  const st = starObj(0xffe066, 40); st.name = 'star'; st.position.y = 40; st.visible = false; g.add(st);
+  return g;
+}
+function dumbbellObj() {
+  const g = new THREE.Group();
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(7, 7, 150, 8), M(0x9aa3c0)); bar.rotation.z = Math.PI / 2; g.add(bar);
+  for (const s of [-1, 1]) { const w = new THREE.Mesh(new THREE.CylinderGeometry(30, 30, 30, 14), M(0x3b3f5c)); w.rotation.z = Math.PI / 2; w.position.x = s * 70; g.add(w); }
+  return g;
+}
+const MAKE: Record<HeavenGame, () => THREE.Object3D> = {
+  lift: ballObj, selfie: () => starObj(0xffd23f, 46), fish: fishObj, donut: donutObj, cook: carrotObj,
+  gamer: slimeObj, sing: noteObj, unbox: boxObj, workout: dumbbellObj, dance: heartObj,
+};
+// しあしあが持つ小物（毎フレーム手の位置に置く）
+function phoneObj() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(70, 120, 12), M(0x2b2878))); const sc = new THREE.Mesh(new THREE.PlaneGeometry(58, 100), M(0x9fd8ff)); sc.position.z = -7; sc.rotation.y = Math.PI; g.add(sc); return g; }
+function rodObj() { const g = new THREE.Group(); const r = new THREE.Mesh(new THREE.CylinderGeometry(5, 8, 420, 6), M(0x8a5a2b)); r.rotation.z = -Math.PI / 2.6; r.position.set(-150, 80, 0); g.add(r); return g; }
+function knifeObj() { const g = new THREE.Group(); const h = new THREE.Mesh(new THREE.BoxGeometry(18, 60, 18), M(0x3b2a1a)); g.add(h); const bl = new THREE.Mesh(new THREE.BoxGeometry(10, 110, 34), M(0xe8ecf6)); bl.position.y = -82; g.add(bl); return g; }
+function padObj() { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(130, 50, 40), M(0x1f2937))); for (const [x, c] of [[-38, 0xf472b6], [38, 0x22d3ee]] as [number, number][]) { const b = new THREE.Mesh(new THREE.SphereGeometry(10, 8, 6), M(c)); b.position.set(x, 12, 18); g.add(b); } return g; }
+function micObj() { const g = new THREE.Group(); const h = new THREE.Mesh(new THREE.CylinderGeometry(10, 7, 90, 10), M(0x1f2937)); g.add(h); const head = new THREE.Mesh(new THREE.SphereGeometry(24, 12, 10), M(0xd1d5db)); head.position.y = 58; g.add(head); return g; }
+const HELD: Partial<Record<HeavenGame, () => THREE.Object3D>> = { selfie: phoneObj, fish: rodObj, cook: knifeObj, gamer: padObj, sing: micObj };
+
+function arcPos(a: THREE.Vector3, b: THREE.Vector3, u: number, h: number, out: THREE.Vector3) {
+  u = clamp01(u);
+  return out.set(mix(a.x, b.x, u), mix(a.y, b.y, u) + 4 * h * u * (1 - u), mix(a.z, b.z, u));
 }
 
 function applyPose(r: Rig, p: Pose, time: number) {
@@ -120,18 +188,46 @@ function applyPose(r: Rig, p: Pose, time: number) {
     r.setBlink(Math.max(p.eyes, local > 3.4 ? Math.sin(((local - 3.4) / 0.2) * Math.PI) : 0));
   }
 }
+const groove = (beat: number) => { const b = (1 - Math.cos(Math.PI * 2 * beat)) / 2; return P({ thighL: -8 * b, thighR: -8 * b, kneeL: 16 * b, kneeR: 16 * b, spine: [4 * b, 0, 0], head: [6 * b, 0, 0], lift: -4 * b }); };
+const overlayW = (a: Pose, b: Pose, w: number) => mixPose(a, b, clamp01(w));
 
 interface Props {
   getTime: () => number;
   notesRef: React.MutableRefObject<NoteState[]>;
-  burnsRef: React.MutableRefObject<BurnState[]>;
+  burnsRef: React.MutableRefObject<{ t0: number; t1: number }[]>;
+  scheduleRef: React.MutableRefObject<StyleSeg[]>;
   visible: boolean;
   height: number;
 }
 
-const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, visible, height }) => {
+const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef, visible, height }) => {
   const mountRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const cardTitleRef = useRef<HTMLDivElement>(null);
   const visRef = useRef(visible); visRef.current = visible;
+
+  // ゲームが変わった瞬間のタイトルカード「〇〇してみた」（キャラクターより手前に出すので DOM で）
+  useEffect(() => {
+    let raf = 0, shown = '';
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const el = cardRef.current, tl = cardTitleRef.current;
+      if (!el || !tl) return;
+      const t = getTime();
+      const cur = heavenGameAt(scheduleRef.current, t);
+      const since = t - cur.t0;
+      const inBurn = burnsRef.current.some((b) => t > b.t0 - 0.3 && t < b.t1);
+      if (!visRef.current || inBurn || since < -0.05 || since > 1.5) { el.style.opacity = '0'; return; }
+      const title = HEAVEN_GAMES[cur.game].title;
+      if (shown !== title) { tl.textContent = title; shown = title; }
+      const inK = clamp01(since / 0.18), outK = clamp01((1.5 - since) / 0.3);
+      el.style.opacity = String(Math.min(inK, outK));
+      el.style.transform = `translate(-50%, -50%) rotate(-3deg) scale(${0.7 + 0.3 * ELE.out(inK)})`;
+    };
+    loop();
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -141,34 +237,47 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, visible, he
       renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
       kia = makeRig(undefined, 1, 'kia');
       shia = makeRig(undefined, 1, 'shia');
-    } catch { return; }     // 3D が使えないときは、舞台（2D）と輪だけで遊べる
+    } catch { return; }     // 3D が使えないときは、舞台（2D）と下の「な」だけで遊べる
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     renderer.setPixelRatio(pixelRatioCap(1.5));
     renderer.setClearColor(0x000000, 0);
     renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;';
     mount.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    // 正射影：ピクセルと同じ単位にして、Track の 2D と位置をそろえる（y は上が＋）
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -5000, 5000);
     const holders = [kia, shia].map((r) => { const h = new THREE.Group(); h.add(r.g); scene.add(h); return h; });
-    const heights = [kia, shia].map((r) => { r.g.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(r.g); return b.max.y - b.min.y; });
-    let W = 0, H = 0;
+    shia.g.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(shia.g);
+    const modelH = box.max.y - box.min.y;
+    // 投げるもの：ゲームごとに 8 個ずつ用意して使い回す
+    const pools: Record<string, THREE.Object3D[]> = {};
+    const held: Partial<Record<HeavenGame, THREE.Object3D>> = {};
+    const games = Object.keys(MAKE) as HeavenGame[];
+    for (const g of games) {
+      pools[g] = Array.from({ length: 8 }, () => { const o = MAKE[g](); o.visible = false; scene.add(o); return o; });
+      const hm = HELD[g]; if (hm) { const o = hm(); o.visible = false; scene.add(o); held[g] = o; }
+    }
+    const board = new THREE.Mesh(new THREE.BoxGeometry(200, 26, 120), M(0xe3a868)); board.visible = false; scene.add(board);
+
+    let W = 0, H = 0, s = 1;
+    const L = { kx: 0, sx: 0, fy: 0, ch: 1 };
     const resize = () => {
       W = mount.clientWidth || 360; H = mount.clientHeight || height;
       renderer.setSize(W, H, false);
-      camera.left = -W / 2; camera.right = W / 2; camera.top = H / 2; camera.bottom = -H / 2; camera.updateProjectionMatrix();
-      const L = heavenLayout(W, H);
-      [L.kiaX, L.shiaX].forEach((x, i) => {
-        const s = L.charH / heights[i];
-        holders[i].scale.setScalar(s);
-        holders[i].position.set(x - W / 2, H / 2 - L.floorY, 0);
-        holders[i].rotation.y = D2(i === 0 ? 18 : -18);     // おたがい少し向き合う
-      });
+      const lay = heavenLayout(W, H);
+      s = lay.charH / modelH;                      // 1 ピクセル＝ 1/s（モデルの単位）
+      camera.left = -W / 2 / s; camera.right = W / 2 / s; camera.top = H / 2 / s; camera.bottom = -H / 2 / s; camera.updateProjectionMatrix();
+      L.kx = (lay.kiaX - W / 2) / s; L.sx = (lay.shiaX - W / 2) / s; L.fy = (H / 2 - lay.floorY) / s; L.ch = modelH;
+      holders[0].position.set(L.kx, L.fy, 0); holders[1].position.set(L.sx, L.fy, 0);
+      holders[0].rotation.y = D2(38); holders[1].rotation.y = D2(-38);       // 向き合う
     };
     resize();
     const ro = new ResizeObserver(resize); ro.observe(mount);
 
-    // しあしあ：打った音符・のがした音符を覚えておく（打った瞬間にポーズ）
+    const srcOf = (g: HeavenGame, out: THREE.Vector3) => { const d = HEAVEN_GAMES[g]; return out.set(L.kx + d.src[0] * L.ch, L.fy + d.src[1] * L.ch, 60); };
+    const dstOf = (g: HeavenGame, out: THREE.Vector3) => { const d = HEAVEN_GAMES[g]; return out.set(L.sx + d.target[0] * L.ch, L.fy + d.target[1] * L.ch, 60); };
+    const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), hp = new THREE.Vector3();
+
     let last = performance.now(), raf = 0;
     const t0 = performance.now();
     const loop = () => {
@@ -178,25 +287,90 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, visible, he
       const dt = Math.min(0.05, (nowP - last) / 1000); last = nowP;
       const time = (nowP - t0) / 1000;
       const t = getTime();
-      const notes = notesRef.current;
+      const segs = scheduleRef.current;
+      const cur = heavenGameAt(segs, t).game;
       const lead = BEAT * HEAVEN_LEAD_BEATS;
       const beat = (t - 0.36) / BEAT;
+      const notes = notesRef.current;
       const inBurn = burnsRef.current.some((b) => t >= b.t0 - 0.15 && t <= b.t1);
-      // きあきあ（お手本）：音符の 1 拍前に決める
-      let kPrev: Act | null = null, kNext: { key: MoveKey; land: number } | null = null;
-      // しあしあ（あなた）：打った瞬間（at）に決める。のがしたら「あっ」
-      let sPrev: Act | null = null, sNext: { key: MoveKey; land: number } | null = null;
+
+      // 小物をいったん全部しまう
+      for (const g of games) { for (const o of pools[g]) o.visible = false; const h = held[g]; if (h) h.visible = false; }
+      board.visible = cur === 'cook';
+      if (board.visible) { dstOf('cook', vA); board.position.set(vA.x, L.fy + 0.26 * L.ch, 40); }
+
+      // ポーズ：ふだんは縦ノリ（＋持っているときの姿勢）
+      const mo = MOTION[cur];
+      let kp = groove(beat), sp = groove(beat);
+      if (mo.hold) sp = overlayW(sp, mo.hold, 1);
       for (const n of notes) {
-        const kl = n.t - lead;
-        if (kl <= t) kPrev = { key: moveOf(n), land: kl, until: n.kind === 'hold' && n.t2 ? n.t2 - lead : kl };
-        else if (!kNext) kNext = { key: moveOf(n), land: kl };
-        if (n.res === 'miss') { if (n.t + 0.1 <= t) sPrev = { key: 'whoops', land: n.t + 0.1, until: n.t + 0.4 }; }
-        else if (n.res) { const at = n.at ?? n.t; if (at <= t) sPrev = { key: moveOf(n), land: at, until: n.kind === 'hold' && n.hold === 'on' ? t + 0.05 : n.kind === 'hold' && n.t2 ? n.t2 : at }; }
-        else if (!sNext && n.t > t - 0.12) sNext = { key: moveOf(n), land: n.t };
-        if (n.t - lead > t + 2 && sNext) break;
+        if (n.t < t - 1.2) continue;
+        if (n.t - lead > t + 0.4) break;
+        const g = heavenGameAt(segs, n.t).game;
+        const def = HEAVEN_GAMES[g], mg = MOTION[g];
+        const launch = n.t - lead;
+        // きあきあ：投げる（ゲームによっては蹴る・すべらせる）
+        {
+          const kWind = mg.kia?.wind ?? THROW_WIND, kAct = mg.kia?.act ?? THROW;
+          kp = overlayW(kp, kWind, windW(t, launch, 0.24));
+          kp = overlayW(kp, g === 'dance' ? DANCE[(barPos(n.i) >> 1) % 4] : kAct, hitW(t, launch, 0.06, 0.3));
+        }
+        // しあしあ：ため → 届いた（打った）瞬間に決める。のがしたら「あっ」
+        {
+          if (!n.res) sp = overlayW(sp, mg.wind ?? P({ thighL: -12, thighR: -12, kneeL: 24, kneeR: 24, spine: [6, 0, 0] }), windW(t, n.t, 0.22) * 0.9);
+          if (n.res === 'miss') sp = overlayW(sp, WHOOPS, hitW(t, n.t + 0.1, 0.25, 0.3));
+          else if (n.res) {
+            const at = n.at ?? n.t;
+            const act = g === 'dance' ? DANCE[(barPos(n.i) >> 1) % 4] : mg.act;
+            const holdOn = n.kind === 'hold' && n.hold === 'on';
+            sp = overlayW(sp, act, holdOn ? 1 : hitW(t, at, n.kind === 'hold' && n.t2 ? Math.max(0.12, n.t2 - at) : 0.12, 0.32));
+          }
+        }
+        // 投げたもの
+        const pool = pools[g], o = pool[((n.i % pool.length) + pool.length) % pool.length];
+        const big = n.power === 'big' ? 1.6 : n.power === 'small' ? 0.65 : 1;
+        if (t < launch) continue;
+        srcOf(g, vA); dstOf(g, vB);
+        const u = (t - launch) / lead;
+        o.visible = true; o.scale.setScalar(big);
+        o.rotation.set(0, 0, 0);
+        if (u < 1) {
+          arcPos(vA, vB, u, def.arc * L.ch, o.position);
+          if (g === 'lift' || g === 'gamer') o.rotation.set(t * 5, t * 4, 0);
+          if (g === 'selfie' || g === 'dance') o.rotation.y = t * 6;
+          if (g === 'fish') o.rotation.z = -0.6 + 1.2 * u;
+          if (g === 'unbox' || g === 'workout' || g === 'cook') o.rotation.z = (g === 'cook' ? Math.PI / 2 : 0) + Math.sin(u * Math.PI) * 0.3;
+          if (g === 'cook') { (o.getObjectByName('a') as THREE.Object3D).position.set(0, 0, 0); (o.getObjectByName('b') as THREE.Object3D).position.set(0, -50, 0); }
+          if (g === 'unbox') { const lid = o.getObjectByName('lid')!; lid.position.set(0, 90, 0); lid.rotation.set(0, 0, 0); o.getObjectByName('star')!.visible = false; }
+          continue;
+        }
+        // 届いたあと
+        if (n.res && n.res !== 'miss') {
+          const a = t - (n.at ?? n.t);
+          const holdOn = n.kind === 'hold' && n.hold === 'on';
+          if (holdOn) { o.position.copy(vB); continue; }
+          if (a > 0.8) { o.visible = false; continue; }
+          o.position.copy(vB);
+          switch (g) {
+            case 'lift': o.position.set(vB.x + 120 * a, vB.y + 900 * a - 1500 * a * a, vB.z); o.rotation.set(t * 9, t * 7, 0); break;
+            case 'selfie': case 'dance': o.scale.setScalar(big * (1 + 3 * a)); if (a > 0.3) o.visible = false; break;
+            case 'fish': o.position.set(vB.x + 500 * a, vB.y + 1100 * a - 1500 * a * a, vB.z); o.rotation.z = -0.5 + 6 * a; break;
+            case 'donut': o.scale.setScalar(big * Math.max(0, 1 - a / 0.3)); o.rotation.z = a * 4; break;
+            case 'cook': { o.rotation.z = Math.PI / 2; o.getObjectByName('a')!.position.set(0, 60 * a / 0.3, 0); o.getObjectByName('b')!.position.set(0, -50 - 60 * a / 0.3, 0); if (a > 0.6) o.visible = false; break; }
+            case 'gamer': o.scale.set(big * (1 + 3 * a), big * Math.max(0.05, 1 - 3 * a), big * (1 + 3 * a)); if (a > 0.3) o.visible = false; break;
+            case 'sing': o.position.y = vB.y + 500 * a; o.position.x = vB.x - 120 * a; o.scale.setScalar(big * Math.max(0, 1 - a / 0.8)); break;
+            case 'unbox': { const lid = o.getObjectByName('lid')!; lid.position.set(-60 * a, 90 + 700 * a - 900 * a * a, 0); lid.rotation.z = 3 * a; const st = o.getObjectByName('star')!; st.visible = true; st.position.y = 40 + 380 * Math.min(1, a / 0.4); st.rotation.y = t * 8; break; }
+            case 'workout': o.position.y = vB.y + 420 * ELE.out(Math.min(1, a / 0.2)); if (a > 0.55) o.scale.setScalar(big * Math.max(0, 1 - (a - 0.55) / 0.25)); break;
+          }
+        } else {
+          // のがした：しあしあに当たって落ちる
+          const a = t - n.t;
+          if (a > 0.9) { o.visible = false; continue; }
+          o.position.set(vB.x + 160 * a, Math.max(L.fy + 20, vB.y + 200 * a - 1800 * a * a), vB.z);
+          o.rotation.z = 4 * a;
+        }
       }
-      let kp = poseAt(t, kPrev, kNext, beat), sp = poseAt(t, sPrev, sNext, beat);
-      if (inBurn) { kp = mixPose(kp, MOVES.shh, 0.9); sp = mixPose(sp, MOVES.shh, 0.9); }
+      if (inBurn) { kp = overlayW(kp, SHH, 0.9); sp = overlayW(sp, SHH, 0.9); }
       [kia, shia].forEach((r, i) => {
         const p = i === 0 ? kp : sp;
         applyPose(r, p, time + i * 1.3);
@@ -204,6 +378,17 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, visible, he
         r.g.updateMatrixWorld(true);
         r.g.userData.cloth?.(dt);
       });
+      // 持っている小物を手もとへ
+      const hd = held[cur];
+      if (hd && shia.J.handR && !inBurn) {
+        shia.J.handR.getWorldPosition(hp);
+        hd.visible = true;
+        if (cur === 'gamer' && shia.J.handL) { shia.J.handL.getWorldPosition(vC); hd.position.copy(hp).lerp(vC, 0.5); hd.rotation.set(-0.4, 0, 0); }
+        else if (cur === 'selfie') { hd.position.set(hp.x, hp.y + 40, hp.z + 20); hd.rotation.set(0, 0.6, 0.1); }
+        else if (cur === 'fish') { hd.position.copy(hp); hd.rotation.set(0, 0, 0); }
+        else if (cur === 'cook') { hd.position.set(hp.x, hp.y - 10, hp.z + 10); hd.rotation.set(0, 0, 0.2); }
+        else if (cur === 'sing') { hd.position.set(hp.x, hp.y + 20, hp.z + 10); hd.rotation.set(0, 0, 0.5); }
+      }
       renderer.render(scene, camera);
     };
     loop();
@@ -214,14 +399,24 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, visible, he
       try { renderer.forceContextLoss(); } catch { /* noop */ }
       scene.traverse((o: any) => {
         if (o.geometry) o.geometry.dispose?.();
-        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: any) => m.dispose?.());
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: any) => { m.map?.dispose?.(); m.dispose?.(); });
       });
       if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={mountRef} className="relative w-full pointer-events-none transition-opacity duration-300" style={{ height, opacity: visible ? 1 : 0 }} aria-hidden="true" />;
+  return (
+    <div className="relative w-full pointer-events-none transition-opacity duration-300" style={{ height, opacity: visible ? 1 : 0 }} aria-hidden="true">
+      <div ref={mountRef} className="absolute inset-0" />
+      <div ref={cardRef} className="absolute left-1/2 top-[30%] opacity-0" style={{ transform: 'translate(-50%, -50%)' }}>
+        <div className="relative bg-white rounded-2xl border-4 border-red-500 px-5 pt-3 pb-2 shadow-[0_6px_0_rgba(0,0,0,0.15)]">
+          <div className="absolute -top-3 left-3 bg-red-500 text-white text-[11px] font-black rounded-full px-2.5 py-0.5">新作動画</div>
+          <div ref={cardTitleRef} className="font-black text-slate-900 text-xl sm:text-2xl whitespace-nowrap" />
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default HeavenStage;

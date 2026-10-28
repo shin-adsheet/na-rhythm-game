@@ -87,7 +87,7 @@ const MESSAGES = [
   '回覧板に載るかも',
 ];
 const LUCKY_DIFF = ['かんたん', 'ふつう', 'むずかしい'];
-const LUCKY_SCREEN = ['落ちもの', '和太鼓', 'リング', 'ハイウェイ', 'パネル', 'ステップ', 'レール', 'ポップ', 'お手本ダンス'];
+const LUCKY_SCREEN = ['落ちもの', '和太鼓', 'リング', 'ハイウェイ', 'パネル', 'ステップ', 'レール', 'ポップ', 'してみた動画'];
 const LUCKY_KEY = ['スペース', 'F', 'J', 'Enter', '大声', 'ささやき声'];
 
 export function todaysFortune(date = new Date()) {

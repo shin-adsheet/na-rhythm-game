@@ -6,6 +6,7 @@
  */
 import { ChartNote, BurnSection, WIN_PERFECT, WIN_GREAT, WIN_GOOD } from './chart';
 import type { Judge } from './economy';
+import type { BurnPlan, BurnCue } from './burnChallenge';
 
 export type NoteState = ChartNote & {
   res: Judge | 'miss' | null; at?: number;
@@ -14,17 +15,23 @@ export type NoteState = ChartNote & {
   /** 強弱：合っていたか（判定前は undefined） */
   powerOk?: boolean;
 };
-export type BurnState = BurnSection & { started: boolean; ended: boolean; fueled: boolean };
+export type BurnState = BurnSection & { started: boolean; ended: boolean; fueled: boolean; plan?: BurnPlan };
 
 export type InputResult =
   | { type: 'hit'; note: NoteState; judge: Judge; dt: number }
   | { type: 'extra' }
-  | { type: 'fuel'; burn: BurnState; first: boolean };
+  | { type: 'fuel'; burn: BurnState; first: boolean }
+  // 炎上チャレンジ（キーボード・タップ）
+  | { type: 'burnHit'; burn: BurnState; cue: BurnCue; judge: Judge }
+  | { type: 'burnMash'; burn: BurnState }
+  | { type: 'burnHold'; burn: BurnState }
+  | { type: 'burnJump'; burn: BurnState };
 
 export type TickEvent =
   | { type: 'miss'; note: NoteState }
   | { type: 'burnStart'; burn: BurnState }
-  | { type: 'burnEnd'; burn: BurnState };
+  | { type: 'burnEnd'; burn: BurnState }
+  | { type: 'burnMiss'; burn: BurnState; cue: BurnCue };
 
 export class JudgeEngine {
   notes: NoteState[];
@@ -55,9 +62,29 @@ export class JudgeEngine {
       return { type: 'hit', note: best, judge: j, dt: t - best.t };
     }
     const b = this.burns.find((x) => t >= x.t0 && t <= x.t1);
-    if (b) { const first = !b.fueled; b.fueled = true; return { type: 'fuel', burn: b, first }; }
+    if (b) {
+      const plan = b.plan;
+      if (plan && plan.pattern !== 'silent') {
+        if (plan.pattern === 'mash') { plan.mash++; return { type: 'burnMash', burn: b }; }
+        if (plan.pattern === 'hold') return { type: 'burnHold', burn: b };
+        // 合図：いちばん近い、まだの合図
+        let cue: BurnCue | null = null, cd = Infinity;
+        for (const c of plan.cues) { if (c.res) continue; const d = Math.abs(c.t - t); if (d <= good && d < cd) { cue = c; cd = d; } }
+        if (cue && cue.kind === 'press') {
+          cue.res = 'hit';
+          const j: Judge = cd <= WIN_PERFECT * this.winMul ? 'perfect' : cd <= WIN_GREAT * this.winMul ? 'great' : 'good';
+          return { type: 'burnHit', burn: b, cue, judge: j };
+        }
+        if (cue) cue.res = 'fuel';                       // 押してはいけない合図・お手本を押した
+        else if (plan.pattern === 'dodge') return { type: 'burnJump', burn: b };   // よけるだけなので、空振りはセーフ
+      }
+      const first = !b.fueled; b.fueled = true; return { type: 'fuel', burn: b, first };
+    }
     return { type: 'extra' };
   }
+
+  /** がまん：はなしたら火に油（Game から呼ぶ） */
+  fuelNow(b: BurnState): InputResult { const first = !b.fueled; b.fueled = true; return { type: 'fuel', burn: b, first }; }
 
   tick(t: number): TickEvent[] {
     const out: TickEvent[] = [];
@@ -69,6 +96,7 @@ export class JudgeEngine {
       break;
     }
     for (const b of this.burns) {
+      if (b.plan) for (const c of b.plan.cues) if (!c.res && c.kind === 'press' && t > c.t + good) { c.res = 'miss'; out.push({ type: 'burnMiss', burn: b, cue: c }); }
       if (!b.started && t >= b.t0) { b.started = true; out.push({ type: 'burnStart', burn: b }); }
       if (b.started && !b.ended && t > b.t1) { b.ended = true; out.push({ type: 'burnEnd', burn: b }); }
     }

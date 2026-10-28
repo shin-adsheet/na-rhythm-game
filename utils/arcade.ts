@@ -2,7 +2,7 @@
  * 画面チェンジ：プレイ中に譜面の見た目が、いろいろなゲームセンターの音ゲー風に切り替わる（飽き防止）。
  * 判定は見た目と関係なく「曲の時刻」で行うので、どの画面でも遊び方は同じ（丸が判定に重なった瞬間に「な」）。
  */
-import { timeOf, barPos, barNo, SWITCH_AT, SWITCH_REST } from './chart';
+import { timeOf, barPos, barNo, SWITCH_AT, SWITCH_REST, EIGHTH } from './chart';
 
 export type TrackStyle = 'lane' | 'fall' | 'drum' | 'ring' | 'highway' | 'panel' | 'step' | 'rail' | 'pop' | 'heaven';
 
@@ -16,12 +16,12 @@ export const STYLE_INFO: Record<TrackStyle, { label: string; hint: string }> = {
   step: { label: 'ステップ', hint: '下から上がる「な」が、上の矢印の枠に重なったら' },
   rail: { label: 'レール', hint: 'レールを走る「な」が、左の丸に重なったら' },
   pop: { label: 'ポップ', hint: '落ちてくる「な」が、下の丸いボタンに重なったら' },
-  heaven: { label: 'お手本ダンス', hint: 'きあきあのお手本の 1 拍あとに、しあしあが同じポーズを決める瞬間' },
+  heaven: { label: 'してみた動画', hint: '投げたものが しあしあに届く瞬間。下の「な」が ピンクの輪に重なったら' },
 };
 
 export const ARCADE_STYLES: TrackStyle[] = ['fall', 'drum', 'ring', 'highway', 'panel', 'step', 'rail', 'pop', 'heaven'];
 
-export interface StyleSeg { t: number; style: TrackStyle }
+export interface StyleSeg { t: number; style: TrackStyle; games?: HeavenGame[] }
 
 
 /** 1プレイ分の画面チェンジの予定。最初は「いつもの」。順番は毎回シャッフル */
@@ -30,13 +30,16 @@ export function buildStyleSchedule(endT: number, enabled: boolean): StyleSeg[] {
   if (!enabled) return segs;
   const order = [...ARCADE_STYLES];
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
-  // 「お手本ダンス」（リズム天国風）は、30 秒モードでも見られるように前の方に入れる
+  // 「してみた動画」（リズム天国風）は、30 秒モードでも見られるように前の方に入れる
   const hv = order.indexOf('heaven'), to = Math.floor(Math.random() * 3);
   if (hv > to) { order.splice(hv, 1); order.splice(to, 0, 'heaven'); }
   SWITCH_AT.forEach((idx, k) => {
     // 休み（切り替え位置の前の 6 個）に入った所で切り替える。新しい画面の最初の音符は、奥から来るのが見える
     const t = timeOf(idx - SWITCH_REST) + 0.02;
-    if (t < endT - 1.5) segs.push({ t, style: order[k % order.length] });
+    if (t < endT - 1.5) {
+      const style = order[k % order.length];
+      segs.push(style === 'heaven' ? { t, style, games: shuffledGames() } : { t, style });
+    }
   });
   return segs;
 }
@@ -61,12 +64,52 @@ export function laneOf(i: number, lanes: number) {
 }
 
 /**
- * 「お手本ダンス」（リズム天国風）の配置。譜面の canvas（Track）と 3D の舞台（HeavenStage）で同じ数字を使う。
+ * 「してみた動画」（リズム天国風）の配置。譜面の canvas（Track）と 3D の舞台（HeavenStage）で同じ数字を使う。
  * 左にお手本のきあきあ、右にあなた（しあしあ）。きあきあが 1 拍前にポーズを決め、しあしあは「な」の瞬間に同じポーズ。
  */
 export const HEAVEN_LEAD_BEATS = 1;
 export function heavenLayout(W: number, H: number) {
   const SW = Math.min(W, 560);
-  const charH = Math.min(H * 0.74, SW * 0.62);
-  return { kiaX: W / 2 - SW * 0.24, shiaX: W / 2 + SW * 0.24, floorY: H * 0.9, charH };
+  const charH = Math.min(H * 0.6, SW * 0.56);
+  // 床の下に「な」が流れる帯（stripY）。きあきあ → しあしあの距離が 1 拍ぶん
+  return { kiaX: W / 2 - SW * 0.24, shiaX: W / 2 + SW * 0.24, floorY: H * 0.77, charH, stripY: H * 0.895, SW, x0: (W - SW) / 2 };
+}
+
+/**
+ * 「してみた動画」（リズム天国風）のミニゲーム。2 小節ごとに次のゲームへ切り替わる（リミックスのように）。
+ * どれも「きあきあが 1 拍前に投げる（送る）→ しあしあに届いた瞬間に『な』」で、遊び方は同じ。
+ */
+export type HeavenGame = 'lift' | 'selfie' | 'fish' | 'donut' | 'cook' | 'gamer' | 'sing' | 'unbox' | 'workout' | 'dance';
+/** src・target：きあきあ／しあしあの足もとからの位置（キャラの高さに対する割合。x は右が＋、y は上が＋）、arc：山なりの高さ */
+export const HEAVEN_GAMES: Record<HeavenGame, { title: string; ono: string; bg: [string, string]; floor: string; src: [number, number]; target: [number, number]; arc: number }> = {
+  lift: { title: 'リフティングしてみた', ono: 'ポン', bg: ['#fff1d6', '#ffd29a'], floor: '#9bd36a', src: [0.12, 0.16], target: [-0.1, 0.18], arc: 0.3 },
+  selfie: { title: '自撮りしてみた', ono: 'カシャ', bg: ['#fde7f3', '#f9c6e0'], floor: '#f4a6c9', src: [0.12, 0.55], target: [-0.04, 0.98], arc: 0.25 },
+  fish: { title: '釣りしてみた', ono: 'ザバッ', bg: ['#e0f4ff', '#b5e3ff'], floor: '#4fa3e0', src: [0.25, 0.02], target: [-0.3, 0.04], arc: 0.35 },
+  donut: { title: 'ドーナツ大食いしてみた', ono: 'パクッ', bg: ['#fff3e6', '#ffd9b8'], floor: '#e3a868', src: [0.12, 0.55], target: [-0.06, 0.72], arc: 0.25 },
+  cook: { title: '料理してみた', ono: 'トン', bg: ['#f3f8e8', '#dcefc1'], floor: '#c9a27a', src: [0.12, 0.55], target: [-0.22, 0.3], arc: 0.3 },
+  gamer: { title: 'ゲーム実況してみた', ono: 'ドカン', bg: ['#e8e6ff', '#c9c4ff'], floor: '#6d74e0', src: [0.16, 0.06], target: [-0.16, 0.42], arc: 0.35 },
+  sing: { title: '歌ってみた', ono: 'なー', bg: ['#f5e8ff', '#e1c4ff'], floor: '#ae65fd', src: [0.12, 0.62], target: [-0.12, 0.66], arc: 0.15 },
+  unbox: { title: '開封してみた', ono: 'パカッ', bg: ['#fff8dc', '#ffe9a6'], floor: '#f7c76b', src: [0.2, 0.06], target: [-0.24, 0.06], arc: 0.02 },
+  workout: { title: '筋トレしてみた', ono: 'フンッ', bg: ['#e8fff4', '#bff0d8'], floor: '#58c98e', src: [0.12, 0.55], target: [-0.06, 0.5], arc: 0.25 },
+  dance: { title: '踊ってみた', ono: 'キメ', bg: ['#fff0f0', '#ffc9c9'], floor: '#ff8a8a', src: [0.12, 0.6], target: [-0.02, 0.6], arc: 0.25 },
+};
+export const HEAVEN_GAME_IDS = Object.keys(HEAVEN_GAMES) as HeavenGame[];
+export const HEAVEN_GAME_BARS = 2;
+function shuffledGames(): HeavenGame[] {
+  const a = [...HEAVEN_GAME_IDS];
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+/** 時刻 t の「してみた動画」のゲームと、そのゲームが始まった時刻 */
+export function heavenGameAt(segs: StyleSeg[], t: number): { game: HeavenGame; t0: number } {
+  const k = segIndexAt(segs, t), sg = segs[k];
+  const games = sg.games && sg.games.length ? sg.games : HEAVEN_GAME_IDS;
+  // 小節の頭で切り替える（区間の最初の小節から 2 小節ずつ）
+  const G0 = timeOf(0), iAt = (x: number) => Math.floor((x - G0) / EIGHTH + 1e-6);
+  const b0 = sg.t < -1e8 ? 0 : barNo(iAt(sg.t) + 1), b = barNo(iAt(t));
+  const n = Math.max(0, Math.floor((b - b0) / HEAVEN_GAME_BARS));
+  const startBar = b0 + n * HEAVEN_GAME_BARS;
+  // その小節の頭の時刻
+  let i = iAt(t); while (barNo(i) > startBar) i -= 8; while (barNo(i) < startBar) i += 8; while (barPos(i) !== 0) i--;
+  return { game: games[n % games.length], t0: Math.max(sg.t, timeOf(i)) };
 }
