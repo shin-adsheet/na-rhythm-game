@@ -4,7 +4,7 @@
  */
 import { timeOf, barPos, barNo, SWITCH_AT, SWITCH_REST } from './chart';
 
-export type TrackStyle = 'lane' | 'fall' | 'drum' | 'ring' | 'highway' | 'panel' | 'step' | 'rail' | 'pop';
+export type TrackStyle = 'lane' | 'fall' | 'drum' | 'ring' | 'highway' | 'panel' | 'step' | 'rail' | 'pop' | 'heaven';
 
 export const STYLE_INFO: Record<TrackStyle, { label: string; hint: string }> = {
   lane: { label: 'いつもの', hint: '右から来る「な」が、左の「な！」に重なったら' },
@@ -16,9 +16,10 @@ export const STYLE_INFO: Record<TrackStyle, { label: string; hint: string }> = {
   step: { label: 'ステップ', hint: '下から上がる「な」が、上の矢印の枠に重なったら' },
   rail: { label: 'レール', hint: 'レールを走る「な」が、左の丸に重なったら' },
   pop: { label: 'ポップ', hint: '落ちてくる「な」が、下の丸いボタンに重なったら' },
+  heaven: { label: 'お手本ダンス', hint: 'きあきあのお手本の 1 拍あとに、しあしあが同じポーズを決める瞬間' },
 };
 
-export const ARCADE_STYLES: TrackStyle[] = ['fall', 'drum', 'ring', 'highway', 'panel', 'step', 'rail', 'pop'];
+export const ARCADE_STYLES: TrackStyle[] = ['fall', 'drum', 'ring', 'highway', 'panel', 'step', 'rail', 'pop', 'heaven'];
 
 export interface StyleSeg { t: number; style: TrackStyle }
 
@@ -29,6 +30,9 @@ export function buildStyleSchedule(endT: number, enabled: boolean): StyleSeg[] {
   if (!enabled) return segs;
   const order = [...ARCADE_STYLES];
   for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [order[i], order[j]] = [order[j], order[i]]; }
+  // 「お手本ダンス」（リズム天国風）は、30 秒モードでも見られるように前の方に入れる
+  const hv = order.indexOf('heaven'), to = Math.floor(Math.random() * 3);
+  if (hv > to) { order.splice(hv, 1); order.splice(to, 0, 'heaven'); }
   SWITCH_AT.forEach((idx, k) => {
     // 休み（切り替え位置の前の 6 個）に入った所で切り替える。新しい画面の最初の音符は、奥から来るのが見える
     const t = timeOf(idx - SWITCH_REST) + 0.02;
@@ -54,4 +58,15 @@ export function laneOf(i: number, lanes: number) {
   if (lanes === 8) return p;
   if (lanes === 4) return p >> 1;
   return Math.round((p * (lanes - 1)) / 7);
+}
+
+/**
+ * 「お手本ダンス」（リズム天国風）の配置。譜面の canvas（Track）と 3D の舞台（HeavenStage）で同じ数字を使う。
+ * 左にお手本のきあきあ、右にあなた（しあしあ）。きあきあが 1 拍前にポーズを決め、しあしあは「な」の瞬間に同じポーズ。
+ */
+export const HEAVEN_LEAD_BEATS = 1;
+export function heavenLayout(W: number, H: number) {
+  const SW = Math.min(W, 560);
+  const charH = Math.min(H * 0.74, SW * 0.62);
+  return { kiaX: W / 2 - SW * 0.24, shiaX: W / 2 + SW * 0.24, floorY: H * 0.9, charH };
 }

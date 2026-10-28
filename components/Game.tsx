@@ -22,6 +22,7 @@ import { NaBubbles, FortuneCard } from './TitleToys';
 import { sfxBoing } from '../utils/titleSfx';
 import { playSfx, playSfxAt, preloadSfx, installButtonSfx, cancelPendingSfx, SfxId, SfxOpt } from '../utils/sfx';
 import Track from './Track';
+import HeavenStage from './HeavenStage';
 import { perf, guessLite } from '../utils/perf';
 import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO } from '../utils/arcade';
 import EventCutIn, { CutInData } from './EventCutIn';
@@ -698,6 +699,8 @@ const Game: React.FC = () => {
     chartRef.current = ch;
     // 10 秒は入門なので画面チェンジなし
     scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false && mode !== '10s');
+    const forcedStyle = (window as any).__forceStyle as TrackStyle | undefined;      // テスト用：画面を固定
+    if (forcedStyle) scheduleRef.current = [{ t: -1e9, style: forcedStyle }];
     segDirtyRef.current = new Set(); lastSegRef.current = 0;
     activeHoldRef.current = null; holdGapRef.current = null; lastHitRef.current = null; keysDownRef.current.clear(); pointersDownRef.current.clear();
     dtsRef.current = [];
@@ -1385,6 +1388,12 @@ const Game: React.FC = () => {
         <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
           <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} action={actionWord} />
         </div>
+        {/* お手本ダンス（リズム天国風）：きあきあとしあしあの 3D を譜面の上に重ねる（予定に入っているときだけ用意） */}
+        {scheduleRef.current.some((sg) => sg.style === 'heaven') && (
+          <div className="absolute left-0 right-0 z-[21] pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
+            <HeavenStage getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} visible={trackStyle === 'heaven'} height={trackH} />
+          </div>
+        )}
         {/* 画面チェンジのお知らせ（譜面の下に出す。譜面は隠さない） */}
         {styleBanner && (
           <div key={styleBanner.id} className="absolute left-0 right-0 z-30 pointer-events-none flex justify-center px-3" style={{ top: `calc(54% + ${laneStyle ? 62 : trackH / 2 - 6}px)` }}>

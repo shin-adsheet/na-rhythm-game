@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { NoteState, BurnState } from '../utils/judge';
 import { BEAT } from '../utils/chart';
-import { StyleSeg, TrackStyle, laneOf, segIndexAt } from '../utils/arcade';
+import { StyleSeg, TrackStyle, laneOf, segIndexAt, heavenLayout, HEAVEN_LEAD_BEATS } from '../utils/arcade';
 import { pixelRatioCap } from '../utils/perf';
 
 /**
@@ -752,6 +752,7 @@ const GEOM: Record<TrackStyle, (d: D, i: number, u: number) => Geo> = {
     return { x: x0 + u * (W - x0 - 24), y: H / 2 + amp * Math.sin(u * Math.PI * 2.4 - t * 1.2) * Math.min(1, Math.max(0, u) * 2.2), size: 32 };
   },
   pop: ({ W, H }, i, u) => { const PW = Math.min(W * 0.94, 430), x0 = (W - PW) / 2, lw = PW / 9, by = H * 0.84; return { x: x0 + lw * (laneOf(i, 9) + 0.5), y: by - u * (by - 4), size: Math.min(lw * 1.05, 36) }; },
+  heaven: ({ W, H }) => { const L = heavenLayout(W, H); return { x: L.shiaX, y: L.floorY - L.charH * 0.55, size: 34 }; },
 };
 const APPROACH = 0.65;   // 輪が出始める（判定の何秒前から）
 const INTRO = 2.6;       // 切り替え直後の案内を出す秒数
@@ -824,9 +825,70 @@ function guides(style: TrackStyle, d: D, into: number, action: string) {
   }
 }
 
+/* ============================================================
+ * 10. お手本ダンス（リズム天国風）：音符は流れない。左のきあきあが 1 拍前にお手本のポーズ、
+ *     右のしあしあ（あなた）が「な」の瞬間に同じポーズ。キャラクターは 3D（HeavenStage）で、ここでは舞台だけ描く
+ * ============================================================ */
+function drawHeaven(d: D) {
+  const { c, W, H, t } = d;
+  const L = heavenLayout(W, H);
+  const SW = Math.min(W, 560), x0 = (W - SW) / 2;
+  // 舞台：やわらかい黄色の壁と床（すっきりしたベタ塗り）
+  c.save();
+  roundRect(c, x0 - 6, 0, SW + 12, H, 22); c.clip();
+  ga(d, 0.97);
+  const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#fff8dc'); g.addColorStop(1, '#ffe9a6');
+  c.fillStyle = g; c.fillRect(x0 - 6, 0, SW + 12, H);
+  // 拍でふくらむ大きな丸（背景の飾り）
+  const bp = Math.pow(1 - d.beatPh, 3);
+  c.fillStyle = 'rgba(255,255,255,0.55)';
+  for (const [cx, cy, r] of [[x0 + SW * 0.16, H * 0.2, SW * 0.13], [x0 + SW * 0.86, H * 0.28, SW * 0.09], [x0 + SW * 0.5, H * 0.12, SW * 0.06]] as [number, number, number][]) {
+    c.beginPath(); c.arc(cx, cy, r * (1 + 0.08 * bp), 0, Math.PI * 2); c.fill();
+  }
+  // 床
+  ga(d, 1);
+  c.fillStyle = '#f7c76b'; c.fillRect(x0 - 6, L.floorY - 2, SW + 12, H);
+  c.fillStyle = '#e9a93f'; c.fillRect(x0 - 6, L.floorY - 2, SW + 12, 4);
+  c.restore();
+  // スポットライト（足もとの白い楕円）
+  ga(d, 0.6);
+  c.fillStyle = '#fff';
+  for (const x of [L.kiaX, L.shiaX]) { c.beginPath(); c.ellipse(x, L.floorY + 2, L.charH * 0.3, L.charH * 0.06, 0, 0, Math.PI * 2); c.fill(); }
+  // 名札
+  ga(d, 1);
+  const tagY = Math.min(H - 10, L.floorY + Math.max(16, (H - L.floorY) * 0.55));
+  text(d, 'お手本', L.kiaX, tagY, 12, '#fff', '#f59e0b');
+  text(d, 'あなた', L.shiaX, tagY, 12, '#fff', '#a855f7');
+  // 炎上：上に赤い帯（まもなく → 黙れ！）
+  eachBurn(d, 1.2, (b, u0, _u1, active) => {
+    if (!active && u0 > 0.85) return;
+    const bw = Math.min(SW * 0.8, 320);
+    ga(d, active ? 1 : 0.7);
+    c.fillStyle = burnFill(d, b, 6, 40); roundRect(c, W / 2 - bw / 2, 6, bw, 34, 17); c.fill();
+    text(d, active ? burnLabel(b) : '炎上まもなく', W / 2, 24, 16, '#fff', '#7f1d1d');
+  });
+  // お手本：きあきあがポーズを決めた瞬間、頭の上に小さく「な」
+  const lead = BEAT * HEAVEN_LEAD_BEATS;
+  for (const n of d.notes) {
+    const age = t - (n.t - lead);
+    if (age < 0) break;
+    if (age > 0.4) continue;
+    ga(d, 1 - age / 0.4);
+    text(d, naChar(d), L.kiaX, L.floorY - L.charH * 1.05 - age * 40, 20, '#fff', '#f59e0b');
+  }
+  // あなた：打ったら「な」がはじける。のがしたら「あっ…」
+  eachHit(d, (n, age) => naBurst(d, L.shiaX, L.floorY - L.charH * 0.55, 46, age));
+  for (const n of d.notes) {
+    if (n.t > t) break;
+    if (n.res !== 'miss' || t - n.t > 0.7) continue;
+    ga(d, 1 - (t - n.t) / 0.7);
+    text(d, 'あっ…', L.shiaX + L.charH * 0.32, L.floorY - L.charH * 1.0 - (t - n.t) * 20, 16, '#fff', '#64748b');
+  }
+}
+
 const STYLES: Record<TrackStyle, (d: D) => void> = {
   lane: drawLane, fall: drawFall, drum: drawDrum, ring: drawRing, highway: drawHighway,
-  panel: drawPanel, step: drawStep, rail: drawRail, pop: drawPop,
+  panel: drawPanel, step: drawStep, rail: drawRail, pop: drawPop, heaven: drawHeaven,
 };
 
 export default Track;
