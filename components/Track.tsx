@@ -765,6 +765,7 @@ const GEOM: Record<TrackStyle, (d: D, i: number, u: number) => Geo> = {
 const APPROACH = 0.65;   // 輪が出始める（判定の何秒前から）
 const INTRO = 2.6;       // 切り替え直後の案内を出す秒数
 function guides(style: TrackStyle, d: D, into: number, action: string) {
+  if (style === 'heaven') return;          // してみた動画は音符を出さない（お手本を見てまねする）
   const { c, t, notes } = d;
   const g = GEOM[style];
   // 次の「な」（まだ打っていないもの）
@@ -773,7 +774,7 @@ function guides(style: TrackStyle, d: D, into: number, action: string) {
   if (next && next.t - t < APPROACH) {
     const left = Math.max(0, next.t - t) / APPROACH;          // 1 → 0
     const p = g(d, next.i, 0);
-    const r = p.size * (0.62 + (style === 'heaven' ? 0.9 : 1.9) * left);
+    const r = p.size * (0.62 + 1.9 * left);
     ga(d, 0.35 + 0.6 * (1 - left));
     c.lineWidth = 3 + 3 * (1 - left);
     c.strokeStyle = 'rgba(15,23,42,0.5)';
@@ -946,56 +947,58 @@ function drawHeaven(d: D) {
   c.fillStyle = 'rgba(255,255,255,0.85)'; roundRect(c, x0 + 66, 8, tw, 20, 10); c.fill();
   text(d, def.title, x0 + 66 + tw / 2, 18.5, 13, '#334155');
 
-  // 床の下の帯：「な」が左から流れて、しあしあの真下の印で押す
-  const bandH = Math.max(26, Math.min(44, (H - L.floorY) * 0.78));
-  const by = L.stripY;
-  ga(d, 0.9);
-  c.fillStyle = 'rgba(15,23,42,0.55)'; roundRect(c, x0 + 6, by - bandH / 2, SW - 12, bandH, bandH / 2); c.fill();
-  // 拍の目盛り（1 拍＝きあきあ → しあしあの距離）
-  ga(d, 0.5); c.fillStyle = '#fff';
-  for (const bt of beatsInView(d, LEAD_ALL + 0.4)) { const x = L.shiaX - ((bt - t) / BEAT) * span; c.fillRect(x - 1, by - bandH * 0.32, 2, bandH * 0.64); }
-  for (let bt = Math.ceil((t - 0.36) / BEAT - 1) * BEAT + 0.36; bt < t; bt += BEAT) { const x = L.shiaX - ((bt - t) / BEAT) * span; c.fillRect(x - 1, by - bandH * 0.32, 2, bandH * 0.64); }
-  // きあきあの真下：「投げる」の印、しあしあの真下：押す印
-  ga(d, 0.85); c.strokeStyle = '#fde68a'; c.lineWidth = 2; c.setLineDash([4, 4]);
-  c.beginPath(); c.moveTo(L.kiaX, by - bandH / 2 + 2); c.lineTo(L.kiaX, by + bandH / 2 - 2); c.stroke(); c.setLineDash([]);
-  const mr = bandH * 0.42 * (1 + 0.12 * bp);
-  ga(d, 1); c.lineWidth = 4; c.strokeStyle = '#fff';
-  c.beginPath(); c.arc(L.shiaX, by, mr, 0, Math.PI * 2); c.stroke();
-  c.lineWidth = 2; c.strokeStyle = '#f472b6'; c.beginPath(); c.arc(L.shiaX, by, mr + 4, 0, Math.PI * 2); c.stroke();
-  // 帯の中の「な」（帯からはみ出さないように切る）
-  c.save();
-  roundRect(c, x0 + 6, by - bandH / 2 - 30, SW - 12, bandH + 60, bandH / 2); c.clip();
-  eachNote(d, LEAD_ALL, (n, u, a, missed) => {
-    const p = GEOM.heaven(d, n.i, u);
-    if (p.x < x0 - 20) return;
-    naNote(d, p.x, p.y, p.size, { strong: n.strong, missed, alpha: a, n });
-  });
-  c.restore();
+  // 音符は出さない。炎上のときだけ、床の下に帯を出して炎上の合図を流す
+  const burnNear = d.burns.some((b) => t > b.t0 - LEAD_ALL - 0.3 && t < b.t1 + 0.4);
+  if (burnNear) {
+    const bandH = Math.max(26, Math.min(44, (H - L.floorY) * 0.78));
+    ga(d, 0.9);
+    c.fillStyle = 'rgba(127,29,29,0.6)'; roundRect(c, x0 + 6, L.stripY - bandH / 2, SW - 12, bandH, bandH / 2); c.fill();
+    ga(d, 1); c.lineWidth = 3; c.strokeStyle = '#fff';
+    c.beginPath(); c.arc(L.shiaX, L.stripY, bandH * 0.42, 0, Math.PI * 2); c.stroke();
+  }
   c.restore();
 
-  // 投げたものが届く所の印（次の「な」が近づくと、輪が縮んで重なる）
-  const nextN = d.notes.find((n) => !n.res && n.t > t - 0.05);
-  if (nextN && nextN.t - t < BEAT * HEAVEN_LEAD_BEATS + 0.05 && !hiddenByBurn(d, nextN.t)) {
-    const gd = HEAVEN_GAMES[heavenGameAt(d.segs, nextN.t).game];
-    const tx = L.shiaX + gd.target[0] * L.charH, ty = L.floorY - gd.target[1] * L.charH;
-    const left = Math.max(0, nextN.t - t) / (BEAT * HEAVEN_LEAD_BEATS);
-    const r = L.charH * 0.09 * (1 + 2.2 * left);
-    ga(d, 0.3 + 0.6 * (1 - left)); c.lineWidth = 3; c.strokeStyle = '#fff';
-    c.save(); c.setLineDash([6, 5]); c.beginPath(); c.arc(tx, ty, r, 0, Math.PI * 2); c.stroke(); c.restore();
+  // 番の案内：きあきあの番（お手本）→ あなたの番（まね）。2 小節のゲームの 1 小節目と 2 小節目
+  const BARs = BEAT * 4;
+  const inG = t - cur.bar0;
+  const myTurn = inG >= BARs;
+  const hasDemo = (d.segs[segIndexAt(d.segs, t)].demos ?? []).some((x) => x.t >= cur.bar0 - 0.02 && x.t < cur.bar0 + BARs);
+  if (!burnNear && inG >= 0 && inG < BARs * 2 && hasDemo) {
+    const tagY = Math.max(40, L.floorY - L.charH * 1.08);
+    const pulseK = 1 + 0.08 * bp;
+    for (const [who, x, on, label, col] of [[0, L.kiaX, !myTurn, 'お手本', '#f59e0b'], [1, L.shiaX, myTurn, 'まねして！', '#db2777']] as [number, number, boolean, string, string][]) {
+      ga(d, on ? 1 : 0.35);
+      c.save(); c.translate(x, tagY); if (on) c.scale(pulseK, pulseK);
+      c.font = `900 13px ${FONT}`;
+      const w = c.measureText(label).width + 18;
+      c.fillStyle = on ? col : '#94a3b8'; roundRect(c, -w / 2, -12, w, 24, 12); c.fill();
+      c.restore();
+      text(d, label, x, tagY + 0.5, 13, '#fff');
+      void who;
+    }
+    // 何拍目か（1 小節 4 つの点。いまの拍が光る）
+    const bi = Math.floor(((inG % BARs) / BEAT) + 1e-6);
+    const cxp = myTurn ? L.shiaX : L.kiaX;
+    for (let k = 0; k < 4; k++) {
+      ga(d, k === bi ? 1 : 0.4);
+      c.fillStyle = k === bi ? '#fff' : 'rgba(255,255,255,0.7)';
+      c.beginPath(); c.arc(cxp - 24 + k * 16, tagY + 22, k === bi ? 4.5 : 3, 0, Math.PI * 2); c.fill();
+    }
   }
 
-  // 打った瞬間：届いた所で「な」がはじけて、ゲームごとの効果音の文字（ポン！ カシャ！…）
-  eachHit(d, (n, age) => {
-    const gd = HEAVEN_GAMES[heavenGameAt(d.segs, n.t).game];
-    const tx = L.shiaX + gd.target[0] * L.charH, ty = L.floorY - gd.target[1] * L.charH;
-    naBurst(d, L.shiaX, L.stripY, 30, age);
-    if (age < 0) return;
-    if (gd === HEAVEN_GAMES.selfie && age < 0.14) { ga(d, 0.85 * (1 - age / 0.14)); c.fillStyle = '#fff'; c.fillRect(x0, 0, SW, H); }
-    const k = Math.min(1, age / 0.4);
-    ga(d, 1 - k * k);
-    const sz = Math.round(Math.min(34, L.charH * 0.16) * (1 + 0.35 * (1 - k)));
-    text(d, gd.ono + '！', tx + L.charH * 0.12, ty - L.charH * 0.12 - age * 60, sz, '#fff', '#db2777');
-  });
+  // 動いた瞬間：ゲームごとの効果音の文字（ポン！ カシャ！…）。お手本はきあきあの前、まねはしあしあの前
+  const onoAt = (game: string, side: number, age: number) => {
+    if (age < 0 || age > 0.45) return;
+    const gd = HEAVEN_GAMES[game as keyof typeof HEAVEN_GAMES];
+    const tx = side ? L.shiaX + gd.target[0] * L.charH : L.kiaX - gd.target[0] * L.charH, ty = L.floorY - gd.target[1] * L.charH;
+    if (game === 'selfie' && age < 0.12) { ga(d, 0.6 * (1 - age / 0.12)); c.fillStyle = '#fff'; c.fillRect(side ? W / 2 : x0, 0, SW / 2, H); }
+    const k = Math.min(1, age / 0.45);
+    ga(d, (1 - k * k) * (side ? 1 : 0.85));
+    const sz = Math.round(Math.min(32, L.charH * 0.15) * (1 + 0.35 * (1 - k)) * (side ? 1 : 0.85));
+    text(d, gd.ono + '！', tx + (side ? 1 : -1) * L.charH * 0.12, ty - L.charH * 0.12 - age * 60, sz, '#fff', side ? '#db2777' : '#d97706');
+  };
+  for (const sg of d.segs) if (sg.demos) for (const x of sg.demos) { if (x.t > t) break; if (t - x.t < 0.5) onoAt(x.game, 0, t - x.t); }
+  eachHit(d, (n, age) => onoAt(heavenGameAt(d.segs, n.t).game, 1, t - (n.at ?? n.t)));
   for (const n of d.notes) {
     if (n.t > t) break;
     if (n.res !== 'miss' || t - n.t > 0.7) continue;

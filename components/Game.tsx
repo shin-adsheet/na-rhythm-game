@@ -26,7 +26,7 @@ import HeavenStage from './HeavenStage';
 import BurnFx, { BurnFxData } from './BurnFx';
 import { pickBurnPatterns, planBurn, judgeBurn, BURN_INFO, BurnPattern } from '../utils/burnChallenge';
 import { perf, guessLite } from '../utils/perf';
-import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO } from '../utils/arcade';
+import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO, heavenCallResponse, heavenGameAt, HEAVEN_SFX } from '../utils/arcade';
 import EventCutIn, { CutInData } from './EventCutIn';
 import CommentStream, { CommentMood } from './CommentStream';
 import Calibration from './Calibration';
@@ -278,6 +278,7 @@ const Game: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   // 画面チェンジ（譜面の見た目が音ゲー風に切り替わる）
   const scheduleRef = useRef<StyleSeg[]>([{ t: -1e9, style: 'lane' }]);
+  const heavenCueRef = useRef<Set<number>>(new Set());     // してみた動画：予約したお手本の音
   const segDirtyRef = useRef<Set<number>>(new Set());
   const lastSegRef = useRef(0);
   const [trackStyle, setTrackStyle] = useState<TrackStyle>('lane');
@@ -549,6 +550,7 @@ const Game: React.FC = () => {
     return lv;
   };
 
+  const segsStyleAt = (tt: number) => { const sg = scheduleRef.current; return sg[segIndexAt(sg, tt)].style; };
   const handleInput = (src: 'mic' | 'tap') => {
     if (gameStateRef.current !== 'PLAYING' || finishingRef.current) return;
     const p = playerRef.current, e = engineRef.current;
@@ -598,6 +600,8 @@ const Game: React.FC = () => {
       flagsRef.current.lastHit = hitRef.current;
       showJudge(j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GREAT' : 'GOOD', j === 'perfect' ? 'text-amber-400' : j === 'great' ? 'text-pink-500' : 'text-sky-500');
       // タップ音（キーボード・タップのときだけ）とコンボの声
+      // してみた動画：打ったら、きあきあのお手本と同じ音（まねできた！が耳で分かる）
+      if (segsStyleAt(n.t) === 'heaven') { const sx = HEAVEN_SFX[heavenGameAt(scheduleRef.current, n.t).game]; se(sx.id, { rate: sx.rate, gain: 0.95 }, true); }
       if (src === 'tap' && settingsRef.current.hitSound !== false) se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
       // コンボの声（「コンボ！」）は、プレイの途中で耳に残って気になるので鳴らさない（文字の COMBO だけ）
       if (Math.random() < 0.18 + chaos * 0.6) spawnBackgroundNa();
@@ -754,6 +758,9 @@ const Game: React.FC = () => {
     scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false && mode !== '10s');
     const forcedStyle = (window as any).__forceStyle as TrackStyle | undefined;      // テスト用：画面を固定
     if (forcedStyle) scheduleRef.current = [{ t: -1e9, style: forcedStyle }];
+    // してみた動画：1 小節目はきあきあのお手本、2 小節目にあなたがまねする（音符を並べかえる）
+    ch.notes = heavenCallResponse(ch.notes, scheduleRef.current, (tt) => ch.burns.some((b) => tt > b.t0 - 0.3 && tt < b.t1 + 1.1));
+    heavenCueRef.current = new Set();
     segDirtyRef.current = new Set(); lastSegRef.current = 0;
     activeHoldRef.current = null; holdGapRef.current = null; lastHitRef.current = null; keysDownRef.current.clear(); pointersDownRef.current.clear();
     dtsRef.current = [];
@@ -767,7 +774,7 @@ const Game: React.FC = () => {
     engineRef.current = eng;
     notesRef.current = eng.notes;
     burnsRef.current = eng.burns;
-    if ((window as any).__forceBurn) (window as any).__engBurns = eng.burns;
+    if ((window as any).__forceBurn) { (window as any).__engBurns = eng.burns; (window as any).__engNotes = eng.notes; }
     runRef.current = emptyRun(mode, ch.difficulty, ch.notes.length);
     runRef.current.input = TAP_ONLY ? 'tap' : settingsRef.current.input;
     runRef.current.holdsTotal = ch.notes.filter((n) => n.kind === 'hold').length;
@@ -1005,6 +1012,19 @@ const Game: React.FC = () => {
         if (holding) holdGapBurnRef.current = null;
         else if (holdGapBurnRef.current == null) holdGapBurnRef.current = nowP;
         else if (nowP - holdGapBurnRef.current > 220) { const r = e.fuelNow(b); if (r.type === 'fuel') onFuel(b.id, r.first, t); if (finishingRef.current) return; }
+      }
+
+      // してみた動画：きあきあのお手本の音を、曲の拍ぴったりに予約する（声で遊ぶときはマイクが拾うので鳴らさない）
+      if (TAP_ONLY || settingsRef.current.input === 'tap') {
+        for (const sg of scheduleRef.current) {
+          if (!sg.demos) continue;
+          for (const d of sg.demos) {
+            if (d.t < t - 0.05 || d.t > t + 0.35 || heavenCueRef.current.has(d.t)) continue;
+            heavenCueRef.current.add(d.t);
+            const sx = HEAVEN_SFX[d.game], when = p.ctxTimeOf(d.t);
+            if (when != null && !e.burns.some((b) => d.t > b.t0 - 0.2 && d.t < b.t1)) playSfxAt(sx.id, when, { ctx: p.ctx, volume: settingsRef.current.volume, rate: sx.rate * (d.big ? 0.85 : 1), gain: d.big ? 1.2 : 0.95 });
+          }
+        }
       }
 
       // バズの終わり

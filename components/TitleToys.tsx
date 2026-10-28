@@ -54,7 +54,7 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
   };
 
   return (
-    <div data-nosfx className="fixed inset-0 z-[5] pointer-events-none overflow-hidden" aria-hidden="true">
+    <div data-nosfx className="fixed inset-0 z-[15] pointer-events-none overflow-hidden" aria-hidden="true">
       {bubbles.map((b) => (
         <div key={b.id} className="absolute bubble-rise" style={{ left: `${b.x}%`, bottom: -90, ['--dur' as any]: `${b.dur}s`, ['--sway' as any]: `${b.sway}px` }}>
           <button onPointerDown={(e) => pop(b, e)} tabIndex={-1}

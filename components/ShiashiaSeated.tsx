@@ -152,11 +152,11 @@ const GROOVES: Record<PoseKey, Groove[]> = {
 };
 const HAND_GROOVE = new Set<Groove>(['clap', 'pump', 'point']);
 
-/** つまみ上げられたとき：腰で二つ折りになって、頭と腕、足がだらんと下がる（からだを 90° 前へ倒した上で） */
+/** つまみ上げられたとき：首の後ろ（服のえり）をつままれて、子ねこのように縦にぶらーん。腕と足はだらんと下がって、ひざを少しまるめる */
 const HELD: Pose = P({
-  root: [92, 0], spine: [58, 0, 0], head: [-34, 0, 0], yaw: 70,
-  armL: [168, 14], armR: [168, 14], elbowL: -12, elbowR: -12,
-  thighL: [-108, 0, 6], thighR: [-100, 0, 6], kneeL: 24, kneeR: 14, mouth: 0.7, eyes: 0.15,
+  root: [0, 0], spine: [6, 0, 0], head: [12, 0, 0], yaw: 0,
+  armL: [8, 14], armR: [8, 14], elbowL: -22, elbowR: -22,
+  thighL: [-26, 0, 6], thighR: [-12, 0, 6], kneeL: 38, kneeR: 24, mouth: 0.6, eyes: 0.2,
 });
 
 interface Props {
@@ -285,13 +285,16 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       const dx = e.clientX - drag.lx; drag.lx = e.clientX;
       const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
       if (drag.mode === 'press' && moved > 8) {
-        // つまみ上げる：指と腰のずれを覚えておいて、腰が指についてくるように
+        // つまみ上げる：首の後ろのえりが、指の所にくる。持っている間は画面いっぱいに描くので、画面のどこへでも運べる
         drag.mode = 'held'; holding = true; dropT = -1; touchRef.current = null;
-        if (planePt(e.clientX, e.clientY, tmp)) grabOff.copy(hip).sub(tmp); else grabOff.set(0, 0, 0);
-        grabOff.y += 220;       // つまんだら、ひょいと持ち上がる
+        goFull(true);
+        grabOff.set(0, 0, 0);
         onGrabRef.current?.();
       }
-      if (drag.mode === 'held') { if (planePt(e.clientX, e.clientY, tmp)) grabTarget.copy(tmp).add(grabOff); }
+      if (drag.mode === 'held') {
+        const cxp = Math.max(8, Math.min(window.innerWidth - 8, e.clientX)), cyp = Math.max(8, Math.min(window.innerHeight - 8, e.clientY));
+        if (planePt(cxp, cyp, tmp)) grabTarget.copy(tmp).add(grabOff);
+      }
       if (drag.mode === 'rotate') {
         const w = renderer.domElement.clientWidth || size;
         const d = (dx / w) * 300;            // 横に画面の幅ぶんで 300°
@@ -317,12 +320,47 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
     // テスト用：つまみ上げ（画面の割合 x,y へ）／はなす／回す
     (window as any).__seatGrab = (fx: number | null, fy?: number) => {
       if (fx == null) { holding = false; dropT = performance.now(); releaseHip.copy(hip); return; }
-      const r = renderer.domElement.getBoundingClientRect();
-      if (!holding) { holding = true; dropT = -1; grabOff.set(0, 0, 0); onGrabRef.current?.(); }
-      if (planePt(r.left + r.width * fx, r.top + r.height * (fy ?? 0.3), tmp)) grabTarget.copy(tmp);
+      if (!holding) { holding = true; dropT = -1; grabOff.set(0, 0, 0); goFull(true); onGrabRef.current?.(); }
+      // fx, fy は画面全体の割合
+      if (planePt(window.innerWidth * fx, window.innerHeight * (fy ?? 0.3), tmp)) grabTarget.copy(tmp);
     };
     (window as any).__seatSpin = (deg: number) => { userYaw += deg; lastSpin = performance.now(); };
+    /**
+     * 画面いっぱいモード：つまんでいる間だけ、canvas を画面全体に広げる。
+     * もとの四角の所は、まったく同じ見え方になるようにカメラの写す範囲をずらす（広げた瞬間にずれない）
+     */
+    let full = false;
+    const box0 = { x: 0, y: 0, s: size };
+    const fitFull = () => {
+      const W = window.innerWidth, Hh = window.innerHeight;
+      renderer.setSize(W, Hh);
+      const n = camera.near, h = n * Math.tan(D2(camera.fov / 2)), w = h * camera.aspect;
+      const fx = (px: number) => -w + ((px - box0.x) / box0.s) * 2 * w;
+      const fy = (py: number) => h - ((py - box0.y) / box0.s) * 2 * h;
+      camera.projectionMatrix.makePerspective(fx(0), fx(W), fy(0), fy(Hh), n, camera.far);
+      camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+    };
+    const goFull = (on: boolean) => {
+      if (on === full) return;
+      full = on;
+      const el = renderer.domElement;
+      if (on) {
+        const r = mount.getBoundingClientRect();
+        box0.x = r.left; box0.y = r.top; box0.s = r.width || size;
+        el.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:75;touch-action:none;';
+        document.body.appendChild(el);         // 親に transform があっても画面全体に出るように、body の直下へ
+        fitFull();
+      } else {
+        el.style.cssText = 'touch-action:pan-y;';
+        mount.appendChild(el);
+        const w = mount.clientWidth || size, h = mount.clientHeight || size;
+        renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+      }
+    };
+    const onWinResize = () => { if (full) fitFull(); };
+    window.addEventListener('resize', onWinResize);
     const ro = new ResizeObserver(() => {
+      if (full) return;
       const w = mount.clientWidth || size, h = mount.clientHeight || size;
       renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
     });
@@ -335,6 +373,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
     const rest = (o: any): V3 => (o?.userData.rest as V3) || [0, 0, 0];
     const box = new THREE.Box3(), ctr = new THREE.Vector3();
     let ground = 0, cx = 0, cz = 0, firstFrame = true, landed = true;
+    const neckOff = new THREE.Vector3(), neckW = new THREE.Vector3(), carrierSeat = new THREE.Vector3();
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const now = performance.now();
@@ -446,11 +485,15 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       let dropK = 1;               // 落ちている途中（0 はなした瞬間〜1 着地）
       if (holding) H = Math.min(1, H + dt / 0.22);
       else if (dropT > 0) {
+        // 遠くではなしたほど、ラグへ戻るのに少し時間がかかる（ひゅーっと飛んで戻る）
+        const dist = releaseHip.distanceTo(seatedHip);
+        const dur = Math.max(0.36, Math.min(0.85, 0.3 + dist / 1800));
         const u = (now - dropT) / 1000;
-        dropK = clamp01(u / 0.36);
-        H = Math.max(0, 1 - clamp01(u / 0.3));
+        dropK = clamp01(u / dur);
+        H = 1 - clamp01((dropK - 0.45) / 0.55);          // 着地の少し前まで、ぶら下がった形のまま
         if (dropK >= 1 && !landed) {
-          landed = true; dropT = -1;
+          landed = true; dropT = -1; H = 0;
+          goFull(false);
           reactionRef.current = { r: 'dizzy', t0: now };
           onDropRef.current?.();
         }
@@ -460,10 +503,13 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
         const HB: Pose = { ...HELD, ...((window as any).__heldO || {}) };
         const hp: Pose = { ...HB, armL: [...HB.armL] as any, armR: [...HB.armR] as any, thighL: [...HB.thighL] as V3, thighR: [...HB.thighR] as V3 };
         // ぶらぶら：ゆれに合わせて腕と足がおくれてゆれる。足はときどきぱたぱた
-        hp.armL[0] += swing * 40; hp.armR[0] += swing * 40 + 4 * Math.sin(time * 5);
-        hp.thighL[0] += -swing * 30 + 10 * Math.sin(time * 7); hp.thighR[0] += -swing * 30 - 10 * Math.sin(time * 7);
-        hp.kneeL += 14 * Math.max(0, Math.sin(time * 7)); hp.kneeR += 14 * Math.max(0, -Math.sin(time * 7));
-        hp.head[2] += 6 * Math.sin(time * 2.2);
+        // 足をじたばた（交互に）、腕はゆれに少しおくれてぶらぶら。首はきょろきょろ
+        const kick2 = Math.sin(time * 8);
+        hp.armL[1] += 6 * Math.sin(time * 3.1) + swing * 25; hp.armR[1] += 6 * Math.sin(time * 3.1 + 1) - swing * 25;
+        hp.armL[0] += 6 * Math.sin(time * 4); hp.armR[0] += 6 * Math.sin(time * 4 + 2);
+        hp.thighL[0] += -14 * kick2; hp.thighR[0] += 14 * kick2;
+        hp.kneeL += 18 * Math.max(0, kick2); hp.kneeR += 18 * Math.max(0, -kick2);
+        hp.head[1] += 14 * Math.sin(time * 1.3); hp.head[2] += 5 * Math.sin(time * 2.2);
         const e = ease(H);
         pose = mixPose(pose, hp, e);
         mouth = mix(mouth, 0.55 + 0.35 * Math.sin(time * 9), e);
@@ -536,6 +582,8 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       carrier.updateMatrixWorld(true);
       box.setFromObject(g);
       box.getCenter(ctr);
+      // 首の後ろ（えり）の位置：腰から見た、yawG の中での位置。つまんだときは、ここを支点にぶら下げる
+      if (J.neck) { J.neck.getWorldPosition(neckW); yawG.worldToLocal(neckW); neckOff.copy(neckW).add(new THREE.Vector3(0, 6, -26)); }
       const wantG = floorY - box.min.y, wantX = -ctr.x, wantZ = -ctr.z * 0.6;
       const f = firstFrame || forced ? 1 : Math.min(1, dt * 8);
       if (H < 0.01 && dropT < 0) { ground += (wantG - ground) * f; cx += (wantX - cx) * f; cz += (wantZ - cz) * f; }
@@ -543,17 +591,23 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       seatedHip.set(cx, ground + lift + Math.max(0, twBody) * 10, cz);
 
       // 腰の位置：座る ↔ 指につままれる。はなしたら重力で落ちる（加速しながら）
+      // carrier（支点）：座っているときは腰、つままれているときは首の後ろ。
+      // 支点を首へ移すぶん、からだを下へずらす（H で連続に）。座っている所での支点の位置＝腰＋（首の位置 × H）
+      const e = ease(H);
+      tmp.copy(neckOff).multiplyScalar(e).applyAxisAngle(new THREE.Vector3(0, 1, 0), yawG.rotation.y);
+      carrierSeat.copy(seatedHip).add(tmp);
       hipPrev.copy(hip);
       if (holding) {
-        grabTarget.x = Math.max(-380, Math.min(380, grabTarget.x));
-        grabTarget.y = Math.max(floorY + 470, Math.min(700, grabTarget.y));
         grabTarget.z = 0;
-        if (H < 1) hip.lerpVectors(seatedHip, grabTarget, ease(H));
-        else hip.lerp(grabTarget, Math.min(1, dt * 14));
+        if (H < 1) hip.lerpVectors(carrierSeat, grabTarget, e);
+        else hip.lerp(grabTarget, Math.min(1, dt * 16));
       } else if (dropT > 0) {
-        const u = dropK;
-        hip.set(mix(releaseHip.x, seatedHip.x, u), mix(releaseHip.y, seatedHip.y, u * u), mix(releaseHip.z, seatedHip.z, u));
-      } else hip.copy(seatedHip);
+        // はなした所からラグへ：重力で落ちるように（下にあるときは、ぴょんと跳ねて戻る）
+        const u = dropK, below = releaseHip.y < carrierSeat.y;
+        const yk = below ? 1 - Math.pow(1 - u, 2) : u * u;          // 下ではなしたら、ぴょんと上がって戻る／上なら重力で落ちる
+        hip.set(mix(releaseHip.x, carrierSeat.x, ease(u)), mix(releaseHip.y, carrierSeat.y, yk) + (below ? 90 : 30) * 4 * u * (1 - u), mix(releaseHip.z, carrierSeat.z, u));
+      } else hip.copy(carrierSeat);
+      body.position.copy(neckOff).multiplyScalar(-e);
       // ゆれ（振り子）：腰を横に動かすと、からだが遅れてゆれる
       // 横の速さをなめらかにしてから加速度にする（ぶるぶるしないように）
       const vx = (hip.x - hipPrev.x) / Math.max(dt, 1 / 120);
@@ -580,6 +634,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      window.removeEventListener('resize', onWinResize);
       renderer.domElement.removeEventListener('pointerdown', onDown);
       renderer.domElement.removeEventListener('pointermove', onMove);
       renderer.domElement.removeEventListener('pointerup', onUp);
@@ -592,7 +647,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
         if (o.geometry) o.geometry.dispose?.();
         if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: any) => m.dispose?.());
       });
-      if (renderer.domElement.parentNode === mount) mount.removeChild(renderer.domElement);
+      renderer.domElement.parentNode?.removeChild(renderer.domElement);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

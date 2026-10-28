@@ -9,9 +9,8 @@ import { pixelRatioCap } from '../utils/perf';
 /**
  * 「してみた動画」（リズム天国風）の 3D の舞台。譜面の canvas の上に重ねる（配置は heavenLayout で共通）。
  * 2 小節ごとにミニゲームが切り替わる（リフティング・自撮り・釣り・ドーナツ・料理・ゲーム実況・歌・開封・筋トレ・ダンス）。
- * どのゲームも「左のきあきあが 1 拍前に投げる（送る）→ 右のしあしあに届いた瞬間に『な』」。
- *  - 投げたものは、ちょうど『な』の瞬間にしあしあの所へ着く山なりで飛ぶので、見ていれば押す所が分かる
- *  - 打った瞬間に、しあしあがそのゲームの動き（蹴る・かじる・切る…）をする。のがすと当たって落ちる
+ * 音符は出さない。1 小節目は左のきあきあがお手本（音つき）、2 小節目に右のしあしあ（あなた）が同じリズムでまねする。
+ *  - 小物は 1 拍前に上からふわっと来て、動いた瞬間に「ポン」（蹴り上げる・撮る・かじる…）。のがすと落ちる
  * ポーズと緩急は「Keep it alive MV 編集台」（enchanted love 再現）のミニゲームと同じ考え方：ため → さっと決める → ゆっくり戻る。
  * キャラは拡大縮小せず（服のゆれの計算がくずれないように）、正射影のカメラの広さで大きさを合わせる。
  */
@@ -190,6 +189,8 @@ function applyPose(r: Rig, p: Pose, time: number) {
 }
 const groove = (beat: number) => { const b = (1 - Math.cos(Math.PI * 2 * beat)) / 2; return P({ thighL: -8 * b, thighR: -8 * b, kneeL: 16 * b, kneeR: 16 * b, spine: [4 * b, 0, 0], head: [6 * b, 0, 0], lift: -4 * b }); };
 const overlayW = (a: Pose, b: Pose, w: number) => mixPose(a, b, clamp01(w));
+/** 動くきっかけ（お手本・あなたの打った「な」） */
+interface Ev { t: number; at?: number; i: number; res: string | null; kind?: 'tap' | 'hold'; t2?: number; big?: boolean; small?: boolean; game: HeavenGame; hold?: string }
 
 interface Props {
   getTime: () => number;
@@ -217,10 +218,10 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
       const cur = heavenGameAt(scheduleRef.current, t);
       const since = t - cur.t0;
       const inBurn = burnsRef.current.some((b) => t > b.t0 - 0.3 && t < b.t1);
-      if (!visRef.current || inBurn || since < -0.05 || since > 1.5) { el.style.opacity = '0'; return; }
+      if (!visRef.current || inBurn || since < -0.05 || since > 1.2) { el.style.opacity = '0'; return; }
       const title = HEAVEN_GAMES[cur.game].title;
       if (shown !== title) { tl.textContent = title; shown = title; }
-      const inK = clamp01(since / 0.18), outK = clamp01((1.5 - since) / 0.3);
+      const inK = clamp01(since / 0.15), outK = clamp01((1.2 - since) / 0.25);
       el.style.opacity = String(Math.min(inK, outK));
       el.style.transform = `translate(-50%, -50%) rotate(-3deg) scale(${0.7 + 0.3 * ELE.out(inK)})`;
     };
@@ -251,13 +252,13 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
     const modelH = box.max.y - box.min.y;
     // 投げるもの：ゲームごとに 8 個ずつ用意して使い回す
     const pools: Record<string, THREE.Object3D[]> = {};
-    const held: Partial<Record<HeavenGame, THREE.Object3D>> = {};
+    const held: Partial<Record<HeavenGame, THREE.Object3D>> = {}, heldK: Partial<Record<HeavenGame, THREE.Object3D>> = {};
     const games = Object.keys(MAKE) as HeavenGame[];
     for (const g of games) {
       pools[g] = Array.from({ length: 8 }, () => { const o = MAKE[g](); o.visible = false; scene.add(o); return o; });
-      const hm = HELD[g]; if (hm) { const o = hm(); o.visible = false; scene.add(o); held[g] = o; }
+      const hm = HELD[g]; if (hm) for (const hs of [held, heldK]) { const o = hm(); o.visible = false; scene.add(o); hs[g] = o; }
     }
-    const board = new THREE.Mesh(new THREE.BoxGeometry(200, 26, 120), M(0xe3a868)); board.visible = false; scene.add(board);
+    const boards = [0, 1].map(() => { const b = new THREE.Mesh(new THREE.BoxGeometry(200, 26, 120), M(0xe3a868)); b.visible = false; scene.add(b); return b; });
 
     let W = 0, H = 0, s = 1;
     const L = { kx: 0, sx: 0, fy: 0, ch: 1 };
@@ -274,8 +275,8 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
     resize();
     const ro = new ResizeObserver(resize); ro.observe(mount);
 
-    const srcOf = (g: HeavenGame, out: THREE.Vector3) => { const d = HEAVEN_GAMES[g]; return out.set(L.kx + d.src[0] * L.ch, L.fy + d.src[1] * L.ch, 60); };
-    const dstOf = (g: HeavenGame, out: THREE.Vector3) => { const d = HEAVEN_GAMES[g]; return out.set(L.sx + d.target[0] * L.ch, L.fy + d.target[1] * L.ch, 60); };
+    // その人の前の「動く所」（target はしあしあから見た位置。きあきあは向きが逆なので左右を反転）
+    const dstOf = (g: HeavenGame, side: number, out: THREE.Vector3) => { const d = HEAVEN_GAMES[g]; return side ? out.set(L.sx + d.target[0] * L.ch, L.fy + d.target[1] * L.ch, 60) : out.set(L.kx - d.target[0] * L.ch, L.fy + d.target[1] * L.ch, 60); };
     const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3(), hp = new THREE.Vector3();
 
     let last = performance.now(), raf = 0;
@@ -295,81 +296,89 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
       const inBurn = burnsRef.current.some((b) => t >= b.t0 - 0.15 && t <= b.t1);
 
       // 小物をいったん全部しまう
-      for (const g of games) { for (const o of pools[g]) o.visible = false; const h = held[g]; if (h) h.visible = false; }
-      board.visible = cur === 'cook';
-      if (board.visible) { dstOf('cook', vA); board.position.set(vA.x, L.fy + 0.26 * L.ch, 40); }
+      for (const g of games) { for (const o of pools[g]) o.visible = false; for (const hs of [held, heldK]) { const h = hs[g]; if (h) h.visible = false; } }
+      for (const bd of boards) bd.visible = cur === 'cook';
+      if (cur === 'cook') { [0, 1].forEach((side) => { dstOf('cook', side, vA); boards[side].position.set(vA.x, L.fy + 0.26 * L.ch, 40); }); }
 
-      // ポーズ：ふだんは縦ノリ（＋持っているときの姿勢）
+      // ポーズ：ふだんは縦ノリ（＋持っているときの姿勢）。お手本（きあきあ）もまね（しあしあ）も、同じゲームの同じ動き
       const mo = MOTION[cur];
       let kp = groove(beat), sp = groove(beat);
-      if (mo.hold) sp = overlayW(sp, mo.hold, 1);
+      if (mo.hold) { kp = overlayW(kp, mo.hold, 1); sp = overlayW(sp, mo.hold, 1); }
+      // きあきあのお手本は、いつもぴったり（res = perfect）。しあしあは、あなたが打った時刻に動く
+      const demos: Ev[] = [];
+      for (const sg of segs) if (sg.demos) for (const d of sg.demos) { if (d.t < t - 1.2 || d.t > t + lead + 0.4) continue; demos.push({ t: d.t, at: d.t, i: d.i, res: 'perfect', kind: d.kind, t2: d.t2, big: d.big, game: d.game, hold: d.kind === 'hold' && t < (d.t2 ?? d.t) ? 'on' : undefined }); }
+      const mine: Ev[] = [];
       for (const n of notes) {
         if (n.t < t - 1.2) continue;
         if (n.t - lead > t + 0.4) break;
-        const g = heavenGameAt(segs, n.t).game;
-        const def = HEAVEN_GAMES[g], mg = MOTION[g];
-        const launch = n.t - lead;
-        // きあきあ：投げる（ゲームによっては蹴る・すべらせる）
-        {
-          const kWind = mg.kia?.wind ?? THROW_WIND, kAct = mg.kia?.act ?? THROW;
-          kp = overlayW(kp, kWind, windW(t, launch, 0.24));
-          kp = overlayW(kp, g === 'dance' ? DANCE[(barPos(n.i) >> 1) % 4] : kAct, hitW(t, launch, 0.06, 0.3));
-        }
-        // しあしあ：ため → 届いた（打った）瞬間に決める。のがしたら「あっ」
-        {
-          if (!n.res) sp = overlayW(sp, mg.wind ?? P({ thighL: -12, thighR: -12, kneeL: 24, kneeR: 24, spine: [6, 0, 0] }), windW(t, n.t, 0.22) * 0.9);
-          if (n.res === 'miss') sp = overlayW(sp, WHOOPS, hitW(t, n.t + 0.1, 0.25, 0.3));
-          else if (n.res) {
-            const at = n.at ?? n.t;
-            const act = g === 'dance' ? DANCE[(barPos(n.i) >> 1) % 4] : mg.act;
-            const holdOn = n.kind === 'hold' && n.hold === 'on';
-            sp = overlayW(sp, act, holdOn ? 1 : hitW(t, at, n.kind === 'hold' && n.t2 ? Math.max(0.12, n.t2 - at) : 0.12, 0.32));
+        mine.push({ t: n.t, at: n.at, i: n.i, res: n.res, kind: n.kind, t2: n.t2, big: n.power === 'big', small: n.power === 'small', game: heavenGameAt(segs, n.t).game, hold: n.hold });
+      }
+      const actorPose = (p0: Pose, evs: Ev[]) => {
+        let p = p0;
+        for (const ev of evs) {
+          const mg = MOTION[ev.game];
+          if (!ev.res) p = overlayW(p, mg.wind ?? P({ thighL: -12, thighR: -12, kneeL: 24, kneeR: 24, spine: [6, 0, 0] }), windW(t, ev.t, 0.22) * 0.9);
+          if (ev.res === 'miss') p = overlayW(p, WHOOPS, hitW(t, ev.t + 0.1, 0.25, 0.3));
+          else if (ev.res) {
+            const at = ev.at ?? ev.t;
+            const act = ev.game === 'dance' ? DANCE[(barPos(ev.i) >> 1) % 4] : mg.act;
+            const holdOn = ev.kind === 'hold' && ev.hold === 'on';
+            p = overlayW(p, act, holdOn ? 1 : hitW(t, at, ev.kind === 'hold' && ev.t2 ? Math.max(0.12, ev.t2 - at) : 0.12, 0.32));
           }
         }
-        // 投げたもの
-        const pool = pools[g], o = pool[((n.i % pool.length) + pool.length) % pool.length];
-        const big = n.power === 'big' ? 1.6 : n.power === 'small' ? 0.65 : 1;
-        if (t < launch) continue;
-        srcOf(g, vA); dstOf(g, vB);
-        const u = (t - launch) / lead;
+        return p;
+      };
+      kp = actorPose(kp, demos);
+      sp = actorPose(sp, mine);
+      // 小物：それぞれの前に、1 拍前から上からふわっと来て、動いた瞬間に「ポン」
+      const objFor = (ev: Ev, side: number) => {
+        const g = ev.game, pool = pools[g], o = pool[(((ev.i * 2 + side) % pool.length) + pool.length) % pool.length];
+        const big = ev.big ? 1.6 : ev.small ? 0.65 : 1;
+        const appear = ev.t - lead;
+        if (t < appear) return;
+        dstOf(g, side, vB);
+        vA.set(vB.x + (side ? 1 : -1) * 0.18 * L.ch, vB.y + 0.62 * L.ch, vB.z);
+        const u = (t - appear) / lead;
         o.visible = true; o.scale.setScalar(big);
         o.rotation.set(0, 0, 0);
         if (u < 1) {
-          arcPos(vA, vB, u, def.arc * L.ch, o.position);
+          arcPos(vA, vB, u, 0.12 * L.ch, o.position);
+          o.scale.setScalar(big * Math.min(1, u * 3));
           if (g === 'lift' || g === 'gamer') o.rotation.set(t * 5, t * 4, 0);
           if (g === 'selfie' || g === 'dance') o.rotation.y = t * 6;
           if (g === 'fish') o.rotation.z = -0.6 + 1.2 * u;
-          if (g === 'unbox' || g === 'workout' || g === 'cook') o.rotation.z = (g === 'cook' ? Math.PI / 2 : 0) + Math.sin(u * Math.PI) * 0.3;
-          if (g === 'cook') { (o.getObjectByName('a') as THREE.Object3D).position.set(0, 0, 0); (o.getObjectByName('b') as THREE.Object3D).position.set(0, -50, 0); }
+          if (g === 'cook') { o.rotation.z = Math.PI / 2; o.getObjectByName('a')!.position.set(0, 0, 0); o.getObjectByName('b')!.position.set(0, -50, 0); }
           if (g === 'unbox') { const lid = o.getObjectByName('lid')!; lid.position.set(0, 90, 0); lid.rotation.set(0, 0, 0); o.getObjectByName('star')!.visible = false; }
-          continue;
+          return;
         }
-        // 届いたあと
-        if (n.res && n.res !== 'miss') {
-          const a = t - (n.at ?? n.t);
-          const holdOn = n.kind === 'hold' && n.hold === 'on';
-          if (holdOn) { o.position.copy(vB); continue; }
-          if (a > 0.8) { o.visible = false; continue; }
+        const dir = side ? -1 : 1;          // 相手のほうへ（はねるものの向き）
+        if (ev.res && ev.res !== 'miss') {
+          const a = t - (ev.at ?? ev.t);
+          const holdOn = ev.kind === 'hold' && ev.hold === 'on';
+          if (holdOn || a < 0) { o.position.copy(vB); return; }
+          if (a > 0.8) { o.visible = false; return; }
           o.position.copy(vB);
           switch (g) {
-            case 'lift': o.position.set(vB.x + 120 * a, vB.y + 900 * a - 1500 * a * a, vB.z); o.rotation.set(t * 9, t * 7, 0); break;
+            case 'lift': o.position.set(vB.x + dir * 60 * a, vB.y + 900 * a - 1500 * a * a, vB.z); o.rotation.set(t * 9, t * 7, 0); break;
             case 'selfie': case 'dance': o.scale.setScalar(big * (1 + 3 * a)); if (a > 0.3) o.visible = false; break;
-            case 'fish': o.position.set(vB.x + 500 * a, vB.y + 1100 * a - 1500 * a * a, vB.z); o.rotation.z = -0.5 + 6 * a; break;
+            case 'fish': o.position.set(vB.x - dir * 200 * a, vB.y + 1100 * a - 1500 * a * a, vB.z); o.rotation.z = -0.5 + 6 * a; break;
             case 'donut': o.scale.setScalar(big * Math.max(0, 1 - a / 0.3)); o.rotation.z = a * 4; break;
             case 'cook': { o.rotation.z = Math.PI / 2; o.getObjectByName('a')!.position.set(0, 60 * a / 0.3, 0); o.getObjectByName('b')!.position.set(0, -50 - 60 * a / 0.3, 0); if (a > 0.6) o.visible = false; break; }
             case 'gamer': o.scale.set(big * (1 + 3 * a), big * Math.max(0.05, 1 - 3 * a), big * (1 + 3 * a)); if (a > 0.3) o.visible = false; break;
-            case 'sing': o.position.y = vB.y + 500 * a; o.position.x = vB.x - 120 * a; o.scale.setScalar(big * Math.max(0, 1 - a / 0.8)); break;
-            case 'unbox': { const lid = o.getObjectByName('lid')!; lid.position.set(-60 * a, 90 + 700 * a - 900 * a * a, 0); lid.rotation.z = 3 * a; const st = o.getObjectByName('star')!; st.visible = true; st.position.y = 40 + 380 * Math.min(1, a / 0.4); st.rotation.y = t * 8; break; }
+            case 'sing': o.position.y = vB.y + 500 * a; o.position.x = vB.x + dir * 60 * a; o.scale.setScalar(big * Math.max(0, 1 - a / 0.8)); break;
+            case 'unbox': { const lid = o.getObjectByName('lid')!; lid.position.set(-dir * 60 * a, 90 + 700 * a - 900 * a * a, 0); lid.rotation.z = 3 * a; const st = o.getObjectByName('star')!; st.visible = true; st.position.y = 40 + 380 * Math.min(1, a / 0.4); st.rotation.y = t * 8; break; }
             case 'workout': o.position.y = vB.y + 420 * ELE.out(Math.min(1, a / 0.2)); if (a > 0.55) o.scale.setScalar(big * Math.max(0, 1 - (a - 0.55) / 0.25)); break;
           }
-        } else {
-          // のがした：しあしあに当たって落ちる
-          const a = t - n.t;
-          if (a > 0.9) { o.visible = false; continue; }
-          o.position.set(vB.x + 160 * a, Math.max(L.fy + 20, vB.y + 200 * a - 1800 * a * a), vB.z);
+        } else if (ev.res === 'miss') {
+          // のがした：ぽとっと落ちる
+          const a = t - ev.t;
+          if (a > 0.9) { o.visible = false; return; }
+          o.position.set(vB.x - dir * 80 * a, Math.max(L.fy + 20, vB.y - 1600 * a * a), vB.z);
           o.rotation.z = 4 * a;
-        }
-      }
+        } else o.position.copy(vB);           // まだ打っていない（判定の幅のあいだ）
+      };
+      for (const ev of demos) objFor(ev, 0);
+      for (const ev of mine) objFor(ev, 1);
       if (inBurn) { kp = overlayW(kp, SHH, 0.9); sp = overlayW(sp, SHH, 0.9); }
       [kia, shia].forEach((r, i) => {
         const p = i === 0 ? kp : sp;
@@ -378,17 +387,19 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
         r.g.updateMatrixWorld(true);
         r.g.userData.cloth?.(dt);
       });
-      // 持っている小物を手もとへ
-      const hd = held[cur];
-      if (hd && shia.J.handR && !inBurn) {
-        shia.J.handR.getWorldPosition(hp);
+      // 持っている小物を手もとへ（ふたりとも）
+      ([[shia, held], [kia, heldK]] as [Rig, typeof held][]).forEach(([r, hs]) => {
+        const hd = hs[cur];
+        if (!hd || !r.J.handR || inBurn) return;
+        r.J.handR.getWorldPosition(hp);
         hd.visible = true;
-        if (cur === 'gamer' && shia.J.handL) { shia.J.handL.getWorldPosition(vC); hd.position.copy(hp).lerp(vC, 0.5); hd.rotation.set(-0.4, 0, 0); }
-        else if (cur === 'selfie') { hd.position.set(hp.x, hp.y + 40, hp.z + 20); hd.rotation.set(0, 0.6, 0.1); }
-        else if (cur === 'fish') { hd.position.copy(hp); hd.rotation.set(0, 0, 0); }
-        else if (cur === 'cook') { hd.position.set(hp.x, hp.y - 10, hp.z + 10); hd.rotation.set(0, 0, 0.2); }
-        else if (cur === 'sing') { hd.position.set(hp.x, hp.y + 20, hp.z + 10); hd.rotation.set(0, 0, 0.5); }
-      }
+        const fl = r === kia ? -1 : 1;
+        if (cur === 'gamer' && r.J.handL) { r.J.handL.getWorldPosition(vC); hd.position.copy(hp).lerp(vC, 0.5); hd.rotation.set(-0.4, 0, 0); }
+        else if (cur === 'selfie') { hd.position.set(hp.x, hp.y + 40, hp.z + 20); hd.rotation.set(0, 0.6 * fl, 0.1 * fl); }
+        else if (cur === 'fish') { hd.position.copy(hp); hd.rotation.set(0, r === kia ? Math.PI : 0, 0); }
+        else if (cur === 'cook') { hd.position.set(hp.x, hp.y - 10, hp.z + 10); hd.rotation.set(0, 0, 0.2 * fl); }
+        else if (cur === 'sing') { hd.position.set(hp.x, hp.y + 20, hp.z + 10); hd.rotation.set(0, 0, 0.5 * fl); }
+      });
       renderer.render(scene, camera);
     };
     loop();
@@ -409,10 +420,10 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
   return (
     <div className="relative w-full pointer-events-none transition-opacity duration-300" style={{ height, opacity: visible ? 1 : 0 }} aria-hidden="true">
       <div ref={mountRef} className="absolute inset-0" />
-      <div ref={cardRef} className="absolute left-1/2 top-[30%] opacity-0" style={{ transform: 'translate(-50%, -50%)' }}>
+      <div ref={cardRef} className="absolute left-1/2 top-[14%] opacity-0" style={{ transform: 'translate(-50%, -50%)' }}>
         <div className="relative bg-white rounded-2xl border-4 border-red-500 px-5 pt-3 pb-2 shadow-[0_6px_0_rgba(0,0,0,0.15)]">
           <div className="absolute -top-3 left-3 bg-red-500 text-white text-[11px] font-black rounded-full px-2.5 py-0.5">新作動画</div>
-          <div ref={cardTitleRef} className="font-black text-slate-900 text-xl sm:text-2xl whitespace-nowrap" />
+          <div ref={cardTitleRef} className="font-black text-slate-900 text-lg sm:text-xl whitespace-nowrap" />
         </div>
       </div>
     </div>

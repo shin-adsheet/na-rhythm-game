@@ -2,7 +2,8 @@
  * 画面チェンジ：プレイ中に譜面の見た目が、いろいろなゲームセンターの音ゲー風に切り替わる（飽き防止）。
  * 判定は見た目と関係なく「曲の時刻」で行うので、どの画面でも遊び方は同じ（丸が判定に重なった瞬間に「な」）。
  */
-import { timeOf, barPos, barNo, SWITCH_AT, SWITCH_REST, EIGHTH } from './chart';
+import { timeOf, barPos, barNo, SWITCH_AT, SWITCH_REST, EIGHTH, ChartNote } from './chart';
+import type { SfxId } from './sfx';
 
 export type TrackStyle = 'lane' | 'fall' | 'drum' | 'ring' | 'highway' | 'panel' | 'step' | 'rail' | 'pop' | 'heaven';
 
@@ -16,12 +17,14 @@ export const STYLE_INFO: Record<TrackStyle, { label: string; hint: string }> = {
   step: { label: 'ステップ', hint: '下から上がる「な」が、上の矢印の枠に重なったら' },
   rail: { label: 'レール', hint: 'レールを走る「な」が、左の丸に重なったら' },
   pop: { label: 'ポップ', hint: '落ちてくる「な」が、下の丸いボタンに重なったら' },
-  heaven: { label: 'してみた動画', hint: '投げたものが しあしあに届く瞬間。下の「な」が ピンクの輪に重なったら' },
+  heaven: { label: 'してみた動画', hint: 'きあきあのお手本を見て（聞いて）、次の小節で同じリズムでまねする' },
 };
 
 export const ARCADE_STYLES: TrackStyle[] = ['fall', 'drum', 'ring', 'highway', 'panel', 'step', 'rail', 'pop', 'heaven'];
 
-export interface StyleSeg { t: number; style: TrackStyle; games?: HeavenGame[] }
+export interface StyleSeg { t: number; style: TrackStyle; games?: HeavenGame[]; demos?: HeavenDemo[] }
+/** してみた動画：きあきあのお手本（この時刻にきあきあが動き、1 小節あとに同じ所であなたがまねする） */
+export interface HeavenDemo { t: number; t2?: number; i: number; game: HeavenGame; kind?: 'tap' | 'hold'; big?: boolean }
 
 
 /** 1プレイ分の画面チェンジの予定。最初は「いつもの」。順番は毎回シャッフル */
@@ -101,7 +104,7 @@ function shuffledGames(): HeavenGame[] {
   return a;
 }
 /** 時刻 t の「してみた動画」のゲームと、そのゲームが始まった時刻 */
-export function heavenGameAt(segs: StyleSeg[], t: number): { game: HeavenGame; t0: number } {
+export function heavenGameAt(segs: StyleSeg[], t: number): { game: HeavenGame; t0: number; bar0: number } {
   const k = segIndexAt(segs, t), sg = segs[k];
   const games = sg.games && sg.games.length ? sg.games : HEAVEN_GAME_IDS;
   // 小節の頭で切り替える（区間の最初の小節から 2 小節ずつ）
@@ -111,5 +114,46 @@ export function heavenGameAt(segs: StyleSeg[], t: number): { game: HeavenGame; t
   const startBar = b0 + n * HEAVEN_GAME_BARS;
   // その小節の頭の時刻
   let i = iAt(t); while (barNo(i) > startBar) i -= 8; while (barNo(i) < startBar) i += 8; while (barPos(i) !== 0) i--;
-  return { game: games[n % games.length], t0: Math.max(sg.t, timeOf(i)) };
+  return { game: games[n % games.length], t0: Math.max(sg.t, timeOf(i)), bar0: timeOf(i) };
+}
+
+/** ゲームごとの音（きあきあのお手本と、あなたが打ったとき。同じ音なので「まねする」のが耳で分かる） */
+export const HEAVEN_SFX: Record<HeavenGame, { id: SfxId; rate: number }> = {
+  lift: { id: 'pop', rate: 0.8 }, selfie: { id: 'ui_toggle', rate: 1.1 }, fish: { id: 'slide', rate: 1.3 }, donut: { id: 'crunch', rate: 1.2 },
+  cook: { id: 'knock', rate: 1.6 }, gamer: { id: 'nes_short', rate: 1 }, sing: { id: 'bell', rate: 1.2 }, unbox: { id: 'card', rate: 1 },
+  workout: { id: 'hit_big', rate: 0.8 }, dance: { id: 'coin', rate: 1.1 },
+};
+
+/**
+ * してみた動画は「お手本 → まね」を交互にやる（リズム天国のように）。
+ * 2 小節ずつのゲームのうち、1 小節目はきあきあのお手本（音符なし）、2 小節目にあなたが同じリズムでまねする。
+ * 2 小節目に音符がなければ、1 小節目の音符を 1 小節うしろへずらして使う。
+ */
+export function heavenCallResponse(notes: ChartNote[], segs: StyleSeg[], blocked: (t: number) => boolean): ChartNote[] {
+  const BAR = EIGHTH * 8;
+  const isHeaven = (t: number) => segs[segIndexAt(segs, t)].style === 'heaven';
+  const out: ChartNote[] = [];
+  const groups = new Map<number, { call: ChartNote[]; resp: ChartNote[]; game: HeavenGame; bar0: number; segT: number; seg: StyleSeg }>();
+  for (const n of notes) {
+    if (!isHeaven(n.t)) { out.push(n); continue; }
+    const g = heavenGameAt(segs, n.t);
+    const seg = segs[segIndexAt(segs, n.t)];
+    const key = Math.round(g.bar0 * 1000);
+    if (!groups.has(key)) groups.set(key, { call: [], resp: [], game: g.game, bar0: g.bar0, segT: seg.t, seg });
+    const gr = groups.get(key)!;
+    (n.t < g.bar0 + BAR - 0.02 ? gr.call : gr.resp).push(n);
+  }
+  for (const gr of groups.values()) {
+    let resp = gr.resp.filter((n) => n.t - BAR > gr.segT + 0.05 && (n.t2 ?? n.t) < gr.bar0 + 2 * BAR + 0.02);
+    if (!resp.length) {
+      resp = gr.call.filter((n) => n.kind !== 'hold' || (n.t2 ?? n.t) < gr.bar0 + BAR).map((n) => ({ ...n, i: n.i + 8, t: n.t + BAR, t2: n.t2 != null ? n.t2 + BAR : undefined }))
+        .filter((n) => isHeaven(n.t) && !blocked(n.t) && n.t - BAR > gr.segT + 0.05);
+    }
+    for (const n of resp) {
+      out.push(n);
+      (gr.seg.demos ??= []).push({ t: n.t - BAR, t2: n.t2 != null ? n.t2 - BAR : undefined, i: n.i - 8, game: gr.game, kind: n.kind, big: n.power === 'big' });
+    }
+  }
+  for (const sg of segs) sg.demos?.sort((a, b) => a.t - b.t);
+  return out.sort((a, b) => a.t - b.t);
 }
