@@ -10,6 +10,8 @@ import { makeRig, restAll } from './Shiashia3D';
  * 関節の角度（脚・からだの傾きも）をキーフレームで持ち、ゆっくりしたイージングでつなぐ。
  * からだのいちばん低い所がいつもラグにつくように、毎フレーム高さを合わせる。
  *
+ * 横にスワイプで回せる。つまんで（ドラッグして）持ち上げると、腰で二つ折りになってぶら下がる。はなすと落ちて、ぽてっと座る。
+ * メニューの曲（122 BPM）の拍に合わせて、8 拍ごとにちがうノリ方をする（うなずく・手拍子・指さし…）。
  * さわると、さわった所によって「ぴくっ」と反応する（頭＝耳がぴくっ、足＝足を引っこめる、手＝腕がびくっ、からだ＝肩がすくむ）。
  * そのあと少しのあいだ、首をかしげてこっちを見る（もう一回さわりたくなるように）。
  */
@@ -131,18 +133,52 @@ function makeRug(R: number) {
 
 type Part = 'head' | 'legL' | 'legR' | 'armL' | 'armR' | 'body';
 
+/* ---------- 曲に合わせた動き（メニューの曲：122 BPM） ---------- */
+export const MENU_BPM = 122;
+export const MENU_BEAT0 = 0.43;       // 曲の頭から最初の拍まで（秒）
+type Groove = 'nod' | 'sway' | 'clap' | 'pump' | 'point' | 'shoulder' | 'tilt' | 'wiggle' | 'kickbeat';
+// 座り方ごとに、できる動き（手がふさがっているときは、首とからだだけ）
+const GROOVES: Record<PoseKey, Groove[]> = {
+  nage: ['clap', 'nod', 'pump', 'sway', 'kickbeat', 'point', 'shoulder', 'tilt'],
+  phone: ['nod', 'tilt', 'kickbeat'],
+  hug: ['sway', 'nod', 'tilt'],
+  idea: ['nod', 'point', 'tilt'],
+  practice: ['nod', 'shoulder'],
+  notice: ['tilt', 'nod'],
+  wave: ['nod', 'sway'],
+  stretch: ['sway'],
+  lie: ['kickbeat', 'tilt'],
+  kick: ['clap', 'kickbeat', 'pump', 'wiggle', 'nod'],
+};
+const HAND_GROOVE = new Set<Groove>(['clap', 'pump', 'point']);
+
+/** つまみ上げられたとき：腰で二つ折りになって、頭と腕、足がだらんと下がる（からだを 90° 前へ倒した上で） */
+const HELD: Pose = P({
+  root: [92, 0], spine: [58, 0, 0], head: [-34, 0, 0], yaw: 70,
+  armL: [168, 14], armR: [168, 14], elbowL: -12, elbowR: -12,
+  thighL: [-108, 0, 6], thighR: [-100, 0, 6], kneeL: 24, kneeR: 14, mouth: 0.7, eyes: 0.15,
+});
+
 interface Props {
   size?: number;
   onPoke?: () => void;
   onBeat?: (i: number) => void;
+  /** つまみ上げた／はなした（Game がひとことを出す） */
+  onGrab?: () => void;
+  onDrop?: () => void;
+  /** メニューの曲の再生位置（秒）。曲が止まっているときは null（そのときは自分で 122 BPM を数える） */
+  getMusicTime?: () => number | null;
   /** 反応させる（Game から呼ぶ）。ref に関数が入る */
   reactRef?: React.MutableRefObject<((r: Reaction) => void) | null>;
 }
 
-const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef }) => {
+const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, onDrop, getMusicTime, reactRef }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const onBeatRef = useRef(onBeat); onBeatRef.current = onBeat;
   const onPokeRef = useRef(onPoke); onPokeRef.current = onPoke;
+  const onGrabRef = useRef(onGrab); onGrabRef.current = onGrab;
+  const onDropRef = useRef(onDrop); onDropRef.current = onDrop;
+  const musicRef = useRef(getMusicTime); musicRef.current = getMusicTime;
   const touchRef = useRef<{ part: Part; t0: number } | null>(null);
   const reactionRef = useRef<{ r: Reaction; t0: number } | null>(null);
   if (reactRef) reactRef.current = (r: Reaction) => { reactionRef.current = { r, t0: performance.now() }; };
@@ -157,6 +193,9 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
     renderer.setPixelRatio(pixelRatioCap(1.5));
     renderer.setSize(size, size);
     renderer.setClearColor(0x000000, 0);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.domElement.style.touchAction = 'pan-y';      // たてのスワイプはページのスクロール、横はしあしあを回す
     mount.appendChild(renderer.domElement);
 
     const rig = makeRig(undefined, 1);
@@ -169,23 +208,39 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
     const body = new THREE.Group();
     g.position.copy(hip0).multiplyScalar(-1);
     body.add(g);
-    const world = new THREE.Group();
-    world.add(body);
+    // 腰の位置（carrier）→ 向き（yawG）→ からだの傾き（body）。つまみ上げたときは carrier が指について動き、ぶらんとゆれる
+    const yawG = new THREE.Group(); yawG.add(body);
+    const carrier = new THREE.Group(); carrier.add(yawG);
+    scene.add(carrier);
+    const world = new THREE.Group();     // ラグ（向きだけ回す）
     scene.add(world);
+    g.traverse((o: any) => { if (o.isMesh) { o.castShadow = true; } });
 
     const RUG_R = 360;
     const rug = makeRug(RUG_R);
     world.add(rug.group);
     const floorY = rug.top;
-    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0xe9a6cb, transparent: true, opacity: 0.55 }));
+    // 影：ぼんやりした丸い影＋からだの形の影（足がラグの白にとけないように）
+    const shadow = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color: 0xd48ab6, transparent: true, opacity: 0.55, depthWrite: false }));
     shadow.rotation.x = -Math.PI / 2; shadow.position.y = floorY + 1;
-    world.add(shadow);
+    scene.add(shadow);
+    const shadowCatcher = new THREE.Mesh(new THREE.CircleGeometry(RUG_R * 1.02, 64), new THREE.ShadowMaterial({ color: 0x7a2e63, opacity: 0.34 }));
+    shadowCatcher.rotation.x = -Math.PI / 2; shadowCatcher.position.y = floorY + 1.5; shadowCatcher.receiveShadow = true;
+    scene.add(shadowCatcher);
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    sun.position.set(-260, 1400, 520); sun.target.position.set(0, 0, 0);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(1024, 1024);
+    const sc = sun.shadow.camera as THREE.OrthographicCamera;
+    sc.left = -520; sc.right = 520; sc.top = 520; sc.bottom = -520; sc.near = 200; sc.far = 3200;
+    sun.shadow.radius = 4; sun.shadow.bias = -0.002;
+    scene.add(sun, sun.target);
 
     // カメラ：少し上から、ラグ全体と座ったしあしあが入るように
     camera.position.set(0, 760, 1650);
     camera.lookAt(0, 230, 0);
 
-    // さわった所を調べる（頭・足・手・からだ）
+    /* ---------- さわる・つまむ・回す ---------- */
     const partOf = (o: THREE.Object3D | null): Part => {
       for (let n: THREE.Object3D | null = o; n; n = n.parent) {
         if (n === J.head) return 'head';
@@ -198,15 +253,75 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
       return 'body';
     };
     const ray = new THREE.Raycaster();
-    const onDown = (e: PointerEvent) => {
+    const ndc = new THREE.Vector2();
+    const setRay = (cx: number, cy: number) => {
       const r = renderer.domElement.getBoundingClientRect();
-      ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
-      const hit = ray.intersectObject(g, true)[0];
-      touchRef.current = { part: hit ? partOf(hit.object) : 'body', t0: performance.now() };
-      onPokeRef.current?.();
+      ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
     };
+    const hitShia = (cx: number, cy: number) => { setRay(cx, cy); return ray.intersectObject(g, true)[0] ?? null; };
+    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const planePt = (cx: number, cy: number, out: THREE.Vector3) => { setRay(cx, cy); return ray.ray.intersectPlane(plane, out); };
+
+    type Drag = { id: number; mode: 'press' | 'rotate' | 'held'; x0: number; y0: number; lx: number; part: Part };
+    let drag: Drag | null = null;
+    let userYaw = 0, yawVel = 0, lastSpin = -1e9;
+    let H = 0;                       // つまみ上げの度合い（0 座る〜1 ぶら下がる）
+    let holding = false, dropT = -1;
+    const grabOff = new THREE.Vector3(), grabTarget = new THREE.Vector3(), hip = new THREE.Vector3(), hipPrev = new THREE.Vector3(), hipVel = new THREE.Vector3();
+    const releaseHip = new THREE.Vector3(), seatedHip = new THREE.Vector3();
+    let swing = 0, swingV = 0;
+    const tmp = new THREE.Vector3();
+
+    const onDown = (e: PointerEvent) => {
+      if (drag) return;
+      const hit = hitShia(e.clientX, e.clientY);
+      drag = { id: e.pointerId, mode: hit ? 'press' : 'rotate', x0: e.clientX, y0: e.clientY, lx: e.clientX, part: hit ? partOf(hit.object) : 'body' };
+      try { renderer.domElement.setPointerCapture(e.pointerId); } catch { /* noop */ }
+      if (hit && !holding) touchRef.current = { part: drag.part, t0: performance.now() };     // さわった瞬間に「ぴくっ」
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.lx; drag.lx = e.clientX;
+      const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
+      if (drag.mode === 'press' && moved > 8) {
+        // つまみ上げる：指と腰のずれを覚えておいて、腰が指についてくるように
+        drag.mode = 'held'; holding = true; dropT = -1; touchRef.current = null;
+        if (planePt(e.clientX, e.clientY, tmp)) grabOff.copy(hip).sub(tmp); else grabOff.set(0, 0, 0);
+        grabOff.y += 220;       // つまんだら、ひょいと持ち上がる
+        onGrabRef.current?.();
+      }
+      if (drag.mode === 'held') { if (planePt(e.clientX, e.clientY, tmp)) grabTarget.copy(tmp).add(grabOff); }
+      if (drag.mode === 'rotate') {
+        const w = renderer.domElement.clientWidth || size;
+        const d = (dx / w) * 300;            // 横に画面の幅ぶんで 300°
+        userYaw += d; yawVel = d / Math.max(0.008, 1 / 60); lastSpin = performance.now();
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const d = drag; drag = null;
+      try { renderer.domElement.releasePointerCapture(e.pointerId); } catch { /* noop */ }
+      if (d.mode === 'press') onPokeRef.current?.();
+      if (d.mode === 'held') { holding = false; dropT = performance.now(); releaseHip.copy(hip); }
+      if (d.mode === 'rotate') lastSpin = performance.now();
+    };
+    // スマホ：しあしあの上でさわったときだけ、ページのスクロールを止める（つまんで動かせるように）
+    const onTouchStart = (e: TouchEvent) => { const t = e.touches[0]; if (t && hitShia(t.clientX, t.clientY)) e.preventDefault(); };
     renderer.domElement.addEventListener('pointerdown', onDown);
+    renderer.domElement.addEventListener('pointermove', onMove);
+    renderer.domElement.addEventListener('pointerup', onUp);
+    renderer.domElement.addEventListener('pointercancel', onUp);
+    renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
     (window as any).__seatPoke = (part: Part) => { touchRef.current = { part, t0: performance.now() }; };   // テスト用
+    // テスト用：つまみ上げ（画面の割合 x,y へ）／はなす／回す
+    (window as any).__seatGrab = (fx: number | null, fy?: number) => {
+      if (fx == null) { holding = false; dropT = performance.now(); releaseHip.copy(hip); return; }
+      const r = renderer.domElement.getBoundingClientRect();
+      if (!holding) { holding = true; dropT = -1; grabOff.set(0, 0, 0); onGrabRef.current?.(); }
+      if (planePt(r.left + r.width * fx, r.top + r.height * (fy ?? 0.3), tmp)) grabTarget.copy(tmp);
+    };
+    (window as any).__seatSpin = (deg: number) => { userYaw += deg; lastSpin = performance.now(); };
     const ro = new ResizeObserver(() => {
       const w = mount.clientWidth || size, h = mount.clientHeight || size;
       renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -219,7 +334,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
     const earRest = ears.map((e) => e.rotation.clone());
     const rest = (o: any): V3 => (o?.userData.rest as V3) || [0, 0, 0];
     const box = new THREE.Box3(), ctr = new THREE.Vector3();
-    let ground = 0, cx = 0, cz = 0, firstFrame = true;
+    let ground = 0, cx = 0, cz = 0, firstFrame = true, landed = true;
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const now = performance.now();
@@ -236,20 +351,65 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
       // 1.8 秒かけて、ゆっくり次の姿勢へ（寝転がる・起き上がるのは少しゆっくり）
       const slowK = POSES[cur.pose].root[0] !== POSES[prev.pose].root[0] ? 2.4 : 1.8;
       const k = ease(clamp01(since / slowK));
-      const pose = mixPose(POSES[prev.pose], POSES[cur.pose], k);
+      let pose = mixPose(POSES[prev.pose], POSES[cur.pose], k);
       const lying = clamp01(Math.abs(pose.root[0]) / 80);
 
-      // 動きの味付け（呼吸・足ぱたぱた・手をふる・「な」の口）
+      // 曲の拍（メニューの曲が鳴っていればその位置、止まっていれば自分で数える）
+      const mt = musicRef.current?.() ?? null;
+      const beat = mt != null ? (mt - MENU_BEAT0) * MENU_BPM / 60 : time * MENU_BPM / 60;
+      const bf = ((beat % 1) + 1) % 1;
+      const pulse = Math.exp(-bf * 7);                       // 拍の頭でぽんっ
+      const alt = Math.floor(beat) % 2 === 0 ? 1 : -1;       // 1 拍ごとに左右
+      const half = Math.sin(Math.PI * beat);                 // 2 拍でひと往復
+
+      // 動きの味付け（呼吸・足ぱたぱた・手をふる・「な」の口）。足や口も拍に合わせる
       const breathe = Math.sin(time * 1.6);
       let mouth = pose.mouth;
       let waveZ = 0;
       let kickL = 0, kickR = 0;
-      if (cur.pose === 'kick') { const a = Math.min(1, since / 1.0); kickL = 22 * a * Math.sin(time * 6); kickR = 22 * a * Math.sin(time * 6 + Math.PI); }
-      if (cur.pose === 'phone') { const a = Math.min(1, since / 1.5); kickL = 40 * a * Math.sin(time * 3.2); kickR = 40 * a * Math.sin(time * 3.2 + Math.PI); }
+      if (cur.pose === 'kick') { const a = Math.min(1, since / 1.0); kickL = 22 * a * Math.sin(Math.PI * beat); kickR = -kickL; }
+      if (cur.pose === 'phone') { const a = Math.min(1, since / 1.5); kickL = 40 * a * Math.sin(Math.PI * beat); kickR = -kickL; }
       if (cur.pose === 'nage') { kickL = 4 * Math.sin(time * 1.1); kickR = 4 * Math.sin(time * 1.1 + 2); }
-      if (cur.pose === 'wave') waveZ = 16 * Math.sin(time * 6) * Math.min(1, since / 0.8);
-      if (cur.pose === 'practice') { const beat = (since / 0.9) % 1; mouth = beat < 0.35 ? 1 : 0.1; }
+      if (cur.pose === 'wave') waveZ = 16 * Math.sin(Math.PI * beat) * Math.min(1, since / 0.8);
+      if (cur.pose === 'practice') mouth = bf < 0.3 ? 1 : 0.1;          // 「な」の練習は拍ごとに
       if (cur.pose === 'lie') pose.head[2] += 6 * Math.sin(time * 0.8);
+
+      // 8 拍ごとに、ちがうノリ方に変わる
+      const list = GROOVES[cur.pose];
+      const seg = Math.floor(beat / 8);
+      const gv = list[((seg % list.length) + list.length) % list.length];
+      const inSeg = beat - seg * 8;
+      const gw = clamp01(inSeg / 0.8) * clamp01((8 - inSeg) / 0.8) * clamp01((since - 1.2) / 0.8) * (1 - H);
+      const gp: Pose = { ...pose, armL: [...pose.armL] as any, armR: [...pose.armR] as any, spine: [...pose.spine] as V3, head: [...pose.head] as V3 };
+      let yawBeat = 0;
+      switch (gv) {
+        case 'nod': gp.head[0] += 12 * pulse; gp.spine[0] += 3 * pulse; break;
+        case 'sway': gp.spine[2] += 7 * half; gp.head[2] += 6 * half; break;
+        case 'tilt': gp.head[2] += 13 * alt * (1 - Math.pow(bf, 3) * 0.5); gp.head[0] += 4 * pulse; break;
+        case 'shoulder': gp.armL[1] -= 10 * pulse; gp.armR[1] -= 10 * pulse; gp.spine[0] -= 4 * pulse; gp.head[0] += 5 * pulse; break;
+        case 'wiggle': yawBeat = 8 * alt; gp.spine[2] += 5 * alt; break;
+        case 'kickbeat': kickL += 18 * alt * (1 - bf); kickR -= 18 * alt * (1 - bf); gp.head[0] += 6 * pulse; break;
+        case 'clap': {      // 拍の頭で手をたたく
+          const open = 1 - pulse;
+          gp.armL = [62, -2 + 26 * open]; gp.armR = [62, -2 + 26 * open]; gp.elbowL = -52; gp.elbowR = -52;
+          gp.head[0] += 6 * pulse; mouth = Math.max(mouth, 0.4);
+          break;
+        }
+        case 'pump': {      // こぶしを上へ（拍ごとに）
+          gp.armR = [95 + 55 * pulse, 18]; gp.elbowR = -90 + 60 * pulse; gp.head[0] -= 6 * pulse; mouth = Math.max(mouth, 0.6 * pulse);
+          break;
+        }
+        case 'point': {     // 左右交互に、指さし
+          const up = 0.6 + 0.4 * pulse;
+          if (alt > 0) { gp.armR = [150 * up, 20]; gp.elbowR = -10; } else { gp.armL = [150 * up, 20]; gp.elbowL = -10; }
+          gp.head[2] += 8 * alt; break;
+        }
+      }
+      if (gw > 0) {
+        const hands = HAND_GROOVE.has(gv);
+        pose = mixPose(pose, gp, gw);
+        if (!hands) { pose.armL = mixV(pose.armL, gp.armL, gw); pose.armR = mixV(pose.armR, gp.armR, gw); }
+      }
 
       // テキストつきの反応（Game から）：上半身にかぶせる。寝転がっているときは弱く
       let lift = 0, extraYaw = 0, headWobX = 0, headWobZ = 0, shake = 0;
@@ -259,7 +419,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
         const rt = (now - re.t0) / 1000;
         if (rt > def.dur) reactionRef.current = null;
         else {
-          const w = Math.min(1, rt / 0.15) * Math.min(1, (def.dur - rt) / 0.3) * (1 - 0.7 * lying) * 0.75;
+          const w = Math.min(1, rt / 0.15) * Math.min(1, (def.dur - rt) / 0.3) * (1 - 0.7 * lying) * 0.75 * (1 - H);
           const rp = def.pose;
           pose.armL = mixV(pose.armL, rp.armL, w); pose.armR = mixV(pose.armR, rp.armR, w);
           pose.elbowL = mix(pose.elbowL, rp.elbowL, w); pose.elbowR = mix(pose.elbowR, rp.elbowR, w);
@@ -280,6 +440,33 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
             default: break;
           }
         }
+      }
+
+      // つまみ上げ：持っている間は 0.25 秒で二つ折りに。はなすと落ちて、ぽてっと座る
+      let dropK = 1;               // 落ちている途中（0 はなした瞬間〜1 着地）
+      if (holding) H = Math.min(1, H + dt / 0.22);
+      else if (dropT > 0) {
+        const u = (now - dropT) / 1000;
+        dropK = clamp01(u / 0.36);
+        H = Math.max(0, 1 - clamp01(u / 0.3));
+        if (dropK >= 1 && !landed) {
+          landed = true; dropT = -1;
+          reactionRef.current = { r: 'dizzy', t0: now };
+          onDropRef.current?.();
+        }
+      }
+      if (holding) landed = false;
+      if (H > 0) {
+        const HB: Pose = { ...HELD, ...((window as any).__heldO || {}) };
+        const hp: Pose = { ...HB, armL: [...HB.armL] as any, armR: [...HB.armR] as any, thighL: [...HB.thighL] as V3, thighR: [...HB.thighR] as V3 };
+        // ぶらぶら：ゆれに合わせて腕と足がおくれてゆれる。足はときどきぱたぱた
+        hp.armL[0] += swing * 40; hp.armR[0] += swing * 40 + 4 * Math.sin(time * 5);
+        hp.thighL[0] += -swing * 30 + 10 * Math.sin(time * 7); hp.thighR[0] += -swing * 30 - 10 * Math.sin(time * 7);
+        hp.kneeL += 14 * Math.max(0, Math.sin(time * 7)); hp.kneeR += 14 * Math.max(0, -Math.sin(time * 7));
+        hp.head[2] += 6 * Math.sin(time * 2.2);
+        const e = ease(H);
+        pose = mixPose(pose, hp, e);
+        mouth = mix(mouth, 0.55 + 0.35 * Math.sin(time * 9), e);
       }
 
       // さわった所が「ぴくっ」：一瞬ちぢこまって、ばねのようにゆれて戻る。そのあと首をかしげてこっちを見る
@@ -303,10 +490,11 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
 
       restAll(rig);
       const sgn = { L: 1, R: -1 } as const;
+      const kickOn = (1 - H);
       for (const S of ['L', 'R'] as const) {
         const th = J['thigh' + S], kn = J['knee' + S];
         const tp = S === 'L' ? pose.thighL : pose.thighR;
-        const kick = S === 'L' ? kickL : kickR;
+        const kick = (S === 'L' ? kickL : kickR) * kickOn;
         const tw = S === 'L' ? twL : twR;
         const r = rest(th);
         th?.rotation.set(D2(tp[0] - (cur.pose === 'phone' ? 0 : kick * 0.4) - tw * 22), r[1] + sgn[S] * D2(tp[1]), r[2] + sgn[S] * D2(tp[2]));
@@ -314,9 +502,9 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
       }
       const shrug = Math.max(0, twBody) * 14 + Math.max(0, twHead) * 6;
       J.upperArmL?.rotation.set(D2(-pose.armL[0] - twArmL * 30), 0, D2(pose.armL[1] - shrug + twArmL * 20), 'ZXY');
-      J.upperArmR?.rotation.set(D2(-pose.armR[0] - twArmR * 30), 0, D2(-pose.armR[1] + waveZ + shrug - twArmR * 20), 'ZXY');
+      J.upperArmR?.rotation.set(D2(-pose.armR[0] - twArmR * 30), 0, D2(-pose.armR[1] + waveZ * kickOn + shrug - twArmR * 20), 'ZXY');
       if (J.elbowL) J.elbowL.rotation.x += D2(pose.elbowL - Math.max(0, twArmL) * 40);
-      if (J.elbowR) J.elbowR.rotation.x += D2(pose.elbowR + (cur.pose === 'wave' ? waveZ * 0.6 : 0) - Math.max(0, twArmR) * 40);
+      if (J.elbowR) J.elbowR.rotation.x += D2(pose.elbowR + (cur.pose === 'wave' ? waveZ * 0.6 * kickOn : 0) - Math.max(0, twArmR) * 40);
       if (J.spine) { J.spine.rotation.x += D2(pose.spine[0] + breathe * 1.2 - twBody * 8 + curious * 6 * (1 - lying)); J.spine.rotation.y += D2(pose.spine[1]); J.spine.rotation.z += D2(pose.spine[2] + shake); }
       if (J.head) {
         J.head.rotation.x += D2(pose.head[0] + breathe * 1.5 + headWobX + twHead * 12 - curious * 4);
@@ -329,26 +517,61 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
         const blink = local > 3.55 ? Math.sin(((local - 3.55) / 0.25) * Math.PI) : 0;
         rig.setBlink(Math.max(pose.eyes * (1 - curious), blink, squint));
       }
-      // 耳：ひらめいた瞬間とさわられた時にぴくっ。こっちを見ているときはぴんと立てる
-      const twitch = (cur.pose === 'idea' && since < 0.6 ? Math.sin((since / 0.6) * Math.PI) : 0) + earK;
-      ears.forEach((e, i) => { const r = earRest[i]; e.rotation.set(r.x - 0.45 * twitch + curious * 0.12, r.y, r.z + (i ? 1 : -1) * (0.28 * twitch - curious * 0.08)); });
+      // 耳：ひらめいた瞬間とさわられた時にぴくっ。こっちを見ているときはぴんと立てる。拍でもぴこっ
+      const twitch = (cur.pose === 'idea' && since < 0.6 ? Math.sin((since / 0.6) * Math.PI) : 0) + earK + 0.18 * pulse * (1 - H);
+      ears.forEach((e, i) => { const r = earRest[i]; e.rotation.set(r.x - 0.45 * twitch + curious * 0.12 + 0.3 * H, r.y, r.z + (i ? 1 : -1) * (0.28 * twitch - curious * 0.08)); });
       if (J.tail) J.tail.rotation.z += 0.25 * Math.sin(time * 2.2);
 
-      // からだの傾き（寝転がる）と向き。こっちを見たいときは少しこっちへ向く
+      // 横スワイプで回した分（はなすと少しすべって止まり、しばらくさわらないとゆっくり正面へ戻る）
+      if (!drag || drag.mode !== 'rotate') { userYaw += yawVel * dt; yawVel *= Math.pow(0.02, dt); }
+      if (now - lastSpin > 5000 && !holding) { const target = Math.round(userYaw / 360) * 360; userYaw += (target - userYaw) * Math.min(1, dt * 1.5); }
+      const yawDeg = mix(pose.yaw + 3 * Math.sin(time * 0.35), 0, curious * 0.6) + extraYaw + userYaw + yawBeat * gw;
+      world.rotation.y = D2(userYaw + pose.yaw * 0.2);
+      yawG.rotation.y = D2(yawDeg);
       body.rotation.set(D2(pose.root[0]), 0, D2(pose.root[1]));
-      world.rotation.y = D2(mix(pose.yaw + 3 * Math.sin(time * 0.35), 0, curious * 0.6) + extraYaw);
-      // いちばん低い所がラグにつくように高さを合わせ、ラグのまん中にいるように前後左右もそろえる
+
+      // 座っているときの腰の位置：いちばん低い所がラグにつくように（ラグのまん中にいるように前後左右もそろえる）
+      carrier.position.set(0, 0, 0); carrier.rotation.set(0, 0, 0);
       body.position.set(0, 0, 0);
-      body.updateMatrixWorld(true);
+      carrier.updateMatrixWorld(true);
       box.setFromObject(g);
       box.getCenter(ctr);
       const wantG = floorY - box.min.y, wantX = -ctr.x, wantZ = -ctr.z * 0.6;
       const f = firstFrame || forced ? 1 : Math.min(1, dt * 8);
-      ground += (wantG - ground) * f; cx += (wantX - cx) * f; cz += (wantZ - cz) * f;
+      if (H < 0.01 && dropT < 0) { ground += (wantG - ground) * f; cx += (wantX - cx) * f; cz += (wantZ - cz) * f; }
       firstFrame = false;
-      body.position.set(cx, ground + lift + Math.max(0, twBody) * 10, cz);
-      shadow.scale.set(150 + 120 * lying, 1, 1); shadow.scale.y = 110 + 60 * lying;
-      shadow.position.x = cx * 0.5; shadow.position.z = cz * 0.5;
+      seatedHip.set(cx, ground + lift + Math.max(0, twBody) * 10, cz);
+
+      // 腰の位置：座る ↔ 指につままれる。はなしたら重力で落ちる（加速しながら）
+      hipPrev.copy(hip);
+      if (holding) {
+        grabTarget.x = Math.max(-380, Math.min(380, grabTarget.x));
+        grabTarget.y = Math.max(floorY + 470, Math.min(700, grabTarget.y));
+        grabTarget.z = 0;
+        if (H < 1) hip.lerpVectors(seatedHip, grabTarget, ease(H));
+        else hip.lerp(grabTarget, Math.min(1, dt * 14));
+      } else if (dropT > 0) {
+        const u = dropK;
+        hip.set(mix(releaseHip.x, seatedHip.x, u), mix(releaseHip.y, seatedHip.y, u * u), mix(releaseHip.z, seatedHip.z, u));
+      } else hip.copy(seatedHip);
+      // ゆれ（振り子）：腰を横に動かすと、からだが遅れてゆれる
+      // 横の速さをなめらかにしてから加速度にする（ぶるぶるしないように）
+      const vx = (hip.x - hipPrev.x) / Math.max(dt, 1 / 120);
+      const vxs = hipVel.x + (vx - hipVel.x) * Math.min(1, dt * 18);
+      const ax = Math.max(-6000, Math.min(6000, (vxs - hipVel.x) / Math.max(dt, 1 / 120))); hipVel.set(vxs, 0, 0);
+      if (H >= 1 && holding) {
+        swingV += (-40 * swing - 4.5 * swingV - ax * 0.00022) * dt;
+        swing = Math.max(-0.5, Math.min(0.5, swing + swingV * dt));
+      } else { swing *= Math.pow(0.02, dt); swingV *= Math.pow(0.02, dt); }
+      if ((window as any).__noSwing) swing = 0;
+      carrier.position.copy(hip);
+      carrier.rotation.z = swing * H;
+      // 影：持ち上げると小さく・うすく
+      const up = Math.max(0, hip.y - seatedHip.y);
+      const sk = 1 / (1 + up / 260);
+      shadow.scale.set((150 + 120 * lying) * sk, 1, 1); shadow.scale.y = (110 + 60 * lying) * sk;
+      (shadow.material as THREE.MeshBasicMaterial).opacity = 0.55 * (0.4 + 0.6 * sk);
+      shadow.position.x = hip.x * 0.7; shadow.position.z = hip.z * 0.5;
       g.updateMatrixWorld(true);
       g.userData.cloth?.(dt);
       renderer.render(scene, camera);
@@ -358,6 +581,10 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
       cancelAnimationFrame(raf);
       ro.disconnect();
       renderer.domElement.removeEventListener('pointerdown', onDown);
+      renderer.domElement.removeEventListener('pointermove', onMove);
+      renderer.domElement.removeEventListener('pointerup', onUp);
+      renderer.domElement.removeEventListener('pointercancel', onUp);
+      renderer.domElement.removeEventListener('touchstart', onTouchStart);
       rug.dispose();
       renderer.dispose();
       try { renderer.forceContextLoss(); } catch { /* noop */ }
@@ -370,7 +597,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, reactRef 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={mountRef} className={`select-none ${onPoke ? 'cursor-pointer' : ''}`} style={{ width: size, height: size }} aria-label="ラグに座るしあしあ" />;
+  return <div ref={mountRef} className={`select-none ${onPoke ? 'cursor-grab active:cursor-grabbing' : ''}`} style={{ width: size, height: size }} aria-label="ラグに座るしあしあ（さわる・つまんで持ち上げる・横にスワイプで回す）" />;
 };
 
 export default ShiashiaSeated;

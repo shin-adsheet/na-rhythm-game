@@ -27,6 +27,13 @@ function burst(c: AudioContext, out: AudioNode, t: number, dur: number, vol: num
 }
 const master = (c: AudioContext, volume: number) => { const g = c.createGain(); g.gain.value = Math.max(0, Math.min(1, volume)) * 0.6; g.connect(c.destination); return g; };
 
+/** 風船が割れる「パンッ」（短く鋭いノイズ＋低いドン） */
+export function sfxBalloon(volume: number) {
+  const c = ac(); if (!c) return; const m = master(c, volume); const t = c.currentTime;
+  burst(c, m, t, 0.09, 0.9, 'bandpass', 1900 + Math.random() * 600);
+  burst(c, m, t, 0.04, 0.6, 'highpass', 4500);
+  tone(c, m, t, 0.08, 180, 60, 'sine', 0.5);
+}
 export function sfxPop(volume: number, pitch = 1, gold = false) {
   if (gold && playSfx('pop_gold', { volume, rate: Math.min(1.5, pitch * 0.8) })) { playSfx('pop', { volume, rate: pitch, gain: 0.6 }); return; }
   if (playSfx('pop', { volume, rate: pitch })) return;

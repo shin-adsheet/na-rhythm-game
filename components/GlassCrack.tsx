@@ -19,6 +19,7 @@ interface Props {
   impact: { x: number; y: number };   // 画面のピクセル
   volume: number;
   lite?: boolean;
+  level?: number;                       // 何回目の割れか（1〜3）。大きいほどひどく割れる
   fixing?: boolean;                     // true にすると、ひびが中心へ戻って消える
   onFixed?: () => void;
 }
@@ -251,7 +252,7 @@ function cellGeometry(fr: Fracture, toW: (x: number, y: number) => [number, numb
 
 interface Shard { mesh: THREE.Mesh; v: THREE.Vector3; w: THREE.Vector3; born: number; alive: boolean; x0: number }
 
-const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, fixing = false, onFixed }) => {
+const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, level = 1, fixing = false, onFixed }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const fixRef = useRef({ on: false, at: 0 });
   const onFixedRef = useRef(onFixed); onFixedRef.current = onFixed;
@@ -279,12 +280,12 @@ const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, fixin
     const scene = new THREE.Scene();
     const toW = (x: number, y: number): [number, number] => [x - W / 2, H / 2 - y];
 
-    const fr = makeFracture(W, H, impact, seed, { lite });
+    const fr = makeFracture(W, H, impact, seed, { lite, level });
     const look = new THREE.Vector2(), lookTo = new THREE.Vector2();
     const common = { uT: { value: 0 }, uFix: { value: 0 }, uCam: { value: camera.position.clone() }, uLook: { value: look } };
     const holeMat = new THREE.ShaderMaterial({ vertexShader: CELL_VS, fragmentShader: HOLE_FS, uniforms: { ...common, uPop: { value: 0 }, uSeed: { value: (seed % 97) * 1.37 } }, ...premult });
     const blotMat = new THREE.ShaderMaterial({ vertexShader: FULL_VS, fragmentShader: BLOT_FS, ...premult,
-      uniforms: { ...common, uRes: { value: new THREE.Vector2(W, H) }, uImp: { value: new THREE.Vector2(impact.x, impact.y) }, uR0: { value: fr.r0 }, uRB: { value: Math.min(W, H) * 0.14 }, uSeed: { value: (seed % 89) * 0.71 } } });
+      uniforms: { ...common, uRes: { value: new THREE.Vector2(W, H) }, uImp: { value: new THREE.Vector2(impact.x, impact.y) }, uR0: { value: fr.r0 }, uRB: { value: Math.min(W, H) * 0.14 * (1 + 0.35 * (Math.max(1, level) - 1)) }, uSeed: { value: (seed % 89) * 0.71 } } });
     const cellMat = new THREE.ShaderMaterial({ vertexShader: CELL_VS, fragmentShader: CELL_FS, uniforms: { ...common, uPop: { value: 0 } }, ...premult });
     const crackMat = new THREE.ShaderMaterial({ vertexShader: CRACK_VS, fragmentShader: CRACK_FS, uniforms: { ...common }, ...premult });
     const shardMat = new THREE.ShaderMaterial({ vertexShader: SHARD_VS, fragmentShader: SHARD_FS, uniforms: { ...common, uFade: { value: 1 } }, ...premult });
@@ -299,7 +300,7 @@ const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, fixin
     let s = seed;
     const rnd = () => { s = (s * 48271) % 2147483647; return s / 2147483647; };
     const shards: Shard[] = [];
-    const maxShards = lite ? 12 : 40;
+    const maxShards = (lite ? 12 : 40) * Math.max(1, level);
     for (const c of fr.cells.filter((x) => x.hole).slice(0, maxShards)) {
       const shape = new THREE.Shape(c.poly.map((p) => new THREE.Vector2(p.x - c.c.x, -(p.y - c.c.y))));
       const geo = new THREE.ExtrudeGeometry(shape, { depth: 5, bevelEnabled: false });
@@ -314,7 +315,7 @@ const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, fixin
 
     // 音：ひびが走る「パキパキ」、遅れて伸びる「ピキッ」、破片が落ちる「チャリン」
     const timers: number[] = [];
-    for (let i = 0; i < 6; i++) timers.push(window.setTimeout(() => playSfx('glass_small', { volume, gain: 0.25 + Math.random() * 0.2, rate: 1.7 + Math.random() * 0.8, pan: Math.random() * 1.4 - 0.7 }), 30 + i * 45 + Math.random() * 30));
+    for (let i = 0; i < 6 * Math.max(1, level); i++) timers.push(window.setTimeout(() => playSfx('glass_small', { volume, gain: 0.25 + Math.random() * 0.2, rate: 1.7 + Math.random() * 0.8, pan: Math.random() * 1.4 - 0.7 }), 30 + i * 45 + Math.random() * 30));
     fr.late.forEach((t) => timers.push(window.setTimeout(() => { playSfx('glass_small', { volume, gain: 0.5, rate: 2.5 }); playSfx('scratch', { volume, gain: 0.2, rate: 2.2 }); }, t * 1000)));
     let tinkles = 0;
 
@@ -347,7 +348,7 @@ const GlassCrack: React.FC<Props> = ({ seed, impact, volume, lite = false, fixin
         m.rotation.x += sh.w.x * dt; m.rotation.y += sh.w.y * dt; m.rotation.z += sh.w.z * dt;
         if (m.position.y < -H / 2 - 250 || m.position.z > camZ * 0.6) {
           sh.alive = false; m.visible = false;
-          if (m.position.y < -H / 2 - 250 && tinkles < 9) { tinkles++; playSfx((['glass_fall1', 'glass_fall2', 'glass_fall3'] as const)[tinkles % 3], { volume, gain: 0.25 + Math.random() * 0.25, rate: 0.9 + Math.random() * 0.4, pan: Math.max(-1, Math.min(1, sh.x0 / (W / 2))) }); }
+          if (m.position.y < -H / 2 - 250 && tinkles < 9 * Math.max(1, level)) { tinkles++; playSfx((['glass_fall1', 'glass_fall2', 'glass_fall3'] as const)[tinkles % 3], { volume, gain: 0.25 + Math.random() * 0.25, rate: 0.9 + Math.random() * 0.4, pan: Math.max(-1, Math.min(1, sh.x0 / (W / 2))) }); }
         }
       }
       shardMat.uniforms.uFade.value = 1 - fix;

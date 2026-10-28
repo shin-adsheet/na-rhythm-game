@@ -128,3 +128,34 @@ export function installButtonSfx(getVolume: () => number) {
   window.addEventListener('keydown', onKey, { once: true });
   return () => { window.removeEventListener('pointerdown', onDown, true); window.removeEventListener('keydown', onKey); };
 }
+
+/**
+ * 押した瞬間の手ごたえ（「コッ」という短いタップ音）。ファイルを読まずにその場で作るので遅れが少ない。
+ * 当たっても外れても鳴らす（当たったときは、この上に判定の音が重なる）
+ */
+let tapNoise: AudioBuffer | null = null;
+export function playTap(o: { volume: number; ctx?: AudioContext | null; pitch?: number }) {
+  if (!enabled) return;
+  const c = o.ctx && o.ctx.state !== 'closed' ? o.ctx : sfxCtx();
+  if (!c) return;
+  (window as any).__sfxLog?.push('tap');
+  try {
+    if (c.state !== 'running') c.resume().catch(() => {});
+    const t = c.currentTime, v = Math.max(0, Math.min(1, o.volume)) * 0.55, pitch = o.pitch ?? 1;
+    // からだ：短く下がる音
+    const osc = c.createOscillator(); osc.type = 'triangle';
+    osc.frequency.setValueAtTime(900 * pitch, t); osc.frequency.exponentialRampToValueAtTime(260 * pitch, t + 0.045);
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v * 0.8, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.07);
+    osc.connect(g); g.connect(c.destination); osc.start(t); osc.stop(t + 0.08);
+    // かど：ノイズの「カッ」
+    if (!tapNoise || tapNoise.sampleRate !== c.sampleRate) {
+      tapNoise = c.createBuffer(1, Math.round(c.sampleRate * 0.03), c.sampleRate);
+      const d = tapNoise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    }
+    const n = c.createBufferSource(); n.buffer = tapNoise;
+    const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3200 * pitch; bp.Q.value = 1.2;
+    const g2 = c.createGain(); g2.gain.value = v * 0.6;
+    n.connect(bp); bp.connect(g2); g2.connect(c.destination); n.start(t);
+    osc.onended = () => { try { osc.disconnect(); g.disconnect(); n.disconnect(); bp.disconnect(); g2.disconnect(); } catch { /* noop */ } };
+  } catch { /* noop */ }
+}

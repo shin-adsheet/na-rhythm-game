@@ -29,13 +29,15 @@ export interface Fracture { cracks: Crack[]; cells: Cell[]; impact: Pt; r0: numb
 
 const SPEED = 2600;   // ひびが走る速さ（px/秒）。本物はもっと速いが、見える速さにする
 
-export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt: { lite?: boolean } = {}): Fracture {
+export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt: { lite?: boolean; level?: number } = {}): Fracture {
+  // level：何回目の割れか（1〜3）。回数が増えるほど、ひびも破片も穴も増えて、ほかの所にも当たったあとが増える
+  const LV = Math.max(1, Math.min(3, opt.level ?? 1)), lv = LV - 1;
   let s = (seed % 2147483646) + 1;
   const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
   const rr = (a: number, b: number) => a + (b - a) * rnd();
   const P = impact;
   const far = Math.max(Math.hypot(P.x, P.y), Math.hypot(W - P.x, P.y), Math.hypot(P.x, H - P.y), Math.hypot(W - P.x, H - P.y)) * 1.08;
-  const r0 = Math.max(14, Math.min(W, H) * 0.05);
+  const r0 = Math.max(14, Math.min(W, H) * 0.05) * (1 + 0.45 * lv);
 
   // 輪の半径（中心ほど細かく、外ほど広く）
   const rings: number[] = [r0];
@@ -43,7 +45,7 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
   const NR = rings.length;
 
   // 放射状のひび
-  const N = Math.round(rr(opt.lite ? 12 : 15, opt.lite ? 15 : 21));
+  const N = Math.round(rr(opt.lite ? 12 : 15, opt.lite ? 15 : 21) * (1 + 0.4 * lv));
   const ang: number[] = [];
   for (let i = 0; i < N; i++) ang.push(((i + rr(-0.32, 0.32)) / N) * Math.PI * 2);
   ang.sort((a, b) => a - b);
@@ -78,7 +80,7 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
   for (let i = 0; i < N; i++) {
     const A = rays[i], B = rays[(i + 1) % N];
     const present: number[] = [0];
-    for (let j = 1; j < NR - 1; j++) if (rnd() < (j < 2 ? 0.9 : j < 4 ? 0.62 : 0.38)) present.push(j);
+    for (let j = 1; j < NR - 1; j++) if (rnd() < Math.min(0.97, (j < 2 ? 0.9 : j < 4 ? 0.62 : 0.38) * (1 + 0.35 * lv))) present.push(j);
     present.push(NR - 1);
     const ringPts = new Map<number, Pt[]>();
     for (const j of present) {
@@ -112,13 +114,13 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
       const dish = 0.075 * Math.exp(-L / (Math.min(W, H) * 0.5));      // 当たった所へ向かって、くぼむように傾く
       const tilt: [number, number] = [-dx / L * dish + rr(-0.06, 0.06), -dy / L * dish + rr(-0.06, 0.06)];
       let bw = 0; for (const p of poly) bw = Math.max(bw, Math.hypot(p.x - c.x, p.y - c.y));
-      const small = bw < Math.min(W, H) * 0.08;
-      const hole = small && j0 >= 1 && j0 <= 2 && rnd() < 0.2;     // 大きなくさび形の穴は出しすぎない
+      const small = bw < Math.min(W, H) * (0.08 + 0.04 * lv);
+      const hole = small && j0 >= 1 && j0 <= 2 + lv && rnd() < 0.2 + 0.18 * lv;     // 大きなくさび形の穴は出しすぎない
       cells.push({ poly, c, tilt, time: tOf(c) + 0.02, hole, ring: j0 });
     }
   }
   // 抜け落ちる破片は多すぎないように
-  let holesLeft = opt.lite ? 2 : 3;
+  let holesLeft = (opt.lite ? 2 : 3) + (opt.lite ? 2 : 5) * lv;
   for (const c of cells) if (c.hole) { if (holesLeft > 0) holesLeft--; else c.hole = false; }
   // 放射状のひびが途中で二股に分かれる
   for (let k = 0; k < Math.round(N * 0.6); k++) {
@@ -135,7 +137,7 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
   // ところどころ小さく欠けて、裏の液晶が見える
   {
     const Rc = rings[1] * 0.97;
-    const M = opt.lite ? 13 : 18;
+    const M = Math.round((opt.lite ? 13 : 18) * (1 + 0.25 * lv));
     const mR = [0, 0.2, 0.42, 0.68, 1];
     // 頂点は扇と輪の交点。角度も半径も大きくずらして、的（まと）のように見えないようにする
     const V: Pt[][] = [];
@@ -148,7 +150,7 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
       }));
     }
     const at = (i: number, j: number) => V[((i % M) + M) % M][j];
-    let chips = opt.lite ? 2 : 4;
+    let chips = (opt.lite ? 2 : 4) + 4 * lv;
     for (let i = 0; i < M; i++) {
       let j = 0;
       while (j < mR.length - 1) {
@@ -169,7 +171,7 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
     }
   }
   // 枝分かれ（破片を分けない、途中で止まる細いひび）
-  const branchN = opt.lite ? 14 : 30;
+  const branchN = (opt.lite ? 14 : 30) * LV;
   for (let k = 0; k < branchN; k++) {
     const cr = cracks[Math.floor(rnd() * N)];
     const q = 2 + Math.floor(rnd() * (cr.pts.length - 3));
@@ -184,7 +186,7 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
   }
   // 少し遅れて伸びるひび（ピキッ）
   const late: number[] = [];
-  const lateN = opt.lite ? 2 : 4;
+  const lateN = (opt.lite ? 2 : 4) + 3 * lv;
   for (let k = 0; k < lateN; k++) {
     const t0 = 0.75 + k * rr(0.5, 0.9);
     late.push(t0);
@@ -197,6 +199,39 @@ export function makeFracture(W: number, H: number, impact: Pt, seed: number, opt
     let x = a.x, y = a.y, th = t;
     for (let i = 0; i < 6; i++) { th += rr(-0.3, 0.3); x += Math.cos(th) * len / 6; y += Math.sin(th) * len / 6; pts.push({ x, y }); }
     cracks.push({ pts, times: pts.map((_, i) => t0 + i * 0.012), w0: 1.5, w1: 0.7, kind: 'late' });
+  }
+  // 2 回目・3 回目：ほかの所にも、小さなクモの巣状のひび（前に殴られたあと・飛んだ破片が当たったあと）
+  const spiders = lv * (opt.lite ? 2 : 3);
+  for (let k = 0; k < spiders; k++) {
+    const Q = { x: rr(0.1, 0.9) * W, y: rr(0.1, 0.9) * H };
+    if (Math.hypot(Q.x - P.x, Q.y - P.y) < Math.min(W, H) * 0.25) { Q.x = W - Q.x; Q.y = H - Q.y; }
+    const t0 = 0.05 + k * rr(0.06, 0.16);
+    const n = Math.round(rr(7, 12)), R = rr(40, 110) * (1 + 0.3 * lv);
+    const rq = Math.max(4, R * 0.08);
+    const ringR = [rq, R * 0.35, R * 0.7, R];
+    const spokes: Pt[][] = [];
+    for (let i = 0; i < n; i++) {
+      let a = ((i + rr(-0.3, 0.3)) / n) * Math.PI * 2;
+      const pts: Pt[] = ringR.map((r) => { a += rr(-0.12, 0.12); const rr2 = r * rr(0.8, 1.25); return { x: Q.x + Math.cos(a) * rr2, y: Q.y + Math.sin(a) * rr2 }; });
+      spokes.push(pts);
+      const d = (p: Pt) => t0 + Math.hypot(p.x - Q.x, p.y - Q.y) / SPEED;
+      cracks.push({ pts, times: pts.map(d), w0: 1.5, w1: 0.8, kind: 'ray' });
+    }
+    // 輪のひび
+    for (const j of [1, 2]) for (let i = 0; i < n; i++) {
+      if (rnd() > 0.7) continue;
+      const a = spokes[i][j], b = spokes[(i + 1) % n][j];
+      const tt = t0 + Math.hypot(a.x - Q.x, a.y - Q.y) / SPEED + 0.01;
+      cracks.push({ pts: [a, b], times: [tt, tt + 0.02], w0: 1.1, w1: 1.0, kind: j === 1 ? 'micro' : 'ring' });
+    }
+    // 当たった所の細かいかけら（白っぽい）
+    for (let i = 0; i < n; i++) {
+      const a = spokes[i][0], b = spokes[(i + 1) % n][0], c2 = spokes[(i + 1) % n][1], d2 = spokes[i][1];
+      const poly = [a, d2, c2, b];
+      const c = poly.reduce((acc, p) => ({ x: acc.x + p.x / 4, y: acc.y + p.y / 4 }), { x: 0, y: 0 });
+      cells.push({ poly, c, tilt: [rr(-0.3, 0.3), rr(-0.3, 0.3)], time: t0 + 0.01, hole: rnd() < 0.15 * lv, ring: -1, micro: true });
+    }
+    late.push(t0 + 0.02);
   }
   return { cracks, cells, impact: P, r0, late };
 }

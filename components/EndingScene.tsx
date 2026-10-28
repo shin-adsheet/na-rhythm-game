@@ -10,6 +10,8 @@ interface Props {
   onDone: () => void;
   volume?: number;
   audioCtx?: AudioContext | null;   // ゲーム中の AudioContext（スマホで効果音を確実に鳴らすため）
+  /** 10秒・30秒で遊んだとき：フルだとエンディングが変わるかも、と案内する */
+  notFull?: boolean;
 }
 
 /** 画面の大きさ（スマホで大きさを合わせる） */
@@ -333,7 +335,7 @@ const Cabinet: React.FC<{ kind: number; w: number; hue: number }> = ({ kind, w, 
   );
 };
 
-const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, audioCtx = null }) => {
+const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, audioCtx = null, notFull = false }) => {
   const [elapsed, setElapsed] = useState(0);
   const sfxRef = useRef<EndingSfx | null>(null);
   // しょぼいエンディングは短いので、文字も速めに出す
@@ -890,7 +892,7 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
           <div className="text-[10px] tracking-widest text-white/70">ENDING No.{String(ending.no).padStart(2, '0')} · {RARITY_LABEL[ending.rarity]}</div>
           <div className="text-lg sm:text-xl md:text-2xl font-black leading-tight">{ending.title}</div>
           <div className="text-xs text-white/80">{ending.subtitle}</div>
-          {ending.short && <div className="mt-1 text-[10px] font-bold text-yellow-200">予算の都合により、しょぼいエンディングでお送りしています</div>}
+          {notFull && <div className="mt-1 text-[10px] font-bold text-yellow-200">フルで遊ぶと、エンディングが変わるかも</div>}
           {isNew && <div className="absolute -top-2 -right-3 bg-yellow-300 text-slate-800 font-black px-2.5 py-0.5 rounded-full text-xs border-2 border-white rotate-12 animate-bounce">NEW!</div>}
         </div>
         <div className="shrink-0 text-white/90 text-[11px] sm:text-xs font-bold bg-black/40 px-3 py-1 rounded-full">タップでスキップ</div>

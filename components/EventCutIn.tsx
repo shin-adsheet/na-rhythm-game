@@ -118,7 +118,8 @@ const PROP: Record<CutInEvent, React.ReactNode> = {
   ban: <Hammer />,
 };
 
-const EventCutIn: React.FC<{ data: CutInData | null; mobile?: boolean }> = ({ data, mobile }) => {
+/** area：出す場所（px）。プレイ中は譜面（押す所）と重ならない所を Game が渡す */
+const EventCutIn: React.FC<{ data: CutInData | null; mobile?: boolean; area?: { y: number; h: number } }> = ({ data, mobile, area }) => {
   if (!data) return null;
   const th = THEME[data.event];
   const chars = Array.from(data.title);
@@ -126,7 +127,7 @@ const EventCutIn: React.FC<{ data: CutInData | null; mobile?: boolean }> = ({ da
     <div
       key={data.id}
       className="ci-wrap absolute inset-x-0 z-[60] pointer-events-none"
-      style={{ top: mobile ? '21%' : '15%', height: mobile ? '25%' : '31%', ['--dur' as any]: `${data.durationMs}ms` }}
+      style={{ top: area ? area.y : mobile ? '21%' : '15%', height: area ? Math.max(96, Math.min(area.h, mobile ? 210 : 250)) : mobile ? '25%' : '31%', ['--dur' as any]: `${data.durationMs}ms` }}
     >
       {/* 帯 */}
       <div className="ci-band absolute inset-y-0 -left-[6%] -right-[6%] -skew-y-2 shadow-2xl overflow-hidden" style={{ background: th.band }}>

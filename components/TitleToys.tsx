@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { sfxPop } from '../utils/titleSfx';
+import { sfxPop, sfxBalloon } from '../utils/titleSfx';
 import { playSfx } from '../utils/sfx';
 
 /**
@@ -8,9 +8,12 @@ import { playSfx } from '../utils/sfx';
  *  ・今日の「な占い」（日付で決まるので、1 日 1 回同じ結果）
  */
 interface Bubble { id: number; x: number; size: number; dur: number; gold: boolean; sway: number }
-interface Popped { id: number; x: number; y: number; text: string; gold: boolean }
+interface Popped { id: number; x: number; y: number; text: string; gold: boolean; size: number }
 
-export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: number) => void; disabled?: boolean }> = ({ volume, total, onPop, disabled }) => {
+/** 割れたときの文字（風船が割れる音っぽく） */
+const POP_WORDS = ['パンッ！', 'パーン！', 'ボンッ！', 'パチン！'];
+
+export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: number) => void; onBurst?: (x: number, y: number, gold: boolean) => void; disabled?: boolean }> = ({ volume, total, onPop, onBurst, disabled }) => {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [popped, setPopped] = useState<Popped[]>([]);
   const [combo, setCombo] = useState(0);
@@ -42,9 +45,12 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const id = b.id;
     setBubbles((x) => x.filter((y) => y.id !== id));
-    setPopped((p) => [...p, { id, x: r.left + r.width / 2, y: r.top + r.height / 2, text: `+${pts}${c.n >= 3 ? `　${c.n}コンボ` : ''}`, gold: b.gold }]);
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    setPopped((p) => [...p, { id, x: cx, y: cy, text: `+${pts}${c.n >= 3 ? `　${c.n}コンボ` : ''}`, gold: b.gold, size: r.width }]);
     setTimeout(() => setPopped((p) => p.filter((q) => q.id !== id)), 900);
+    sfxBalloon(volume);
     onPop(pts);
+    onBurst?.(cx, cy, b.gold);
   };
 
   return (
@@ -59,7 +65,17 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
         </div>
       ))}
       {popped.map((p) => (
-        <div key={p.id} className="absolute pop-float font-black whitespace-nowrap" style={{ left: p.x, top: p.y, color: p.gold ? '#d97706' : '#ec4899', WebkitTextStroke: '3px #fff', paintOrder: 'stroke fill', fontSize: 18 }}>{p.text}</div>
+        <React.Fragment key={p.id}>
+          {/* 風船が割れる：まん中が光って、ふちのかけらが飛び散る */}
+          <div className="absolute balloon-flash rounded-full" style={{ left: p.x, top: p.y, width: p.size, height: p.size, background: p.gold ? 'radial-gradient(circle, #fff 0%, #fde68a 55%, transparent 72%)' : 'radial-gradient(circle, #fff 0%, #fbcfe8 55%, transparent 72%)' }} />
+          {Array.from({ length: 10 }).map((_, k) => (
+            <div key={k} className="absolute balloon-shard" style={{ left: p.x, top: p.y, width: p.size * 0.32, height: p.size * 0.13, borderRadius: '50% 50% 40% 40% / 100% 100% 30% 30%',
+              background: p.gold ? (k % 2 ? '#fbbf24' : '#fde68a') : (k % 2 ? '#f9a8d4' : '#fff'), border: `2px solid ${p.gold ? '#f59e0b' : '#f472b6'}`,
+              ['--r0' as any]: `${k * 36 + (p.id % 17)}deg`, ['--dist' as any]: `${p.size * (0.9 + ((k * 7 + p.id) % 5) * 0.18)}px`, ['--spin' as any]: `${((k * 53) % 180) - 90}deg` }} />
+          ))}
+          <div className="absolute balloon-word font-black whitespace-nowrap" style={{ left: p.x, top: p.y, color: p.gold ? '#d97706' : '#db2777', WebkitTextStroke: '4px #fff', paintOrder: 'stroke fill', fontSize: Math.max(18, p.size * 0.42) }}>{POP_WORDS[p.id % POP_WORDS.length]}</div>
+          <div className="absolute pop-float font-black whitespace-nowrap" style={{ left: p.x, top: p.y + p.size * 0.55, color: p.gold ? '#d97706' : '#ec4899', WebkitTextStroke: '3px #fff', paintOrder: 'stroke fill', fontSize: 15 }}>{p.text}</div>
+        </React.Fragment>
       ))}
       {total > 0 && (
         <div style={{ bottom: 'max(8px, env(safe-area-inset-bottom))' }} className="absolute left-2 bg-white/85 rounded-full px-3 py-1 text-[11px] font-black text-slate-500 border-2 border-white shadow">

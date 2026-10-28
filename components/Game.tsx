@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { GameState, GameMode, Difficulty, ScoreEntry, NaParticle, RunStats, Ending } from '../types';
+import { GameState, GameMode, Difficulty, ScoreEntry, NaParticle, NaVariant, Rarity, RunStats, Ending } from '../types';
 import { MODE_LABEL, MODE_DESC, LS_KEYS, DIFF_LABEL, DIFF_DESC } from '../constants';
 import { buildChart, BEAT, EIGHTH } from '../utils/chart';
 import { JudgeEngine, NoteState, BurnState } from '../utils/judge';
@@ -11,7 +11,7 @@ import { MicDetector } from '../utils/micDetector';
 import { rollItem, ItemDef, ItemId, ITEM_COLOR } from '../utils/items';
 import { rollRarity, pickVariant, createParticles } from '../utils/naEffects';
 import { ACHIEVEMENTS, achievementById, evaluate, loadUnlocked, saveUnlocked, loadLifetime, saveLifetime, LifetimeStats } from '../utils/achievements';
-import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings } from '../utils/endings';
+import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings, countSeen } from '../utils/endings';
 import NaEffects from './NaEffects';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import ShiashiaSeated, { STORY, Reaction } from './ShiashiaSeated';
@@ -20,7 +20,7 @@ import GlassCrack from './GlassCrack';
 import ScreenDeath from './ScreenDeath';
 import { NaBubbles, FortuneCard } from './TitleToys';
 import { sfxBoing } from '../utils/titleSfx';
-import { playSfx, playSfxAt, preloadSfx, installButtonSfx, cancelPendingSfx, SfxId, SfxOpt } from '../utils/sfx';
+import { playSfx, playSfxAt, preloadSfx, installButtonSfx, cancelPendingSfx, playTap, SfxId, SfxOpt } from '../utils/sfx';
 import Track from './Track';
 import HeavenStage from './HeavenStage';
 import BurnFx, { BurnFxData } from './BurnFx';
@@ -42,6 +42,8 @@ import CollectionBook from './CollectionBook';
 const TAP_ONLY = !!process.env.TAP_ONLY;           // マイクを使わない版を作るとき（ビルド時に TAP_ONLY=1）
 const ASSET_BASE = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
 const DEFAULT_BGM = ASSET_BASE + 'bgm/bgm.mp3';
+/** カウント「3・2・3・2・1・GO」：[声, 最初の「な」の何拍前, 画面の文字] */
+const COUNT_IN: [SfxId, number, string][] = [['v3', 8, '3'], ['v2', 6, '2'], ['v3', 4, '3'], ['v2', 3, '2'], ['v1', 2, '1'], ['v_go', 1, 'GO!']];
 /** タイトル（OP）の曲。設定で切り替えられる */
 type MenuBgm = 'chip' | 'chip1' | 'original';
 const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
@@ -268,6 +270,7 @@ const Game: React.FC = () => {
   const burnFxShownRef = useRef(new Set<number>());
   const holdGapBurnRef = useRef<number | null>(null);
   const [crackSeed, setCrackSeed] = useState<number | null>(null);
+  const [crackLevel, setCrackLevel] = useState(1);     // 何回目の割れか（回数が増えるほどひどく割れる）
   const [crackFixing, setCrackFixing] = useState(false);
   const [showFortune, setShowFortune] = useState(false);
   const [titlePops, setTitlePops] = useState(() => lifeRef.current.titlePops ?? 0);
@@ -304,7 +307,7 @@ const Game: React.FC = () => {
   };
   /** 実績の判定。プレイ中は画面に出さず、結果画面でまとめて見せる */
   const checkAchievements = (run: Partial<RunStats> | null, quiet: boolean) => {
-    const newly = evaluate(run, lifeRef.current, Object.keys(seenEnds()).length, TOTAL_ENDINGS, unlockedRef.current);
+    const newly = evaluate(run, lifeRef.current, countSeen(seenEnds()), TOTAL_ENDINGS, unlockedRef.current);
     if (!newly.length) return newly;
     const now = Date.now();
     const next = { ...unlockedRef.current };
@@ -388,6 +391,25 @@ const Game: React.FC = () => {
   const doShake = (cls: string, ms: number) => { setShake(cls); setTimeout(() => setShake(''), ms); };
   const flashMood = (m: ShiashiaMood, ms: number) => { setTempMood(m); setTimeout(() => setTempMood((x) => (x === m ? null : x)), ms); };
 
+  /** タイトルの「な」の風船を割ったとき：初期の激しい「な」アニメのどれかを、割れた所から出す */
+  const spawnBalloonNa = (x: number, y: number, gold: boolean) => {
+    if (perf.lite && Math.random() < 0.5) return;
+    const WILD: [NaVariant, Rarity][] = [
+      ['pop', 'normal'], ['spin', 'normal'], ['bounce', 'normal'], ['zigzag', 'normal'], ['wave', 'normal'], ['slide', 'normal'],
+      ['rainbow', 'uncommon'], ['giant', 'uncommon'], ['swarm', 'uncommon'], ['ring', 'uncommon'], ['shadow', 'uncommon'], ['neon', 'uncommon'],
+      ['chain', 'rare'], ['thunder', 'rare'], ['flip', 'rare'], ['blackhole', 'rare'], ['pixel', 'rare'],
+      ['tsunami', 'ultra'], ['chaos', 'ultra'], ['matrix', 'ultra'],
+    ];
+    // 金の「な」はレア以上
+    const pool = gold ? WILD.filter(([, r]) => r === 'rare' || r === 'ultra') : WILD;
+    const [v, r] = pool[Math.floor(Math.random() * pool.length)];
+    const ps = createParticles(v, r);
+    const px = `${(x / Math.max(1, window.innerWidth)) * 100}%`, py = `${(y / Math.max(1, window.innerHeight)) * 100}%`;
+    // その場で起きるアニメは、割れた所から
+    if (['pop', 'spin', 'neon', 'flip', 'thunder', 'pixel', 'ring', 'rainbow', 'bounce'].includes(v)) ps.forEach((p) => { p.left = px; p.top = py; });
+    if (v === 'giant') ps.forEach((p) => { p.left = px; });
+    setParticles((prev) => [...prev, ...ps].slice(isMobileRef.current ? -45 : -80));
+  };
   const spawnBackgroundNa = () => {
     if (perf.lite) return;
     const ps = createParticles(pickVariant(rollRarity(flagsRef.current.buzz)), 'normal');
@@ -531,6 +553,8 @@ const Game: React.FC = () => {
     if (gameStateRef.current !== 'PLAYING' || finishingRef.current) return;
     const p = playerRef.current, e = engineRef.current;
     if (!p || !e) return;
+    // 押した瞬間の手ごたえ（キーボード・タップのとき。当たっても外れても鳴らす）
+    if (src === 'tap' && settingsRef.current.hitSound !== false) { const pc = p.ctx; playTap({ volume: settingsRef.current.volume, ctx: pc && pc.state === 'running' ? pc : null, pitch: 0.95 + Math.random() * 0.1 }); }
     // 伸ばし中は、ほかの入力を数えない（空振りにしない）
     if (activeHoldRef.current) return;
     // 大きい「な」の 2 つ目のキー（同時押し）・2 本目の指
@@ -575,7 +599,7 @@ const Game: React.FC = () => {
       showJudge(j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GREAT' : 'GOOD', j === 'perfect' ? 'text-amber-400' : j === 'great' ? 'text-pink-500' : 'text-sky-500');
       // タップ音（キーボード・タップのときだけ）とコンボの声
       if (src === 'tap' && settingsRef.current.hitSound !== false) se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
-      if (voiceOn() && (comboRef.current === 50 || (comboRef.current > 0 && comboRef.current % 100 === 0))) se('v_combo', { gain: 0.8 }, true);
+      // コンボの声（「コンボ！」）は、プレイの途中で耳に残って気になるので鳴らさない（文字の COMBO だけ）
       if (Math.random() < 0.18 + chaos * 0.6) spawnBackgroundNa();
       checkViewers(t);
     } else if (r.type === 'extra') {
@@ -766,9 +790,13 @@ const Game: React.FC = () => {
     // カウントダウンの声「3・2・1」を、曲の拍ぴったりに予約する（声で遊ぶときはマイクが拾うので鳴らさない）
     cancelPendingSfx();
     if (voiceOn() && (TAP_ONLY || settingsRef.current.input === 'tap')) {
-      (['v3', 'v2', 'v1'] as SfxId[]).forEach((id, k) => {
-        const when = p.ctxTimeOf(ch.firstT - 2 * BEAT * (3 - k));
-        if (when != null) playSfxAt(id, when, { ctx: p.ctx, volume: settingsRef.current.volume });
+      // 「3・2・3・2・1・GO」：はじめの 3・2 は 2 拍ずつ、あとの 3・2・1・GO は 1 拍ずつ（最初の「な」の 8 拍前から）
+      // 声の「聞こえる拍の位置」は音の頭ではなく母音の立ち上がり。three は th、one は w、go は g のぶん遅れて聞こえるので、
+      // 声ごとに測った分だけ早めに鳴らして、ちょうど拍に乗るようにする
+      const PCENTER: Record<string, number> = { v3: 0.07, v2: 0.03, v1: 0.12, v_go: 0.15 };
+      COUNT_IN.forEach(([id, beats]) => {
+        const when = p.ctxTimeOf(ch.firstT - BEAT * beats);
+        if (when != null) playSfxAt(id, when - PCENTER[id], { ctx: p.ctx, volume: settingsRef.current.volume });
       });
     }
     setGameState('PLAYING');
@@ -995,7 +1023,10 @@ const Game: React.FC = () => {
         nextSpecialRef.current = t + 11 + Math.random() * 7;
         const id = now;
         const dur = 5200;
-        setSpecials((s) => [...s, { id, top: 20 + Math.random() * 18, dur }]);
+        // 譜面と重ならないように、譜面の下（せまければ上）を飛ばす
+        const A = playAreas(), band = A.bottom.h >= 100 ? A.bottom : A.top;
+        const topPx = band.y + 28 + Math.random() * Math.max(0, band.h - 96 - 42);      // 上下に少しゆれて飛ぶぶん（±26px）あける
+        setSpecials((s) => [...s, { id, top: (topPx / Math.max(1, vp.h)) * 100, dur }]);
         se('special', { gain: 0.55, rate: 1.1 }, true);
         setTimeout(() => setSpecials((s) => s.filter((x) => x.id !== id)), dur + 100);
       }
@@ -1004,7 +1035,8 @@ const Game: React.FC = () => {
       if (now - lastUi > 80) {
         lastUi = now;
         const left = ch.firstT - p.audibleTime();   // 数え始めも、耳に聞こえている曲に合わせる
-        const cd = left > 2 * BEAT * 3 ? '準備して' : left > 0 ? String(Math.ceil(left / (2 * BEAT))) : left > -0.45 ? 'な！' : null;
+        const bl = left / BEAT;
+        const cd = bl > 8 ? '準備して' : bl > 0 ? COUNT_IN.find(([, b]) => bl <= b + 1e-6 && bl > b - (b > 4 ? 2 : 1))?.[2] ?? null : left > -0.45 ? 'な！' : null;
         setCountdown((c) => (c === cd ? c : cd));
         const pct = Math.max(0, Math.min(1, (ch.endT - t) / (ch.endT - ch.firstT)));
         setTimePct(pct);
@@ -1071,6 +1103,26 @@ const Game: React.FC = () => {
     const id = performance.now();
     setReactSay({ id, text });
     setTimeout(() => setReactSay((x) => (x && x.id === id ? null : x)), 1900);
+  };
+  /** タイトルのしあしあをつまみ上げた・はなした */
+  const sayOnly = (text: string, ms = 1600) => {
+    const id = performance.now();
+    setReactSay({ id, text });
+    setTimeout(() => setReactSay((x) => (x && x.id === id ? null : x)), ms);
+  };
+  const handleTitleGrab = () => {
+    if (kiaOn || deathOn) return;
+    const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+    sayOnly(pick(['わわっ！？', 'たかーい！', 'お、おろして〜', 'ぶらーん', 'つままれた…']), 2200);
+    se('poke_surprise', { rate: 1.1 });
+    se('swing', { gain: 0.6, rate: 1.2 });
+  };
+  const handleTitleDrop = () => {
+    if (kiaOn || deathOn) return;
+    const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+    sayOnly(pick(['ぽてっ', 'いたた…', 'ちゃくち！', 'もう一回！']));
+    se('poke_jump', { rate: 0.8, gain: 0.8 });
+    sfxBoing(settingsRef.current.volume * 0.5);
   };
   const handleTitlePoke = () => {
     handlePoke();
@@ -1244,12 +1296,18 @@ const Game: React.FC = () => {
               </div>
               <span className="text-3xl sm:text-5xl md:text-6xl font-black text-slate-800 mt-1" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>画期的ツール</span>
             </div>
-            <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/60 px-3 py-0.5 rounded-full">的なもの{titlePokeRef.current.n === 0 && !reactSay ? '　しあしあをタッチしてみて' : ''}</div>
+            <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/60 px-3 py-0.5 rounded-full">的なもの{titlePokeRef.current.n === 0 && !reactSay ? '　しあしあをタッチ・つまんでみて' : ''}</div>
 
             <div className="relative mt-2" style={{ width: sceneSize, height: sceneSize }}>
-              <div className="absolute inset-[6%] rounded-full bg-white/70 border-4 border-white shadow-inner" />
+              {/* しあしあの部屋（透けない背景）：やわらかい色の丸い窓 */}
+              <div className="absolute inset-[6%] rounded-full border-4 border-white shadow-[0_6px_0_rgba(236,72,153,0.18),inset_0_-14px_30px_rgba(236,72,153,0.12)] overflow-hidden"
+                style={{ background: 'radial-gradient(circle at 50% 30%, #ffffff 0%, #fdf4ff 40%, #fce7f3 75%, #fbcfe8 100%)' }}>
+                <div className="absolute inset-x-0 bottom-0 h-[42%]" style={{ background: 'linear-gradient(#f5d0fe00, #f5d0fe66)' }} />
+              </div>
               <div className="absolute inset-0">
-                <ShiashiaSeated size={sceneSize} onPoke={handleTitlePoke} onBeat={setStoryIdx} reactRef={seatedReactRef} />
+                <ShiashiaSeated size={sceneSize} onPoke={handleTitlePoke} onBeat={setStoryIdx} reactRef={seatedReactRef}
+                  getMusicTime={() => { const el = menuBgmRef.current; return el && !el.paused ? el.currentTime : null; }}
+                  onGrab={handleTitleGrab} onDrop={handleTitleDrop} />
               </div>
               {say && (
                 <div key={reactSay?.id ?? storyIdx} className="bubble-in absolute top-[3%] left-1/2 -translate-x-1/2 max-w-[90%] pointer-events-none">
@@ -1328,7 +1386,7 @@ const Game: React.FC = () => {
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => setShowBook(true)} className="bg-white/90 rounded-2xl py-3 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex flex-col items-center">
                 <span className="font-black text-slate-700">ずかん</span>
-                <span className="text-[10px] font-bold text-slate-400">実績 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length}・エンド {Object.keys(seenEndings).length}/{TOTAL_ENDINGS}</span>
+                <span className="text-[10px] font-bold text-slate-400">実績 {Object.keys(unlocked).length}/{ACHIEVEMENTS.length}・エンド {countSeen(seenEndings)}/{TOTAL_ENDINGS}</span>
               </button>
               <button onClick={() => setShowSettings((v) => !v)} className={`rounded-2xl py-3 px-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.08)] active:scale-95 transition-transform flex flex-col items-center ${showSettings ? 'bg-sky-300 text-white' : 'bg-white/90 text-slate-700'}`}>
                 <span className="font-black">せってい</span>
@@ -1348,6 +1406,16 @@ const Game: React.FC = () => {
     );
   };
 
+  /**
+   * プレイ中の画面の「あいている所」。譜面（押す所）の上と下。カットイン・special「な」・アイテムの文字は、ここに出して譜面と重ねない
+   */
+  const playAreas = () => {
+    const trackH = Math.round(Math.min(420, vp.h * 0.5));
+    const half = trackStyle === 'lane' ? 64 : trackH / 2 + 4;
+    const tTop = vp.h * 0.54 - half, tBot = vp.h * 0.54 + half;
+    const safeT = isMobile ? 24 : 8;
+    return { tTop, tBot, top: { y: safeT, h: Math.max(0, tTop - safeT - 6) }, bottom: { y: tBot + 6, h: Math.max(0, vp.h - tBot - 14) } };
+  };
   const renderPlaying = () => {
     const ratio = subs / quota;
     const trackH = Math.round(Math.min(420, vp.h * 0.5));
@@ -1420,7 +1488,7 @@ const Game: React.FC = () => {
 
         {/* アイテム効果 */}
         {itemCard && performance.now() < itemCard.until + 400 && (
-          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: isMobile ? 'calc(178px + env(safe-area-inset-top, 0px))' : '24%' }}>
+          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: (() => { const A = playAreas(); return A.bottom.h >= 90 ? A.bottom.y + 4 : Math.max(A.top.y, A.top.y + A.top.h - 92); })() }}>
             <div className={`bg-gradient-to-r ${ITEM_COLOR[itemCard.def.kind]} text-white rounded-2xl px-4 py-2 border-4 border-white shadow-xl text-center min-w-[220px]`}>
               <div className="text-[10px] font-black tracking-widest opacity-80">special「な」</div>
               <div className="font-black text-lg md:text-2xl leading-tight">{itemCard.def.name}</div>
@@ -1446,7 +1514,7 @@ const Game: React.FC = () => {
         <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
           <Track getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} flagsRef={flagsRef} scheduleRef={scheduleRef} height={trackH} action={actionWord} />
         </div>
-        <BurnFx data={burnFx} />
+        <BurnFx data={burnFx} textTop={(() => { const A = playAreas(); return A.top.y + A.top.h * 0.5; })()} />
         {/* してみた動画（リズム天国風）：きあきあとしあしあの 3D を譜面の上に重ねる（予定に入っているときだけ用意） */}
         {scheduleRef.current.some((sg) => sg.style === 'heaven') && (
           <div className="absolute left-0 right-0 z-[21] pointer-events-none" style={{ top: `calc(54% - ${trackH / 2}px)` }}>
@@ -1538,7 +1606,7 @@ const Game: React.FC = () => {
           </>
         );
       case 'ENDING':
-        return ending ? <EndingScene ending={ending} isNew={endingIsNew} volume={settings.volume} audioCtx={playerRef.current?.ctx ?? null} onDone={() => setGameState('FINISHED')} /> : null;
+        return ending ? <EndingScene ending={ending} isNew={endingIsNew} notFull={runRef.current.mode !== 'FULL'} volume={settings.volume} audioCtx={playerRef.current?.ctx ?? null} onDone={() => setGameState('FINISHED')} /> : null;
       case 'FINISHED':
         return (
           <ResultScreen run={runRef.current} revealT={revealT} ending={ending} endingIsNew={endingIsNew} isNewRecord={isNewRecordRef.current}
@@ -1569,7 +1637,7 @@ const Game: React.FC = () => {
           avoid={(() => { const th = Math.min(420, vp.h * 0.5); const half = trackStyle === 'lane' ? 60 : th / 2; return [((vp.h * 0.54 - half) / vp.h) * 100, ((vp.h * 0.54 + half) / vp.h) * 100] as [number, number]; })()} />
       )}
       {buzz && playing && <div className="fever-glow absolute inset-0 z-[2] pointer-events-none" />}
-      <NaEffects particles={particles} onClickSpecial={() => {}} front={playing && trackStyle !== 'lane'} />
+      <NaEffects particles={particles} onClickSpecial={() => {}} front={(playing && trackStyle !== 'lane') || gameState === 'READY'} />
 
       {renderContent()}
 
@@ -1589,14 +1657,14 @@ const Game: React.FC = () => {
         </div>
       )}
 
-      {playing && <EventCutIn data={cutIn} mobile={isMobile} />}
+      {playing && <EventCutIn data={cutIn} mobile={isMobile} area={(() => { const A = playAreas(); return A.top.h >= 120 || A.top.h >= A.bottom.h ? A.top : A.bottom; })()} />}
       {banFlash && playing && <div className="absolute inset-0 z-[58] bg-red-700/40 pointer-events-none flash-white" />}
 
       {gameState !== 'PLAYING' && <AchievementToasts toasts={toasts} />}
-      {gameState === 'READY' && <NaBubbles volume={settings.volume} total={titlePops} disabled={kiaOn || deathOn}
+      {gameState === 'READY' && <NaBubbles volume={settings.volume} total={titlePops} disabled={kiaOn || deathOn} onBurst={spawnBalloonNa}
         onPop={(n) => { const v = (lifeRef.current.titlePops ?? 0) + n; bumpLife({ titlePops: v }); setTitlePops(v); if (v >= 50 && v - n < 50) checkAchievements(null, false); }} />}
       {kiaOn && <KiaKiaPunch volume={settings.volume} onShout={() => doShake('shake-hard', 600)}
-        onImpact={() => { setCrackSeed((Date.now() % 99991) + 1); doShake('shake-hard', 700); bumpLife({ screenBroken: true }); checkAchievements(null, false); }}
+        onImpact={() => { const lv = Math.max(1, Math.min(3, kiaCountRef.current)); setCrackLevel(lv); setCrackSeed((Date.now() % 99991) + 1); doShake('shake-hard', 700 + 300 * (lv - 1)); if (lv >= 2) { se('glass_crash', { gain: 0.5 + 0.2 * lv, rate: 0.85, delay: 0.08 }); se('boom_low', { gain: 0.6 * lv }); } bumpLife({ screenBroken: true }); checkAchievements(null, false); }}
         onDone={() => {
           setKiaOn(false);
           const n = kiaCountRef.current;
@@ -1608,7 +1676,7 @@ const Game: React.FC = () => {
         onRestore={() => { setCrackSeed(null); setCrackFixing(false); kiaCountRef.current = 0; titlePokeRef.current.n = 0; bumpLife({ screenDead: true }); checkAchievements(null, true); }}
         onDone={() => { setDeathOn(false); setTimeout(() => showReact('ピカピカの 新しい画面！', 'jump'), 150); }} />}
       {crackSeed && gameState === 'READY' && (
-        <GlassCrack key={crackSeed} seed={crackSeed} impact={{ x: vp.w / 2, y: vp.h * 0.46 }} volume={settings.volume} lite={lite} fixing={crackFixing}
+        <GlassCrack key={crackSeed} seed={crackSeed} level={crackLevel} impact={{ x: vp.w * [0.5, 0.42, 0.56][crackLevel - 1], y: vp.h * [0.46, 0.42, 0.5][crackLevel - 1] }} volume={settings.volume} lite={lite} fixing={crackFixing}
           onFixed={() => { setCrackSeed(null); setCrackFixing(false); showReact('直った！', 'jump'); }} />
       )}
       {crackSeed && gameState === 'READY' && !kiaOn && !deathOn && !crackFixing && (
