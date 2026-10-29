@@ -292,8 +292,11 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
         onGrabRef.current?.();
       }
       if (drag.mode === 'held') {
-        const cxp = Math.max(8, Math.min(window.innerWidth - 8, e.clientX)), cyp = Math.max(8, Math.min(window.innerHeight - 8, e.clientY));
+        // 指（マウス）の少し下にぶら下げる。指でキャラがかくれないように、指と首の間に余白をあける
+        const gap = e.pointerType === 'touch' ? 72 : 36;
+        const cxp = Math.max(8, Math.min(window.innerWidth - 8, e.clientX)), cyp = Math.max(8, Math.min(window.innerHeight - 8, e.clientY)) + gap;
         if (planePt(cxp, cyp, tmp)) grabTarget.copy(tmp).add(grabOff);
+        pinch.x = e.clientX; pinch.y = e.clientY; pinch.gap = gap;
       }
       if (drag.mode === 'rotate') {
         const w = renderer.domElement.clientWidth || size;
@@ -330,6 +333,12 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
      * もとの四角の所は、まったく同じ見え方になるようにカメラの写す範囲をずらす（広げた瞬間にずれない）
      */
     let full = false;
+    const pinch = { x: 0, y: 0, gap: 0 };
+    // つまんでいる所の印：指の所の小さな丸と、首の後ろまでの細い線（どこをつまんでいるか分かるように）
+    const pinchEl = document.createElement('div');
+    pinchEl.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;z-index:76;pointer-events:none;display:none;';
+    pinchEl.innerHTML = '<div style="position:absolute;left:-1.5px;top:0;width:3px;border-radius:2px;background:linear-gradient(#ffffffcc,#f472b6cc)"></div><div style="position:absolute;left:-9px;top:-9px;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #f472b6;box-shadow:0 2px 6px rgba(0,0,0,.2)"></div>';
+    document.body.appendChild(pinchEl);
     const box0 = { x: 0, y: 0, s: size };
     const fitFull = () => {
       const W = window.innerWidth, Hh = window.innerHeight;
@@ -621,6 +630,11 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       if ((window as any).__noSwing) swing = 0;
       carrier.position.copy(hip);
       carrier.rotation.z = swing * H;
+      if (holding && full) {
+        pinchEl.style.display = 'block';
+        pinchEl.style.transform = `translate(${pinch.x}px, ${pinch.y}px)`;
+        (pinchEl.firstChild as HTMLElement).style.height = `${Math.max(0, pinch.gap - 6)}px`;
+      } else pinchEl.style.display = 'none';
       // 影：持ち上げると小さく・うすく
       const up = Math.max(0, hip.y - seatedHip.y);
       const sk = 1 / (1 + up / 260);
@@ -649,6 +663,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
         if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m: any) => m.dispose?.());
       });
       renderer.domElement.parentNode?.removeChild(renderer.domElement);
+      pinchEl.remove();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
