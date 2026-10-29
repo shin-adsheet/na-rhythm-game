@@ -334,10 +334,10 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
      */
     let full = false;
     const pinch = { x: 0, y: 0, gap: 0 };
-    // つまんでいる所の印：指の所の小さな丸と、首の後ろまでの細い線（どこをつまんでいるか分かるように）
+    // つまんでいる所の印：指の所の小さな丸
     const pinchEl = document.createElement('div');
     pinchEl.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;z-index:76;pointer-events:none;display:none;';
-    pinchEl.innerHTML = '<div style="position:absolute;left:-1.5px;top:0;width:3px;border-radius:2px;background:linear-gradient(#ffffffcc,#f472b6cc)"></div><div style="position:absolute;left:-9px;top:-9px;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #f472b6;box-shadow:0 2px 6px rgba(0,0,0,.2)"></div>';
+    pinchEl.innerHTML = '<div style="position:absolute;left:-9px;top:-9px;width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid #f472b6;box-shadow:0 2px 6px rgba(0,0,0,.2)"></div>';
     document.body.appendChild(pinchEl);
     const box0 = { x: 0, y: 0, s: size };
     const fitFull = () => {
@@ -633,7 +633,6 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       if (holding && full) {
         pinchEl.style.display = 'block';
         pinchEl.style.transform = `translate(${pinch.x}px, ${pinch.y}px)`;
-        (pinchEl.firstChild as HTMLElement).style.height = `${Math.max(0, pinch.gap - 6)}px`;
       } else pinchEl.style.display = 'none';
       // 影：持ち上げると小さく・うすく
       const up = Math.max(0, hip.y - seatedHip.y);
