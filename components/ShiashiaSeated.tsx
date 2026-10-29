@@ -154,7 +154,7 @@ const HAND_GROOVE = new Set<Groove>(['clap', 'pump', 'point']);
 
 /** つまみ上げられたとき：首の後ろ（服のえり）をつままれて、子ねこのように縦にぶらーん。腕と足はだらんと下がって、ひざを少しまるめる */
 const HELD: Pose = P({
-  root: [0, 0], spine: [6, 0, 0], head: [12, 0, 0], yaw: 0,
+  root: [0, 0], spine: [4, 0, 0], head: [14, 0, 0], yaw: 0,
   armL: [8, 14], armR: [8, 14], elbowL: -22, elbowR: -22,
   thighL: [-26, 0, 6], thighR: [-12, 0, 6], kneeL: 38, kneeR: 24, mouth: 0.6, eyes: 0.2,
 });
@@ -509,7 +509,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
         hp.armL[0] += 6 * Math.sin(time * 4); hp.armR[0] += 6 * Math.sin(time * 4 + 2);
         hp.thighL[0] += -14 * kick2; hp.thighR[0] += 14 * kick2;
         hp.kneeL += 18 * Math.max(0, kick2); hp.kneeR += 18 * Math.max(0, -kick2);
-        hp.head[1] += 14 * Math.sin(time * 1.3); hp.head[2] += 5 * Math.sin(time * 2.2);
+        // 首は少しうつむいたまま固定（ぶら下げているときに首だけ動くと、ねじれて見えるので）
         const e = ease(H);
         pose = mixPose(pose, hp, e);
         mouth = mix(mouth, 0.55 + 0.35 * Math.sin(time * 9), e);
@@ -553,9 +553,10 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       if (J.elbowR) J.elbowR.rotation.x += D2(pose.elbowR + (cur.pose === 'wave' ? waveZ * 0.6 * kickOn : 0) - Math.max(0, twArmR) * 40);
       if (J.spine) { J.spine.rotation.x += D2(pose.spine[0] + breathe * 1.2 - twBody * 8 + curious * 6 * (1 - lying)); J.spine.rotation.y += D2(pose.spine[1]); J.spine.rotation.z += D2(pose.spine[2] + shake); }
       if (J.head) {
-        J.head.rotation.x += D2(pose.head[0] + breathe * 1.5 + headWobX + twHead * 12 - curious * 4);
-        J.head.rotation.y += D2(pose.head[1]);
-        J.head.rotation.z += D2(pose.head[2] + headWobZ + twHead * 8 + curious * 16);
+        const free = 1 - H;          // つままれている間は、首の細かい動きを止める
+        J.head.rotation.x += D2(pose.head[0] + (breathe * 1.5 + headWobX + twHead * 12 - curious * 4) * free);
+        J.head.rotation.y += D2(pose.head[1] * free);
+        J.head.rotation.z += D2((pose.head[2] + headWobZ + twHead * 8 + curious * 16) * free);
       }
       if (J.mouth) { const mo = Math.max(mouth, curious * 0.35, Math.max(0, twBody + twHead + twL + twR + twArmL + twArmR) * 0.8); J.mouth.visible = mo > 0.25; const ms = rig.mouthS; J.mouth.scale.set(4.2 * ms, 3.4 * ms * (0.6 + mo * 0.9), 1); }
       if (rig.setBlink) {

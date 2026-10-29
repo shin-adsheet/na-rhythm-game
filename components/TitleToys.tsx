@@ -7,8 +7,28 @@ import { playSfx } from '../utils/sfx';
  *  ・ふわふわ上がってくる「な」をタップして割る（続けて割るとコンボ、たまに金の「な」）
  *  ・今日の「な占い」（日付で決まるので、1 日 1 回同じ結果）
  */
-interface Bubble { id: number; x: number; size: number; dur: number; gold: boolean; sway: number }
+interface Bubble { id: number; x: number; size: number; dur: number; gold: boolean; sway: number; popped?: boolean; released?: boolean }
 interface Popped { id: number; x: number; y: number; text: string; gold: boolean; size: number }
+
+/**
+ * 「な」を割った指・マウスで、後ろのボタンが押されないようにする。
+ * 割った瞬間に「な」は消えるので、そのあとの指をはなす・クリックが後ろのボタンに届いてしまう。
+ * 指をはなすまで（最長 0.8 秒）、ページ全体の pointerup・click などを先に受け取って止める
+ */
+function blockClickThrough(pointerId: number) {
+  const stop = (ev: Event) => { ev.stopPropagation(); ev.stopImmediatePropagation(); if (ev.cancelable) ev.preventDefault(); };
+  const types = ['pointerup', 'mouseup', 'touchend', 'click', 'dblclick', 'contextmenu'];
+  let done = false;
+  const end = () => { if (done) return; done = true; types.forEach((ty) => window.removeEventListener(ty, handler, true)); };
+  const handler = (ev: Event) => {
+    if ((ev as PointerEvent).pointerId != null && ev.type === 'pointerup' && (ev as PointerEvent).pointerId !== pointerId) return;
+    stop(ev);
+    // 指をはなしたあとに来る click まで止めてから外す
+    if (ev.type === 'click') setTimeout(end, 30);
+  };
+  types.forEach((ty) => window.addEventListener(ty, handler, true));
+  setTimeout(end, 1500);
+}
 
 /** 割れたときの文字（風船が割れる音っぽく） */
 const POP_WORDS = ['パンッ！', 'パーン！', 'ボンッ！', 'パチン！'];
@@ -36,15 +56,25 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
 
   const pop = (b: Bubble, e: React.PointerEvent) => {
     e.stopPropagation();
+    e.preventDefault();
+    blockClickThrough(e.pointerId);
     const now = performance.now();
     const c = comboRef.current;
     c.n = now - c.at < 1300 ? c.n + 1 : 1; c.at = now;
     setCombo(c.n);
     const pts = (b.gold ? 10 : 1) * (c.n >= 5 ? 2 : 1);
     sfxPop(volume, Math.min(2.2, 1 + (c.n - 1) * 0.08), b.gold);
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    if (b.popped) return;
+    const el = e.currentTarget as HTMLElement;
+    const r = el.getBoundingClientRect();
     const id = b.id;
-    setBubbles((x) => x.filter((y) => y.id !== id));
+    // 割れた「な」は見えなくするだけで、指をはなすまで残す（指をつかまえておくので、はなしたときの click が後ろのボタンに届かない）
+    try { el.setPointerCapture(e.pointerId); } catch { /* noop */ }
+    const remove = () => setBubbles((x) => x.filter((y) => y.id !== id));
+    setBubbles((x) => x.map((y) => (y.id === id ? { ...y, popped: true } : y)));
+    const onRelease = () => { el.removeEventListener('pointerup', onRelease); el.removeEventListener('pointercancel', onRelease); setTimeout(() => setBubbles((x) => x.map((y) => (y.id === id ? { ...y, released: true } : y))), 0); setTimeout(remove, 400); };
+    el.addEventListener('pointerup', onRelease); el.addEventListener('pointercancel', onRelease);
+    setTimeout(remove, 3000);
     const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
     setPopped((p) => [...p, { id, x: cx, y: cy, text: `+${pts}${c.n >= 3 ? `　${c.n}コンボ` : ''}`, gold: b.gold, size: r.width }]);
     setTimeout(() => setPopped((p) => p.filter((q) => q.id !== id)), 900);
@@ -57,8 +87,8 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
     <div data-nosfx className="fixed inset-0 z-[15] pointer-events-none overflow-hidden" aria-hidden="true">
       {bubbles.map((b) => (
         <div key={b.id} className="absolute bubble-rise" style={{ left: `${b.x}%`, bottom: -90, ['--dur' as any]: `${b.dur}s`, ['--sway' as any]: `${b.sway}px` }}>
-          <button onPointerDown={(e) => pop(b, e)} tabIndex={-1}
-            className={`pointer-events-auto rounded-full flex items-center justify-center font-black border-4 shadow-lg active:scale-90 transition-transform ${b.gold ? 'bg-gradient-to-br from-yellow-200 to-amber-400 border-yellow-100 text-amber-700' : 'bg-white/75 border-pink-200 text-pink-500'}`}
+          <button onPointerDown={(e) => pop(b, e)} onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} tabIndex={-1}
+            className={`${b.popped ? 'opacity-0' : ''} ${b.released ? 'pointer-events-none' : 'pointer-events-auto'} rounded-full flex items-center justify-center font-black border-4 shadow-lg active:scale-90 transition-transform ${b.gold ? 'bg-gradient-to-br from-yellow-200 to-amber-400 border-yellow-100 text-amber-700' : 'bg-white/75 border-pink-200 text-pink-500'}`}
             style={{ width: b.size, height: b.size, fontSize: b.size * 0.5 }}>
             な
           </button>
