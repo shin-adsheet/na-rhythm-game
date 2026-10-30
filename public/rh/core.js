@@ -7,7 +7,10 @@ THREE.ColorManagement.enabled = false;
 export { THREE };
 // ゲームから使うとき：window.__RH = { W, H, beat }（画面の縦横に合わせた大きさと、曲の 1 拍の秒数）
 const CFG = (typeof window !== 'undefined' && window.__RH) || {};
-export const W = CFG.W || 1280, H = CFG.H || 720, FPS = 30, P = CFG.beat || 60 / 142.4, PH = 0.14, BAR = 4 * P;
+export const W = CFG.W || 1280, H = CFG.H || 720, FPS = 30;
+// 描く細かさ（実際のピクセル ÷ W）。絵の大きさの計算はいつも W×H で、実際は SC 倍の細かさで描く（スマホで軽くするため）
+export const SC = Math.max(0.3, Math.min(1, CFG.scale || 1)), PW = Math.round(W * SC), PHt = Math.round(H * SC);
+export const P = CFG.beat || 60 / 142.4, PH = 0.14, BAR = 4 * P;
 // ゲームの曲は一定のテンポなので、拍と時刻はまっすぐ対応させる
 export function timeAt(gb) { return gb * P; }
 export function beatAt(t) { return t / P; }
@@ -27,7 +30,7 @@ export const E = {
 };
 
 export const R = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-R.setPixelRatio(1); R.setSize(W, H); R.outputColorSpace = THREE.LinearSRGBColorSpace; R.setClearColor(0, 0);
+R.setPixelRatio(1); R.setSize(PW, PHt); R.outputColorSpace = THREE.LinearSRGBColorSpace; R.setClearColor(0, 0);
 export const scene = new THREE.Scene();
 export const cam = new THREE.PerspectiveCamera(14, W / H, 10, 80000);
 export const CAM_LAST = {};

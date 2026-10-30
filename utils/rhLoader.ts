@@ -4,6 +4,7 @@
  * 読みこみは重い（キャラ 11 人・家具の 3D）ので、タイトル画面で手があいているうちに 1 回だけ。
  */
 import { BEAT } from './chart';
+import { perf } from './perf';
 
 /** してみた動画のゲーム機の画面の縦横（横 ÷ 縦）。HeavenStage の画面の枠もこの形 */
 export const HEAVEN_SCREEN_ASPECT = 10 / 9;
@@ -20,12 +21,13 @@ let ready: RHEngine | null = null;
 export const rhReady = () => ready;
 export function loadRH(): Promise<RHEngine | null> {
   if (p) return p;
-  // ゲーム機の画面（横 10：縦 9）の大きさで描く。スマホは少し小さめに描いて、拡大して見せる（軽くするため）
+  // ゲーム機の画面（横 10：縦 9）。絵の計算はいつも MV と同じくらいの大きさ（W×H）でして、絵がくずれないようにする。
+  // 実際に描く細かさ（scale）だけ、画面に映る大きさに合わせて下げる（スマホの画面は 300px くらいなので、そんなに細かくなくてよい）
   const a = HEAVEN_SCREEN_ASPECT;
-  const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
-  const area = 1280 * 720 * (coarse ? 0.6 : 1);
-  const W = Math.round(Math.sqrt(area * a)), H = Math.round(W / a);
-  (window as any).__RH = { W, H, beat: BEAT };
+  const W = Math.round(Math.sqrt(1280 * 720 * a)), H = Math.round(W / a);
+  const shownW = Math.min(window.innerWidth || 390, 560) * 0.8, dpr = Math.min(1.5, window.devicePixelRatio || 1);
+  const scale = Math.max(0.35, Math.min(1, (shownW * dpr) / W)) * (perf.lite ? 0.8 : 1);
+  (window as any).__RH = { W, H, beat: BEAT, scale };
   const url = new URL('rh/engine.js', document.baseURI).href;
   p = import(/* @vite-ignore */ url).then((m: any) => (ready = m as RHEngine)).catch((e) => { console.warn('rh load failed', e); return null; });
   return p;

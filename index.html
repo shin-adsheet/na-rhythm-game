@@ -19,31 +19,33 @@
         overflow: hidden;
       }
 
-      /* Polka Dot Background */
-      .bg-polka {
-        background-color: #ffffff;
+      /* Polka Dot Background
+         水玉は ::before に描いて transform で動かす（background-position を動かすと毎コマ画面全体を描き直すので重い） */
+      .bg-polka, .bg-fever { background-color: #ffffff; isolation: isolate; }
+      .bg-fever { background-color: #fff1f8; }
+      .bg-polka::before, .bg-fever::before {
+        content: ''; position: absolute; left: -100px; top: -100px; right: 0; bottom: 0; pointer-events: none;
         background-image: radial-gradient(#e5e7eb 20%, transparent 20%), radial-gradient(#e5e7eb 20%, transparent 20%);
         background-position: 0 0, 50px 50px;
         background-size: 100px 100px;
         animation: scroll-bg 20s linear infinite;
+        will-change: transform; z-index: -1;
       }
       /* フィーバー中の背景 */
-      .bg-fever {
-        background-color: #fff1f8;
+      .bg-fever::before {
         background-image: radial-gradient(#fbcfe8 20%, transparent 20%), radial-gradient(#fde68a 20%, transparent 20%);
-        background-position: 0 0, 50px 50px;
-        background-size: 100px 100px;
-        animation: scroll-bg 2s linear infinite;
+        animation-duration: 2s;
       }
-      .fever-glow {
-        background: linear-gradient(120deg, rgba(251,191,36,0.25), rgba(244,114,182,0.25), rgba(56,189,248,0.25), rgba(251,191,36,0.25));
-        background-size: 300% 300%;
+      .fever-glow { overflow: hidden; mix-blend-mode: multiply; }
+      .fever-glow::before {
+        content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 400%;
+        background: linear-gradient(120deg, rgba(251,191,36,0.25), rgba(244,114,182,0.25), rgba(56,189,248,0.25), rgba(251,191,36,0.25), rgba(244,114,182,0.25), rgba(56,189,248,0.25), rgba(251,191,36,0.25));
         animation: fever-glow 2s linear infinite;
-        mix-blend-mode: multiply;
+        will-change: transform;
       }
       @keyframes fever-glow {
-        0% { background-position: 0% 50%; }
-        100% { background-position: 300% 50%; }
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
       }
       @keyframes fever-hue {
         0% { filter: hue-rotate(0deg); }
@@ -51,8 +53,8 @@
       }
 
       @keyframes scroll-bg {
-        0% { background-position: 0 0, 50px 50px; }
-        100% { background-position: 100px 100px, 150px 150px; }
+        0% { transform: translate(0, 0); }
+        100% { transform: translate(100px, 100px); }
       }
 
       /* ===== 「な」のアニメーション ===== */

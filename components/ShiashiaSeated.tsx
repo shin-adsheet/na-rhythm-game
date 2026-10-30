@@ -195,6 +195,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
     renderer.setSize(size, size);
     renderer.setClearColor(0x000000, 0);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.style.touchAction = 'pan-y';      // たてのスワイプはページのスクロール、横はしあしあを回す
     mount.appendChild(renderer.domElement);
@@ -376,7 +377,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
     });
     ro.observe(mount);
 
-    let raf = 0, last = performance.now(), lastBeat = -1;
+    let raf = 0, last = performance.now(), lastBeat = -1, frameN = 0;
     const t0 = performance.now();
     const ears = (g.userData.ears || []) as THREE.Object3D[];
     const earRest = ears.map((e) => e.rotation.clone());
@@ -644,6 +645,8 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       shadow.position.x = hip.x * 0.7; shadow.position.z = hip.z * 0.5;
       g.updateMatrixWorld(true);
       g.userData.cloth?.(dt);
+      // 影の計算は 2 コマに 1 回（影はゆっくりしか変わらないので見た目は同じで、描く手間が半分）
+      renderer.shadowMap.needsUpdate = (frameN++ & 1) === 0 || holding;
       renderer.render(scene, camera);
     };
     loop();

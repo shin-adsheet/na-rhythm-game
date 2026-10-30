@@ -40,6 +40,8 @@ interface Props {
   withPartner?: boolean;
   /** だれを出すか（しあしあ／きあきあ。きあきあは「きあ 調整台」で作ったモデル） */
   character?: Character;
+  /** 見えていない間は動かさない（描かないので軽い） */
+  paused?: boolean;
 }
 
 /** 昔の「しあしあの色違い」きあきあの色（今は本物のきあきあモデルを使う。e2e のスタブ用に残す） */
@@ -85,12 +87,13 @@ export function restAll(r: Rig) {
 }
 
 const Shiashia3D: React.FC<Props> = ({
-  getBeat, hitRef, mood = 'dance', intensity = 0, size = 260, className = '', onPoke, colors, partner = false, withPartner = false, character = 'shia',
+  getBeat, hitRef, mood = 'dance', intensity = 0, size = 260, className = '', onPoke, colors, partner = false, withPartner = false, character = 'shia', paused = false,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const moodRef = useRef<ShiashiaMood>(mood as ShiashiaMood);
   const intensityRef = useRef(intensity);
   const partnerRef = useRef(partner);
+  const pausedRef = useRef(paused); pausedRef.current = paused;
   const getBeatRef = useRef(getBeat);
   const pokeTimeRef = useRef(0);
   const moodSince = useRef(performance.now());
@@ -365,6 +368,7 @@ const Shiashia3D: React.FC<Props> = ({
     const animate = () => {
       raf = requestAnimationFrame(animate);
       const now = performance.now();
+      if (pausedRef.current || document.hidden) { lastT = now; return; }     // 見えていない間は描かない
       const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
       const time = (now - t0) / 1000;
       const ext = getBeatRef.current?.();

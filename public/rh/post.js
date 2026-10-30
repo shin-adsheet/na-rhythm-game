@@ -1,9 +1,9 @@
 // 画面全体の「加工」：シルエット・超遠く・鏡・ネガ・バンドっぽいかっこいい仕上げ（ビネット・粒子・色ずれ・拍の光）
-import { W, H, clamp, lerp, hash, E } from './core.js';
+import { W, H, PW, PHt, clamp, lerp, hash, E } from './core.js';
 
 // ── 粒子（フィルムグレイン）：あらかじめ作っておく
 const GR = document.createElement('canvas'); GR.width = GR.height = 256; { const x = GR.getContext('2d'), im = x.createImageData(256, 256); for (let i = 0; i < im.data.length; i += 4) { const v = 110 + Math.random() * 90; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); }
-const TMP = document.createElement('canvas'); TMP.width = W; TMP.height = H; const TX = TMP.getContext('2d');
+const TMP = document.createElement('canvas'); TMP.width = PW; TMP.height = PHt; const TX = TMP.getContext('2d');   // 実際のピクセルの大きさ（X.canvas と同じ）
 
 // シルエットの配色（リミックスで順番に使う）
 export const SIL = [
@@ -30,8 +30,8 @@ export function styleFor(seg, lb, gb, t, g) {
 }
 // ── 仕上げ（合成が終わった画面に重ねる）
 export function applyPost(X, S, t, gb) {
-  if (S.mirror || S.far || S.tiny || S.neg) { TX.clearRect(0, 0, W, H); TX.drawImage(X.canvas, 0, 0); }
-  if (S.mirror) { X.save(); X.translate(W, 0); X.scale(-1, 1); X.drawImage(TMP, 0, 0); X.restore(); }
+  if (S.mirror || S.far || S.tiny || S.neg) { TX.clearRect(0, 0, PW, PHt); TX.drawImage(X.canvas, 0, 0); }
+  if (S.mirror) { X.save(); X.translate(W, 0); X.scale(-1, 1); X.drawImage(TMP, 0, 0, W, H); X.restore(); }
   if (S.far || S.tiny) {   // 超遠くから：画面をちいさく（まわりは空か暗やみ）
     const k = S.far ? 0.26 : 0.5, g = X.createRadialGradient(W / 2, H / 2, 50, W / 2, H / 2, 900); if (S.far) { g.addColorStop(0, '#9fd8ff'); g.addColorStop(1, '#2f6fb8'); } else { g.addColorStop(0, '#2d2a5a'); g.addColorStop(1, '#0d0b22'); }
     X.fillStyle = g; X.fillRect(0, 0, W, H);
@@ -42,10 +42,10 @@ export function applyPost(X, S, t, gb) {
   }
   if (S.neg) { X.save(); X.globalCompositeOperation = 'difference'; X.fillStyle = '#ffffff'; X.fillRect(0, 0, W, H); X.restore(); }
   if (S.chroma > 0.3) {   // 色ずれ：赤と青をすこし横にずらす
-    TX.clearRect(0, 0, W, H); TX.drawImage(X.canvas, 0, 0);
+    TX.clearRect(0, 0, PW, PHt); TX.drawImage(X.canvas, 0, 0);
     X.save(); X.globalCompositeOperation = 'lighter'; X.globalAlpha = 0.45;
-    X.filter = 'saturate(3)'; X.drawImage(TMP, S.chroma, 0); X.drawImage(TMP, -S.chroma, 0); X.filter = 'none'; X.restore();
-    X.save(); X.globalCompositeOperation = 'multiply'; X.globalAlpha = 0.5; X.drawImage(TMP, 0, 0); X.restore();
+    X.filter = 'saturate(3)'; X.drawImage(TMP, S.chroma, 0, W, H); X.drawImage(TMP, -S.chroma, 0, W, H); X.filter = 'none'; X.restore();
+    X.save(); X.globalCompositeOperation = 'multiply'; X.globalAlpha = 0.5; X.drawImage(TMP, 0, 0, W, H); X.restore();
   }
   if (S.vignette > 0) { const g = X.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.05); g.addColorStop(0, 'rgba(10,8,30,0)'); g.addColorStop(1, `rgba(10,8,30,${S.vignette})`); X.fillStyle = g; X.fillRect(0, 0, W, H); }
   if (S.grain > 0) { X.save(); X.globalCompositeOperation = 'overlay'; X.globalAlpha = S.grain * 3; const ox = Math.floor(hash(t * 31) * 256), oy = Math.floor(hash(t * 17 + 3) * 256); for (let y = -oy; y < H; y += 256) for (let x = -ox; x < W; x += 256) X.drawImage(GR, x, y); X.restore(); }

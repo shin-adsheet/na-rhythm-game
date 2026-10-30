@@ -90,8 +90,10 @@ const SubsCounter: React.FC<{ value: number; big?: boolean }> = ({ value, big })
       const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
       const d = target.current - shown.current;
       shown.current += Math.abs(d) < 1 ? d : d * Math.min(1, dt * 9);
-      if (ref.current) ref.current.textContent = fmtSubs(shown.current);
-      if (subRef.current) subRef.current.textContent = shown.current >= 10000 ? `${Math.floor(shown.current).toLocaleString('ja-JP')}人` : '';
+      // 文字が変わったときだけ書きかえる（毎コマ書くと、そのたびに描き直しになる）
+      const a = fmtSubs(shown.current), b = shown.current >= 10000 ? `${Math.floor(shown.current).toLocaleString('ja-JP')}人` : '';
+      if (ref.current && ref.current.textContent !== a) ref.current.textContent = a;
+      if (subRef.current && subRef.current.textContent !== b) subRef.current.textContent = b;
     };
     loop();
     return () => cancelAnimationFrame(raf);
@@ -138,7 +140,7 @@ const Crowd: React.FC<{ subs: number; buzz: boolean }> = ({ subs, buzz }) => {
       {[8, 7, 6].map((n, r) => (
         <div key={r} className={`absolute left-[-10%] w-[120%] h-full flex justify-around items-end transition-transform duration-700 ${rows[r] ? 'translate-y-0' : 'translate-y-full'}`} style={{ bottom: -50 + r * 20 }}>
           {Array.from({ length: n }).map((_, i) => (
-            <div key={i} className={`${col[r]} rounded-t-full mx-1 origin-bottom`} style={{ width: 96 + r * 32, height: 128 + r * 32, animation: `crowd-jump ${0.6 - r * 0.1}s infinite`, animationDelay: `${i * 0.1}s` }} />
+            <div key={i} className={`${col[r]} rounded-t-full mx-1 origin-bottom`} style={{ width: 96 + r * 32, height: 128 + r * 32, animation: rows[r] ? `crowd-jump ${0.6 - r * 0.1}s infinite` : 'none', animationDelay: `${i * 0.1}s` }} />
           ))}
         </div>
       ))}
@@ -242,7 +244,9 @@ const Game: React.FC = () => {
   const [strikes, setStrikes] = useState(0);
   const [judge, setJudge] = useState<{ id: number; text: string; cls: string } | null>(null);
   const [countdown, setCountdown] = useState<string | null>(null);
-  const [timePct, setTimePct] = useState(1);
+  // 上の時間のバー：毎回 Game ぜんぶを描き直さないよう、バーの幅だけ直接書きかえる
+  const timeBarRef = useRef<HTMLDivElement>(null);
+  const setTimePct = (v: number) => { if (timeBarRef.current) timeBarRef.current.style.transform = `scaleX(${v})`; };
   const [buzz, setBuzz] = useState(false);
   const [commentMood, setCommentMood] = useState<CommentMood>('normal');
   const [cutIn, setCutIn] = useState<CutInData | null>(null);
@@ -1499,7 +1503,7 @@ const Game: React.FC = () => {
     return (
       <>
         {/* 上：時間の細いバー */}
-        <div className="absolute top-0 left-0 right-0 h-1.5 bg-pink-100 z-40"><div className="h-full bg-pink-400 transition-[width] duration-100" style={{ width: `${timePct * 100}%` }} /></div>
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-pink-100 z-40"><div ref={timeBarRef} className="h-full w-full bg-pink-400 origin-left transition-transform duration-100" /></div>
 
         <button data-noinput onPointerDown={(e) => e.stopPropagation()} onClick={pauseGame} style={{ top: 'calc(10px + env(safe-area-inset-top, 0px))' }}
           className="absolute left-3 z-50 bg-white/90 text-slate-500 hover:bg-yellow-300 hover:text-white border-4 border-slate-200 rounded-full w-12 h-12 flex items-center justify-center shadow-md" aria-label="一時停止">
@@ -1728,7 +1732,7 @@ const Game: React.FC = () => {
             visibility: playing && trackStyle === 'heaven' && !atCut ? 'hidden' : undefined,
           }}>
           <Shiashia3D getBeat={getBeat} hitRef={hitRef} mood={stageMood} intensity={Math.min(1, combo / 40)} size={stageSize}
-            onPoke={handlePoke} withPartner partner={atCut && cutIn?.event === 'collab'} />
+            onPoke={handlePoke} withPartner partner={atCut && cutIn?.event === 'collab'} paused={playing && trackStyle === 'heaven' && !atCut} />
         </div>
       )}
 

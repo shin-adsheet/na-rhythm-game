@@ -1,14 +1,14 @@
 // 「な」のゲームの「してみた動画」用：MV 編集台（Keep it alive）のミニゲームを、1 コマずつ描く入口
 // MV の rh.js から、タイムライン・手動の上書き・文字を外して、ゲーム 1 つを好きな拍で描けるようにしたもの。
 // 使い方：window.__RH = { W, H, beat } を決めてから import する → drawGame(name, b, t)
-import { R, scene, cam, W, H, clamp, VIEW, base, mix, add, THREE } from './core.js';
+import { R, scene, cam, W, H, SC, PW, PHt, clamp, VIEW, base, mix, add, THREE } from './core.js';
 import { G, activate, evWindow, SH, KI } from './games.js';
 import * as FX from './fx2d.js';
 import { styleFor, applyPost } from './post.js';
 import { drawCritters } from './critters.js';
 import { setTint } from './kit.js';
 
-export const canvas = document.createElement('canvas'); canvas.width = W; canvas.height = H;
+export const canvas = document.createElement('canvas'); canvas.width = PW; canvas.height = PHt;
 const X = canvas.getContext('2d');
 export const SIZE = { W, H };
 export const TITLES = Object.fromEntries(Object.entries(G).map(([k, g]) => [k, g.title]));
@@ -23,17 +23,18 @@ function drawFx(g, t) {
   if (g.name === 'flame' && g.glow) { const [x, y] = FX.project(g.glow.pos.toArray()); const r = Math.min(420, g.glow.r * 1.2); X.save(); X.globalCompositeOperation = 'lighter'; const gr = X.createRadialGradient(x, y, 4, x, y, r); gr.addColorStop(0, 'rgba(255,170,80,0.32)'); gr.addColorStop(1, 'rgba(255,120,40,0)'); X.fillStyle = gr; X.fillRect(x - r, y - r, 2 * r, 2 * r); X.restore(); }
 }
 // ───────── ふちどり（3D のまわりに太い線）─────────
-const OC = document.createElement('canvas'); OC.width = W; OC.height = H; const OX = OC.getContext('2d');
+// OC（ふちどり用）は実際のピクセルの大きさ。中では拡大縮小せずに描き、X へは W×H として貼る
+const OC = document.createElement('canvas'); OC.width = PW; OC.height = PHt; const OX = OC.getContext('2d');
 const DIRS = [[3, 0], [-3, 0], [0, 3], [0, -3], [2, 2], [-2, 2], [2, -2], [-2, -2], [4, 1], [-4, 1], [1, 4], [1, -4]];
 let TINT3 = null;
 function drawTinted() {
-  if (!TINT3 || !(TINT3[1] > 0)) { X.drawImage(R.domElement, 0, 0); return; }
-  OX.globalCompositeOperation = 'source-over'; OX.clearRect(0, 0, W, H); OX.drawImage(R.domElement, 0, 0);
-  OX.globalCompositeOperation = 'source-atop'; OX.globalAlpha = TINT3[1]; OX.fillStyle = TINT3[0]; OX.fillRect(0, 0, W, H); OX.globalAlpha = 1; OX.globalCompositeOperation = 'source-over'; X.drawImage(OC, 0, 0);
+  if (!TINT3 || !(TINT3[1] > 0)) { X.drawImage(R.domElement, 0, 0, W, H); return; }
+  OX.globalCompositeOperation = 'source-over'; OX.clearRect(0, 0, PW, PHt); OX.drawImage(R.domElement, 0, 0);
+  OX.globalCompositeOperation = 'source-atop'; OX.globalAlpha = TINT3[1]; OX.fillStyle = TINT3[0]; OX.fillRect(0, 0, PW, PHt); OX.globalAlpha = 1; OX.globalCompositeOperation = 'source-over'; X.drawImage(OC, 0, 0, W, H);
 }
-function silOf(src, col) { OX.globalCompositeOperation = 'source-over'; OX.clearRect(0, 0, W, H); OX.drawImage(src, 0, 0); OX.globalCompositeOperation = 'source-in'; OX.fillStyle = col; OX.fillRect(0, 0, W, H); OX.globalCompositeOperation = 'source-over'; return OC; }
-function outlined(col, k = 1) { const s = silOf(R.domElement, col); for (const [dx, dy] of DIRS) X.drawImage(s, dx * k, dy * k); drawTinted(); }
-function solid3D(col) { X.drawImage(silOf(R.domElement, col), 0, 0); }
+function silOf(src, col) { OX.globalCompositeOperation = 'source-over'; OX.clearRect(0, 0, PW, PHt); OX.drawImage(src, 0, 0); OX.globalCompositeOperation = 'source-in'; OX.fillStyle = col; OX.fillRect(0, 0, PW, PHt); OX.globalCompositeOperation = 'source-over'; return OC; }
+function outlined(col, k = 1) { const s = silOf(R.domElement, col); for (const [dx, dy] of DIRS) X.drawImage(s, dx * k, dy * k, W, H); drawTinted(); }
+function solid3D(col) { X.drawImage(silOf(R.domElement, col), 0, 0, W, H); }
 function pass([layer, k], col) { cam.layers.set(layer); R.render(scene, cam); if (k > 0) outlined(col, k); else drawTinted(); cam.layers.set(0); }
 
 let last = null;
@@ -64,7 +65,7 @@ export function drawGame(name, b, t, opt = {}) {
     (g.fx ||= []).push({ k: 'sweat', p: [headW.x + 90, headW.y + 110, headW.z], age: opt.failAge ?? 0, o: { life: 2 } });
   }
   const seg = { g: name };
-  X.setTransform(1, 0, 0, 1, 0, 0); X.clearRect(0, 0, W, H);
+  X.setTransform(SC, 0, 0, SC, 0, 0); X.clearRect(0, 0, W, H);   // 絵の計算は W×H のまま、実際は SC 倍で描く
   const into = opt.into ?? 9, zoomIn = 1 + 0.03 * Math.exp(-Math.max(0, into) * 10);
   const c2 = g.cam2d || {}; const pz = zoomIn * (1 + (c2.punch || 0)) * (1 + (opt.punch || 0)), sh = Math.max(c2.shake || 0, opt.shake || 0, fail > 0.01 && (opt.failAge ?? 9) < 0.5 ? 9 * (1 - (opt.failAge ?? 0) / 0.5) : 0);
   X.save(); X.translate(W / 2 + (sh ? Math.sin(t * 87) * sh : 0), H / 2 + (sh ? Math.cos(t * 71) * sh : 0)); X.scale(pz, pz); X.translate(-W / 2, -H / 2);
@@ -83,7 +84,7 @@ export function drawGame(name, b, t, opt = {}) {
     for (const p of g.passes || []) pass(p, line);
     if (g.critters && !g.crittersFront) drawCritters(X, g.critters(t, b, b), 'auto');
     cam.layers.set(0); R.render(scene, cam);
-    { const s = silOf(R.domElement, line); for (const [dx, dy] of DIRS) X.drawImage(s, dx, dy); drawTinted(); }
+    { const s = silOf(R.domElement, line); for (const [dx, dy] of DIRS) X.drawImage(s, dx, dy, W, H); drawTinted(); }
     if (g.critters && g.crittersFront) drawCritters(X, g.critters(t, b, b), 'auto');
     if (g.frontPass) pass(g.frontPass, line);
     if (g.paintFront) g.paintFront(X, t, b, false);
