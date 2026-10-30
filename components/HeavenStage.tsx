@@ -57,12 +57,13 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
       const lb = (t - win.bar0) / BEAT, into = t - win.t0;
       // まちがえた（のがした）：画面をすこし暗く、「あっ…」
       for (const n of notesRef.current) { if (n.t < t - 1.5) continue; if (n.t > t + 0.2) break; if (n.res === 'miss' && !seen.has(n)) { seen.add(n); lastMiss = t; } }
-      const fail = Math.max(0, 1 - (t - lastMiss) / 0.6);
+      // 失敗の強さ：さっと 1 になって、ゆっくり戻る（がくっ → 起き上がる）
+      const ago = t - lastMiss, fail = ago < 0 ? 0 : ago < 0.08 ? ago / 0.08 : Math.max(0, 1 - (ago - 0.08) / 1.0);
       const E = rhReady();
       if (E) {
         if (!attached) { E.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block'; mount.appendChild(E.canvas); attached = true; }
         const now = performance.now();
-        if (now - lastDraw > 30) { lastDraw = now; try { E.drawGame(win.game, Math.max(0, lb) + def.off, t, { into, fail, keep: def.keep }); } catch (e) { console.warn(e); } }
+        if (now - lastDraw > 30) { lastDraw = now; try { E.drawGame(win.game, Math.max(0, lb) * def.spd + def.off, t, { into, fail, failWho: def.who, failAge: ago / BEAT * def.spd, keep: def.keep }); } catch (e) { console.warn(e); } }
         bgc.style.display = 'none';
       } else {
         // まだ読みこみ中：ゲームの色のグラデだけ

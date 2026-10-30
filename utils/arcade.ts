@@ -81,29 +81,32 @@ export function heavenLayout(W: number, H: number) {
  * 「してみた動画」（リズム天国風）：MV 編集台「Keep it alive」のミニゲームを、そのまま曲に合わせて動かす（public/rh）。
  * どのゲームも「お手本（コール）→ 同じリズムでまね（レスポンス）」。レスポンスの拍が、あなたが「な」を出す所。
  * 拍は、そのゲームの中の拍（MV と同じ数え方）。曲の小節の頭が、ゲームの off 拍目になる。
+ * spd：曲の 1 拍で、ゲームが何拍進むか。MV はお手本の 2 拍あとにまねするゲームが多く、曲（175 BPM）だと速すぎるので、
+ *      0.5（ゆっくり）にして、お手本 1 小節 → まね 1 小節（お手本のあとに 1 拍以上あく）にする。
+ * who：まねする役（失敗したときに、がくっとする人）
  */
 export type HeavenGame = 'plane' | 'milk' | 'click' | 'juggle' | 'count' | 'band' | 'puddle' | 'march';
-interface HeavenGameDef { title: string; how: string; off: number; keep?: number; calls: number[]; resps: number[] }
+interface HeavenGameDef { title: string; how: string; off: number; spd: number; who: 'shia' | 'kia'; keep?: number; calls: number[]; resps: number[] }
 const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 const CLICK_PATS = [[0, 1], [0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1.5], [0, 0.75, 1.5], [0, 0.5, 1, 1.5], [0, 1], [0, 0.5, 1, 1.5]];
 const COUNT_PH = [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3], [0, 0.5, 1, 2], [0, 2], [0, 0.5, 1, 1.5], [0, 1, 2, 3]];
 const JUGGLE = (c: number) => (c % 2 ? [0, 1, 1.5, 2] : [0, 1, 2]);
 export const HEAVEN_GAMES: Record<HeavenGame, HeavenGameDef> = {
-  plane: { title: 'かみひこうき', how: 'ひこうきが来たら、よける', off: 0, keep: 0.86,
+  plane: { title: 'かみひこうき', how: 'ひこうきが来たら、よける', off: 0, spd: 0.5, who: 'kia', keep: 0.86,
     calls: [0, 1, 4, 5, 8, 9, 12, 16, 20], resps: [2, 3, 6, 7, 10, 11, 14, 18, 22] },
-  milk: { title: 'ミルクとスプーン', how: 'ミルクと同じリズムで、スプーン', off: 0,
+  milk: { title: 'ミルクとスプーン', how: 'ミルクと同じリズムで、スプーン', off: 0, spd: 0.5, who: 'kia',
     calls: [0, 1, 4, 5, 8, 8.5, 9, 12, 13, 16, 17, 20, 20.5, 21], resps: [2, 3, 6, 7, 10, 10.5, 11, 14, 15, 18, 19, 22, 22.5, 23] },
-  click: { title: 'スマホでぽちぽち', how: 'きあきあと同じリズムで、ぽちぽち', off: 0,
+  click: { title: 'スマホでぽちぽち', how: 'きあきあと同じリズムで、ぽちぽち', off: 0, spd: 0.5, who: 'shia',
     calls: range(8).flatMap((n) => CLICK_PATS[n].map((x) => n * 4 + x)), resps: range(8).flatMap((n) => CLICK_PATS[n].map((x) => n * 4 + x + 2)) },
-  juggle: { title: 'ころころリフティング', how: 'きあきあと同じ回数、ヘディング', off: 0,
+  juggle: { title: 'ころころリフティング', how: 'きあきあと同じ回数、ヘディング', off: 0, spd: 0.5, who: 'shia',
     calls: range(4).flatMap((c) => [...JUGGLE(c), 3].map((x) => c * 8 + x)), resps: range(4).flatMap((c) => [...JUGGLE(c).map((x) => x + 4), 7].map((x) => c * 8 + x)) },
-  count: { title: 'かぞえうた', how: 'コンコンと同じ順番で、箱から出る', off: 16, keep: 1,
+  count: { title: 'かぞえうた', how: 'コンコンと同じ順番で、箱から出る', off: 16, spd: 0.5, who: 'shia', keep: 1,
     calls: range(5).flatMap((k) => COUNT_PH[k + 2].map((x) => (k + 2) * 8 + x)), resps: range(5).flatMap((k) => COUNT_PH[k + 2].map((x) => (k + 2) * 8 + x + 4)) },
-  band: { title: 'バンド', how: 'ギターと同じフレーズを、ベースで', off: 0,
+  band: { title: 'バンド', how: 'ギターと同じフレーズを、ベースで', off: 0, spd: 1, who: 'kia',
     calls: range(2).flatMap((c) => [0, 1, 1.5, 2.5].map((x) => c * 16 + x)), resps: range(2).flatMap((c) => [4, 5, 5.5, 6.5].map((x) => c * 16 + x)) },
-  puddle: { title: 'あめのバスてい', how: 'きあきあの 1 拍あとに、水たまりをジャンプ', off: 0,
+  puddle: { title: 'あめのバスてい', how: 'きあきあのあとに、同じ水たまりをジャンプ', off: 0, spd: 0.5, who: 'shia',
     calls: range(16).map((k) => k * 2), resps: range(16).map((k) => k * 2 + 1) },
-  march: { title: 'ちびしあ行進', how: '指揮棒の上・下のあとに、足ぶみ 2 回', off: 0,
+  march: { title: 'ちびしあ行進', how: '指揮棒の上・下のあとに、足ぶみ 2 回', off: 0, spd: 0.5, who: 'kia',
     calls: range(10).flatMap((k) => [k * 4, k * 4 + 1]), resps: range(10).flatMap((k) => [k * 4 + 2, k * 4 + 3]) },
 };
 export const HEAVEN_GAME_IDS = Object.keys(HEAVEN_GAMES) as HeavenGame[];
@@ -115,7 +118,12 @@ function shuffledGames(): HeavenGame[] {
 /** ゲームごとの音（お手本と、あなたが打ったとき。同じ音なので「まねする」のが耳で分かる） */
 export const HEAVEN_SFX: Record<HeavenGame, { id: SfxId; rate: number }> = {
   plane: { id: 'slide', rate: 1.3 }, milk: { id: 'bell', rate: 1.3 }, click: { id: 'ui_toggle', rate: 1.1 }, juggle: { id: 'pop', rate: 0.8 },
-  count: { id: 'knock', rate: 1.6 }, band: { id: 'nes_short', rate: 1 }, puddle: { id: 'pop', rate: 1.2 }, march: { id: 'card', rate: 1 },
+  count: { id: 'knock', rate: 1.6 }, band: { id: 'nes_short', rate: 1 }, puddle: { id: 'pop', rate: 1.2 }, march: { id: 'hit_big', rate: 1.3 },
+};
+/** まねできなかったときの音（ぶつかる・すべる・ブザー…）。このあとに「がっかり」の音も鳴る */
+export const HEAVEN_FAIL_SFX: Record<HeavenGame, { id: SfxId; rate: number }> = {
+  plane: { id: 'punch', rate: 1.1 }, milk: { id: 'metal', rate: 0.8 }, click: { id: 'buzz', rate: 1.2 }, juggle: { id: 'punch', rate: 0.9 },
+  count: { id: 'metal', rate: 0.7 }, band: { id: 'scratch', rate: 1 }, puddle: { id: 'slide', rate: 0.7 }, march: { id: 'buzz', rate: 1 },
 };
 
 /** してみた動画の 1 本：どのゲームを、曲のどの時刻から（bar0＝ゲームの off 拍目）、いつまで */
@@ -152,7 +160,7 @@ export function heavenCallResponse(notes: ChartNote[], segs: StyleSeg[], blocked
   });
   for (const w of wins) {
     const def = HEAVEN_GAMES[w.game], sg = segs[segIndexAt(segs, w.bar0)];
-    const tOf = (b: number) => w.bar0 + (b - def.off) * B;
+    const tOf = (b: number) => w.bar0 + ((b - def.off) / def.spd) * B;
     const ok = (t: number) => t > w.t0 + 0.05 && t < Math.min(w.t1, endT) - 0.35 * B && !blocked(t);
     // レスポンスの拍 → 音符。そのレスポンスのもとになったコール（直前のコール）だけお手本にする
     const rs = def.resps.map(tOf).filter(ok);

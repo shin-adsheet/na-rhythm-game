@@ -69,7 +69,22 @@ export interface SfxOpt {
   pan?: number;          // -1（左）〜 1（右）
   ctx?: AudioContext | null;   // 曲と同じ AudioContext で鳴らしたいとき
   out?: AudioNode;       // つなぎ先（エンディングのマスターなど）
+  /** 音の「聞こえる頭」を when に合わせる（素材の出だしの無音・立ち上がりのぶん早めに鳴らす）。拍に合わせて予約する音に使う */
+  onBeat?: boolean;
+  /** 素材の頭の無音だけ飛ばして鳴らす（すぐ鳴らす音） */
+  trim?: boolean;
 }
+
+/**
+ * 素材ごとの「聞こえる頭」までの秒（ffmpeg で測った音量の立ち上がり。声は母音が立ち上がる所）。
+ * 拍ぴったりに予約する音（カウントダウン・してみた動画のお手本）は、このぶん早めに鳴らす
+ */
+const ONSET: Partial<Record<SfxId, number>> = {
+  v3: 0.05, v2: 0.025, v1: 0.135, v_go: 0.16,
+  slide: 0.045, card: 0.2, coin: 0.03, hit_big: 0.017, punch: 0.022, down: 0.03, nes_short: 0.02,
+};
+/** 素材の頭の無音（ここは飛ばしても音が欠けない） */
+const SILENCE: Partial<Record<SfxId, number>> = { v3: 0.02, v1: 0.012, v_go: 0.02, slide: 0.04, card: 0.025, coin: 0.027, punch: 0.019 };
 
 /** 鳴らす。素材がまだないときは false（呼び出し側で合成音にする） */
 export function playSfx(id: SfxId, o: SfxOpt = {}): boolean {
@@ -78,7 +93,8 @@ export function playSfx(id: SfxId, o: SfxOpt = {}): boolean {
   if (!enabled) return true;
   const c = o.ctx && o.ctx.state !== 'closed' ? o.ctx : sfxCtx();
   if (!c) return false;
-  return playSfxAt(id, c.currentTime + (o.delay ?? 0), { ...o, ctx: c });
+  // すぐ鳴らす音も、素材の出だしの無音は飛ばす（押した感じが遅れないように）
+  return playSfxAt(id, c.currentTime + (o.delay ?? 0), { trim: true, ...o, ctx: c });
 }
 
 /** AudioContext の時刻を指定して鳴らす（カウントダウンの声を拍に合わせるときなど） */
@@ -101,7 +117,11 @@ export function playSfxAt(id: SfxId, when: number, o: SfxOpt = {}): boolean {
     if (o.pan && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = o.pan; g.connect(p); node = p; }
     s.connect(g);
     node.connect(o.out ?? c.destination);
-    s.start(Math.max(c.currentTime, when));
+    const lead = o.onBeat ? (ONSET[id] ?? 0) / (o.rate ?? 1) : 0, at = when - lead, now = c.currentTime;
+    // 頭が過ぎてしまったときは、過ぎたぶんだけ素材の先から鳴らす（拍とのずれを残さない）
+    if (o.onBeat && at < now) s.start(now, Math.min(buf.duration - 0.01, (now - at) * (o.rate ?? 1)));
+    else if (o.trim && !o.onBeat && SILENCE[id]) s.start(Math.max(now, when), SILENCE[id]);
+    else s.start(Math.max(now, at));
     if (when > c.currentTime + 0.05) pending.add(s);
     s.onended = () => { pending.delete(s); try { s.disconnect(); g.disconnect(); node.disconnect(); } catch { /* noop */ } };
     return true;

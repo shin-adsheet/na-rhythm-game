@@ -1,8 +1,8 @@
 // 「な」のゲームの「してみた動画」用：MV 編集台（Keep it alive）のミニゲームを、1 コマずつ描く入口
 // MV の rh.js から、タイムライン・手動の上書き・文字を外して、ゲーム 1 つを好きな拍で描けるようにしたもの。
 // 使い方：window.__RH = { W, H, beat } を決めてから import する → drawGame(name, b, t)
-import { R, scene, cam, W, H, clamp, VIEW } from './core.js';
-import { G, activate, evWindow } from './games.js';
+import { R, scene, cam, W, H, clamp, VIEW, base, mix, add, THREE } from './core.js';
+import { G, activate, evWindow, SH, KI } from './games.js';
 import * as FX from './fx2d.js';
 import { styleFor, applyPost } from './post.js';
 import { drawCritters } from './critters.js';
@@ -36,21 +36,37 @@ function outlined(col, k = 1) { const s = silOf(R.domElement, col); for (const [
 function solid3D(col) { X.drawImage(silOf(R.domElement, col), 0, 0); }
 function pass([layer, k], col) { cam.layers.set(layer); R.render(scene, cam); if (k > 0) outlined(col, k); else drawTinted(); cam.layers.set(0); }
 
-let last = null, since = 0;
+let last = null;
+// まねできなかったとき：まねする役が「がくっ」（前に崩れて、ひざが落ちて、首をふる）。ゲームのポーズの上にかぶせる
+const FAIL = { spine: [38, 0, -6], head: [30, 0, 10], thighL: [-30, 0, 0], thighR: [-30, 0, 0], kneeL: [60, 0, 0], kneeR: [60, 0, 0],
+  upperArmL: [-10, 0, 12], upperArmR: [-10, 0, -12], elbowL: [-20, 0, 0], elbowR: [-20, 0, 0], eyes: 1, mouth: 1, sq: 0.1, lift: 0 };
+const headW = new THREE.Vector3();
 /**
  * ゲーム name を、そのゲームの中の拍 b・時刻 t（秒）で 1 コマ描く。
  * opt.into：このゲームが始まってからの秒（入りのズームと白い光）。opt.fail：まちがえたときの「ズッ」とした色
+ * opt.failWho：失敗したときに「がくっ」とする役（'shia'／'kia'）。opt.failAge：失敗してからの拍
  * opt.keep：縦長の画面で、横の見える幅をどれだけ残すか（1＝16:9 と同じ。ないときはおまかせ）
  */
 export function drawGame(name, b, t, opt = {}) {
   const g = G[name]; if (!g) return;
   if (last !== name) { activate(name); last = name; }
   evWindow(-1e9, -1e9, 0); VIEW.keep = opt.keep ?? null;
+  const fail = opt.fail || 0, who = opt.failWho === 'kia' ? KI : SH;
+  window.RH_POSEFN = fail > 0.01 ? (c, Pz) => {
+    if (c !== who) return Pz;
+    const F = add(base(c), FAIL); F.head = [F.head[0], F.head[1], F.head[2] + 10 * Math.sin(t * 16)];
+    return mix(Pz, F, fail);
+  } : null;
   g.frame(b, t, g.opt || {});
+  window.RH_POSEFN = null;
+  if (fail > 0.01 && who.root.visible) {   // あせ
+    who.J.head.getWorldPosition(headW);
+    (g.fx ||= []).push({ k: 'sweat', p: [headW.x + 90, headW.y + 110, headW.z], age: opt.failAge ?? 0, o: { life: 2 } });
+  }
   const seg = { g: name };
   X.setTransform(1, 0, 0, 1, 0, 0); X.clearRect(0, 0, W, H);
   const into = opt.into ?? 9, zoomIn = 1 + 0.03 * Math.exp(-Math.max(0, into) * 10);
-  const c2 = g.cam2d || {}; const pz = zoomIn * (1 + (c2.punch || 0)) * (1 + (opt.punch || 0)), sh = Math.max(c2.shake || 0, opt.shake || 0);
+  const c2 = g.cam2d || {}; const pz = zoomIn * (1 + (c2.punch || 0)) * (1 + (opt.punch || 0)), sh = Math.max(c2.shake || 0, opt.shake || 0, fail > 0.01 && (opt.failAge ?? 9) < 0.5 ? 9 * (1 - (opt.failAge ?? 0) / 0.5) : 0);
   X.save(); X.translate(W / 2 + (sh ? Math.sin(t * 87) * sh : 0), H / 2 + (sh ? Math.cos(t * 71) * sh : 0)); X.scale(pz, pz); X.translate(-W / 2, -H / 2);
   const S = styleFor(seg, b, b, t, g);
   g.silFg = S.sil ? S.sil.fg : null;

@@ -26,7 +26,7 @@ import HeavenStage from './HeavenStage';
 import BurnFx, { BurnFxData } from './BurnFx';
 import { pickBurnPatterns, planBurn, judgeBurn, BURN_INFO, BurnPattern } from '../utils/burnChallenge';
 import { perf, guessLite } from '../utils/perf';
-import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO, heavenCallResponse, heavenGameAt, HEAVEN_SFX, HEAVEN_GAMES } from '../utils/arcade';
+import { buildStyleSchedule, segIndexAt, StyleSeg, TrackStyle, STYLE_INFO, heavenCallResponse, heavenGameAt, HEAVEN_SFX, HEAVEN_FAIL_SFX, HEAVEN_GAMES } from '../utils/arcade';
 import EventCutIn, { CutInData } from './EventCutIn';
 import CommentStream, { CommentMood } from './CommentStream';
 import Calibration from './Calibration';
@@ -637,7 +637,13 @@ const Game: React.FC = () => {
       showJudge(j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GREAT' : 'GOOD', j === 'perfect' ? 'text-amber-400' : j === 'great' ? 'text-pink-500' : 'text-sky-500');
       // タップ音（キーボード・タップのときだけ）とコンボの声
       // してみた動画：打ったら、きあきあのお手本と同じ音（まねできた！が耳で分かる）
-      if (segsStyleAt(n.t) === 'heaven') { const sx = HEAVEN_SFX[heavenGameAt(scheduleRef.current, n.t).game]; se(sx.id, { rate: sx.rate, gain: 0.95 }, true); }
+      if (segsStyleAt(n.t) === 'heaven') {
+        // 早めに押したときは、その拍ぴったりに鳴らす（お手本と同じ所で鳴るので、まねできたのが耳で分かる）
+        const sx = HEAVEN_SFX[heavenGameAt(scheduleRef.current, n.t).game], pl = playerRef.current, when = pl?.ctxTimeOf(n.t);
+        if (!(TAP_ONLY || settingsRef.current.input === 'tap')) { /* 声で遊ぶときはマイクが拾うので鳴らさない */ }
+        else if (pl && when != null) playSfxAt(sx.id, Math.max(pl.ctx.currentTime, when), { ctx: pl.ctx, volume: settingsRef.current.volume, rate: sx.rate, gain: 0.95, onBeat: true });
+        else se(sx.id, { rate: sx.rate, gain: 0.95 }, true);
+      }
       if (src === 'tap' && settingsRef.current.hitSound !== false) se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
       // コンボの声（「コンボ！」）は、プレイの途中で耳に残って気になるので鳴らさない（文字の COMBO だけ）
       if (Math.random() < 0.18 + chaos * 0.6) spawnBackgroundNa();
@@ -810,7 +816,7 @@ const Game: React.FC = () => {
     engineRef.current = eng;
     notesRef.current = eng.notes;
     burnsRef.current = eng.burns;
-    if ((window as any).__forceBurn) { (window as any).__engBurns = eng.burns; (window as any).__engNotes = eng.notes; (window as any).__hitPosRef = hitPosRef; }
+    if ((window as any).__forceBurn) { (window as any).__engBurns = eng.burns; (window as any).__engNotes = eng.notes; (window as any).__hitPosRef = hitPosRef; (window as any).__songTime = () => playerRef.current?.audibleTime() ?? 0; }
     runRef.current = emptyRun(mode, ch.difficulty, ch.notes.length);
     runRef.current.input = TAP_ONLY ? 'tap' : settingsRef.current.input;
     runRef.current.holdsTotal = ch.notes.filter((n) => n.kind === 'hold').length;
@@ -833,13 +839,11 @@ const Game: React.FC = () => {
     // カウントダウンの声「3・2・1」を、曲の拍ぴったりに予約する（声で遊ぶときはマイクが拾うので鳴らさない）
     cancelPendingSfx();
     if (voiceOn() && (TAP_ONLY || settingsRef.current.input === 'tap')) {
-      // 「3・2・3・2・1・GO」：はじめの 3・2 は 2 拍ずつ、あとの 3・2・1・GO は 1 拍ずつ（最初の「な」の 8 拍前から）
-      // 声の「聞こえる拍の位置」は音の頭ではなく母音の立ち上がり。three は th、one は w、go は g のぶん遅れて聞こえるので、
-      // 声ごとに測った分だけ早めに鳴らして、ちょうど拍に乗るようにする
-      const PCENTER: Record<string, number> = { v3: 0.07, v2: 0.03, v1: 0.12, v_go: 0.15 };
+      // 4 拍子 2 小節ぶん：1 小節目は「3（1 拍目）・2（3 拍目）」、2 小節目は「3・2・1・GO」を 1 拍ずつ。そのあとの小節の頭が最初の「な」
+      // 声の「聞こえる拍の位置」は音の頭ではなく母音の立ち上がりなので、声ごとに測った分だけ早めに鳴らす（sfx.ts の ONSET）
       COUNT_IN.forEach(([id, beats]) => {
         const when = p.ctxTimeOf(ch.firstT - BEAT * beats);
-        if (when != null) playSfxAt(id, when - PCENTER[id], { ctx: p.ctx, volume: settingsRef.current.volume });
+        if (when != null) playSfxAt(id, when, { ctx: p.ctx, volume: settingsRef.current.volume, onBeat: true });
       });
     }
     setGameState('PLAYING');
@@ -1005,6 +1009,8 @@ const Game: React.FC = () => {
           segDirtyRef.current.add(segIndexAt(scheduleRef.current, ev.note.t));
           setViewersV(viewersRef.current + VIEWERS.miss);
           showJudge('MISS', 'text-slate-400');
+          // してみた動画：失敗の音（ゲームごと）＋がっかりの音
+          if (segsStyleAt(ev.note.t) === 'heaven') { const fx = HEAVEN_FAIL_SFX[heavenGameAt(scheduleRef.current, ev.note.t).game]; se(fx.id, { rate: fx.rate, gain: 0.9 }, true); se('down', { gain: 0.55, rate: 1.1, delay: 0.12 }, true); }
           checkViewers(t);
           if (finishingRef.current) return;
         } else if (ev.type === 'burnMiss') {
@@ -1058,7 +1064,7 @@ const Game: React.FC = () => {
             if (d.t < t - 0.05 || d.t > t + 0.35 || heavenCueRef.current.has(d.t)) continue;
             heavenCueRef.current.add(d.t);
             const sx = HEAVEN_SFX[d.game], when = p.ctxTimeOf(d.t);
-            if (when != null && !e.burns.some((b) => d.t > b.t0 - 0.2 && d.t < b.t1)) playSfxAt(sx.id, when, { ctx: p.ctx, volume: settingsRef.current.volume, rate: sx.rate * (d.big ? 0.85 : 1), gain: d.big ? 1.2 : 0.95 });
+            if (when != null && !e.burns.some((b) => d.t > b.t0 - 0.2 && d.t < b.t1)) playSfxAt(sx.id, when, { ctx: p.ctx, volume: settingsRef.current.volume, rate: sx.rate * (d.big ? 0.85 : 1), gain: d.big ? 1.2 : 0.95, onBeat: true });
           }
         }
       }
