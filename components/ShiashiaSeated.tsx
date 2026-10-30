@@ -152,11 +152,12 @@ const GROOVES: Record<PoseKey, Groove[]> = {
 };
 const HAND_GROOVE = new Set<Groove>(['clap', 'pump', 'point']);
 
-/** つまみ上げられたとき：首の後ろ（服のえり）をつままれて、子ねこのように縦にぶらーん。腕と足はだらんと下がって、ひざを少しまるめる */
+/** つまみ上げられたとき：両手を持ち上げられて、バンザイの形でぶら下がる。足はだらんと下がって、ひざを少しまるめる
+ *  （頭が大きい体型なので、腕をまっすぐ上にすると頭にかぶさる。横から上へ V の字に上げる） */
 const HELD: Pose = P({
-  root: [0, 0], spine: [4, 0, 0], head: [14, 0, 0], yaw: 0,
-  armL: [8, 14], armR: [8, 14], elbowL: -22, elbowR: -22,
-  thighL: [-26, 0, 6], thighR: [-12, 0, 6], kneeL: 38, kneeR: 24, mouth: 0.6, eyes: 0.2,
+  root: [0, 0], spine: [-4, 0, 0], head: [-6, 0, 0], yaw: 0,
+  armL: [8, 142], armR: [8, 142], elbowL: -6, elbowR: -6,
+  thighL: [-22, 0, 6], thighR: [-10, 0, 6], kneeL: 34, kneeR: 22, mouth: 0.6, eyes: 0.1,
 });
 
 interface Props {
@@ -285,15 +286,15 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       const dx = e.clientX - drag.lx; drag.lx = e.clientX;
       const moved = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
       if (drag.mode === 'press' && moved > 8) {
-        // つまみ上げる：首の後ろのえりが、指の所にくる。持っている間は画面いっぱいに描くので、画面のどこへでも運べる
+        // つまみ上げる：両手が指の所にきて、ぶら下がる。持っている間は画面いっぱいに描くので、画面のどこへでも運べる
         drag.mode = 'held'; holding = true; dropT = -1; touchRef.current = null;
         goFull(true);
         grabOff.set(0, 0, 0);
         onGrabRef.current?.();
       }
       if (drag.mode === 'held') {
-        // 指（マウス）の少し下にぶら下げる。指でキャラがかくれないように、指と首の間に余白をあける
-        const gap = e.pointerType === 'touch' ? 72 : 36;
+        // 指（マウス）の少し下にぶら下げる。指でキャラがかくれないように、指と手の間に少し余白をあける
+        const gap = e.pointerType === 'touch' ? 40 : 18;
         const cxp = Math.max(8, Math.min(window.innerWidth - 8, e.clientX)), cyp = Math.max(8, Math.min(window.innerHeight - 8, e.clientY)) + gap;
         if (planePt(cxp, cyp, tmp)) grabTarget.copy(tmp).add(grabOff);
         pinch.x = e.clientX; pinch.y = e.clientY; pinch.gap = gap;
@@ -514,8 +515,8 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
         // ぶらぶら：ゆれに合わせて腕と足がおくれてゆれる。足はときどきぱたぱた
         // 足をじたばた（交互に）、腕はゆれに少しおくれてぶらぶら。首はきょろきょろ
         const kick2 = Math.sin(time * 8);
-        hp.armL[1] += 6 * Math.sin(time * 3.1) + swing * 25; hp.armR[1] += 6 * Math.sin(time * 3.1 + 1) - swing * 25;
-        hp.armL[0] += 6 * Math.sin(time * 4); hp.armR[0] += 6 * Math.sin(time * 4 + 2);
+        // 手は指をつかんだまま（腕はほとんど動かさない）。ゆれると、からだだけがふられる
+        hp.armL[1] += 2 * Math.sin(time * 3.1); hp.armR[1] += 2 * Math.sin(time * 3.1 + 1);
         hp.thighL[0] += -14 * kick2; hp.thighR[0] += 14 * kick2;
         hp.kneeL += 18 * Math.max(0, kick2); hp.kneeR += 18 * Math.max(0, -kick2);
         // 首は少しうつむいたまま固定（ぶら下げているときに首だけ動くと、ねじれて見えるので）
@@ -592,8 +593,9 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       carrier.updateMatrixWorld(true);
       box.setFromObject(g);
       box.getCenter(ctr);
-      // 首の後ろ（えり）の位置：腰から見た、yawG の中での位置。つまんだときは、ここを支点にぶら下げる
-      if (J.neck) { J.neck.getWorldPosition(neckW); yawG.worldToLocal(neckW); neckOff.copy(neckW).add(new THREE.Vector3(0, 6, -26)); }
+      // 両手のまん中の位置：腰から見た、yawG の中での位置。つまんだときは、ここ（指をつかんだ手）を支点にぶら下げる
+      if (J.handL && J.handR) { J.handL.getWorldPosition(neckW); J.handR.getWorldPosition(tmp); neckW.add(tmp).multiplyScalar(0.5); yawG.worldToLocal(neckW); neckOff.copy(neckW).add(new THREE.Vector3(0, 4, 0)); }
+      else if (J.neck) { J.neck.getWorldPosition(neckW); yawG.worldToLocal(neckW); neckOff.copy(neckW).add(new THREE.Vector3(0, 6, -26)); }
       const wantG = floorY - box.min.y, wantX = -ctr.x, wantZ = -ctr.z * 0.6;
       const f = firstFrame || forced ? 1 : Math.min(1, dt * 8);
       if (H < 0.01 && dropT < 0) { ground += (wantG - ground) * f; cx += (wantX - cx) * f; cz += (wantZ - cz) * f; }
@@ -601,8 +603,8 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       seatedHip.set(cx, ground + lift + Math.max(0, twBody) * 10, cz);
 
       // 腰の位置：座る ↔ 指につままれる。はなしたら重力で落ちる（加速しながら）
-      // carrier（支点）：座っているときは腰、つままれているときは首の後ろ。
-      // 支点を首へ移すぶん、からだを下へずらす（H で連続に）。座っている所での支点の位置＝腰＋（首の位置 × H）
+      // carrier（支点）：座っているときは腰、つままれているときは両手。
+      // 支点を手へ移すぶん、からだを下へずらす（H で連続に）。座っている所での支点の位置＝腰＋（首の位置 × H）
       const e = ease(H);
       tmp.copy(neckOff).multiplyScalar(e).applyAxisAngle(new THREE.Vector3(0, 1, 0), yawG.rotation.y);
       carrierSeat.copy(seatedHip).add(tmp);
