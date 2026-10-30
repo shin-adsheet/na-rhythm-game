@@ -5,6 +5,9 @@
  */
 import { BEAT } from './chart';
 
+/** してみた動画のゲーム機の画面の縦横（横 ÷ 縦）。HeavenStage の画面の枠もこの形 */
+export const HEAVEN_SCREEN_ASPECT = 10 / 9;
+
 export interface RHEngine {
   canvas: HTMLCanvasElement;
   SIZE: { W: number; H: number };
@@ -17,8 +20,8 @@ let ready: RHEngine | null = null;
 export const rhReady = () => ready;
 export function loadRH(): Promise<RHEngine | null> {
   if (p) return p;
-  // 画面の縦横に合わせた大きさ。スマホは少し小さめに描いて、拡大して見せる（軽くするため）
-  const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight), a = w / h;
+  // ゲーム機の画面（横 10：縦 9）の大きさで描く。スマホは少し小さめに描いて、拡大して見せる（軽くするため）
+  const a = HEAVEN_SCREEN_ASPECT;
   const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   const area = 1280 * 720 * (coarse ? 0.6 : 1);
   const W = Math.round(Math.sqrt(area * a)), H = Math.round(W / a);

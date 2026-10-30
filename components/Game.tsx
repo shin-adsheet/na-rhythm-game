@@ -1724,6 +1724,8 @@ const Game: React.FC = () => {
             transformOrigin: '50% 50%',
             transition: atCut ? 'transform 700ms cubic-bezier(0.34, 1.45, 0.64, 1)' : 'transform 520ms cubic-bezier(0.65, 0, 0.35, 1)',
             opacity: gameState === 'RULES' && !isMobile ? 1 : undefined,
+            // してみた動画のあいだは、ゲーム機の画面の中にキャラがいるので隠す
+            visibility: playing && trackStyle === 'heaven' && !atCut ? 'hidden' : undefined,
           }}>
           <Shiashia3D getBeat={getBeat} hitRef={hitRef} mood={stageMood} intensity={Math.min(1, combo / 40)} size={stageSize}
             onPoke={handlePoke} withPartner partner={atCut && cutIn?.event === 'collab'} />
