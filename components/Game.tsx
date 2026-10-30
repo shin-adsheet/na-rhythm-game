@@ -1358,7 +1358,7 @@ const Game: React.FC = () => {
               </div>
               <span className="text-3xl sm:text-5xl md:text-6xl font-black text-slate-800 mt-1" style={{ WebkitTextStroke: '3px white', paintOrder: 'stroke fill' }}>画期的ツール</span>
             </div>
-            <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/60 px-3 py-0.5 rounded-full">的なもの{titlePokeRef.current.n === 0 && !reactSay ? '　しあしあをタッチ・つまんでみて' : ''}</div>
+            <div className="text-slate-400 text-[10px] md:text-xs font-bold mt-1 tracking-widest bg-white/60 px-3 py-0.5 rounded-full">的なもの</div>
 
             <div className="relative mt-2" style={{ width: sceneSize, height: sceneSize }}>
               {/* しあしあの部屋（透けない背景）：やわらかい色の丸い窓 */}
