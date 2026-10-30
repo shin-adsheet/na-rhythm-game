@@ -5,9 +5,12 @@ import { playSfx } from '../utils/sfx';
 /**
  * タイトル画面のおまけ
  *  ・ふわふわ上がってくる「な」をタップして割る（続けて割るとコンボ、たまに金の「な」）
+ *  ・ごくまれに虹色の「な」。割ると「運良くバズったエンド」へ（onRare）
  *  ・今日の「な占い」（日付で決まるので、1 日 1 回同じ結果）
  */
-interface Bubble { id: number; x: number; size: number; dur: number; gold: boolean; sway: number; popped?: boolean; released?: boolean }
+interface Bubble { id: number; x: number; size: number; dur: number; gold: boolean; rare?: boolean; sway: number; popped?: boolean; released?: boolean }
+/** 虹色の「な」が出る確率（1 個ごと。1.1 秒に 1 個なので、平均 1 分半に 1 回くらい） */
+const RARE_CHANCE = 0.012;
 interface Popped { id: number; x: number; y: number; text: string; gold: boolean; size: number }
 
 /**
@@ -33,7 +36,7 @@ function blockClickThrough(pointerId: number) {
 /** 割れたときの文字（風船が割れる音っぽく） */
 const POP_WORDS = ['パンッ！', 'パーン！', 'ボンッ！', 'パチン！'];
 
-export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: number) => void; onBurst?: (x: number, y: number, gold: boolean) => void; disabled?: boolean }> = ({ volume, total, onPop, onBurst, disabled }) => {
+export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: number) => void; onBurst?: (x: number, y: number, gold: boolean) => void; onRare?: () => void; disabled?: boolean }> = ({ volume, total, onPop, onBurst, onRare, disabled }) => {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const [popped, setPopped] = useState<Popped[]>([]);
   const [combo, setCombo] = useState(0);
@@ -46,9 +49,11 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
       setBubbles((b) => {
         if (b.length >= 9) return b;
         const id = ++seq.current;
-        const dur = 7 + Math.random() * 4;
+        // 虹色の「な」：1 度に 1 個まで。ゆっくり上がる（テスト用：window.__rareNa で必ず出す）
+        const rare = !!onRare && !b.some((y) => y.rare) && ((window as any).__rareNa || Math.random() < RARE_CHANCE);
+        const dur = rare ? 11 + Math.random() * 2 : 7 + Math.random() * 4;
         setTimeout(() => setBubbles((x) => x.filter((y) => y.id !== id)), dur * 1000 + 100);
-        return [...b, { id, x: 4 + Math.random() * 86, size: 42 + Math.random() * 30, dur, gold: Math.random() < 0.07, sway: 10 + Math.random() * 30 }];
+        return [...b, { id, x: 8 + Math.random() * (rare ? 70 : 82), size: rare ? 76 : 42 + Math.random() * 30, dur, gold: !rare && Math.random() < 0.07, rare, sway: 10 + Math.random() * 30 }];
       });
     }, 1100);
     return () => clearInterval(iv);
@@ -81,6 +86,7 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
     sfxBalloon(volume);
     onPop(pts);
     onBurst?.(cx, cy, b.gold);
+    if (b.rare) onRare?.();
   };
 
   return (
@@ -88,8 +94,8 @@ export const NaBubbles: React.FC<{ volume: number; total: number; onPop: (n: num
       {bubbles.map((b) => (
         <div key={b.id} className="absolute bubble-rise" style={{ left: `${b.x}%`, bottom: -90, ['--dur' as any]: `${b.dur}s`, ['--sway' as any]: `${b.sway}px` }}>
           <button onPointerDown={(e) => pop(b, e)} onClick={(e) => { e.stopPropagation(); e.preventDefault(); }} tabIndex={-1}
-            className={`${b.popped ? 'opacity-0' : ''} ${b.released ? 'pointer-events-none' : 'pointer-events-auto'} rounded-full flex items-center justify-center font-black border-4 shadow-lg active:scale-90 transition-transform ${b.gold ? 'bg-gradient-to-br from-yellow-200 to-amber-400 border-yellow-100 text-amber-700' : 'bg-white/75 border-pink-200 text-pink-500'}`}
-            style={{ width: b.size, height: b.size, fontSize: b.size * 0.5 }}>
+            className={`${b.popped ? 'opacity-0' : ''} ${b.released ? 'pointer-events-none' : 'pointer-events-auto'} rounded-full flex items-center justify-center font-black border-4 shadow-lg active:scale-90 transition-transform ${b.rare ? 'rare-na border-white text-white' : b.gold ? 'bg-gradient-to-br from-yellow-200 to-amber-400 border-yellow-100 text-amber-700' : 'bg-white/75 border-pink-200 text-pink-500'}`}
+            style={{ width: b.size, height: b.size, fontSize: b.size * 0.5, ...(b.rare ? { WebkitTextStroke: '3px #db2777', paintOrder: 'stroke fill' } : {}) }}>
             な
           </button>
         </div>

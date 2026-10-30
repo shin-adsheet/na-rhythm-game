@@ -75,6 +75,8 @@ export type EndingScene =
   | 'bottom' | 'silent' | 'cat' | 'sleep'
   | 'glitch' | 'timeloop' | 'mirror' | 'alien' | 'cutoff' | 'ban' | 'dictator'
   | 'peace' | 'arcade' | 'quake' | 'invasion' | 'meteor'
+  // タイトル画面の特別な「な」
+  | 'lucky'
   // 10秒・30秒用のしょぼいエンディング
   | 'bulb' | 'kairanban' | 'mom' | 'yurukyara' | 'boya' | 'snooze' | 'self' | 'almost';
 

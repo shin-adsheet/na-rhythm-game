@@ -11,7 +11,7 @@ import { MicDetector } from '../utils/micDetector';
 import { rollItem, ItemDef, ItemId, ITEM_COLOR } from '../utils/items';
 import { rollRarity, pickVariant, createParticles } from '../utils/naEffects';
 import { ACHIEVEMENTS, achievementById, evaluate, loadUnlocked, saveUnlocked, loadLifetime, saveLifetime, LifetimeStats } from '../utils/achievements';
-import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings, countSeen } from '../utils/endings';
+import { ENDINGS, TOTAL_ENDINGS, pickEnding, loadSeenEndings, saveSeenEndings, countSeen, byId as endingById } from '../utils/endings';
 import NaEffects from './NaEffects';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import ShiashiaSeated, { STORY, Reaction } from './ShiashiaSeated';
@@ -254,6 +254,8 @@ const Game: React.FC = () => {
   const [shake, setShake] = useState('');
   const [ending, setEnding] = useState<Ending | null>(null);
   const [endingIsNew, setEndingIsNew] = useState(false);
+  const luckyRef = useRef(false);                 // タイトルの虹色の「な」から入ったエンディング（終わったらタイトルへ戻る）
+  const [luckyFx, setLuckyFx] = useState(false);
   const [revealT, setRevealT] = useState(0);
   const [banFlash, setBanFlash] = useState(false);
   const [storyIdx, setStoryIdx] = useState(0);
@@ -399,6 +401,28 @@ const Game: React.FC = () => {
   }, [judge]);
   const doShake = (cls: string, ms: number) => { setShake(cls); setTimeout(() => setShake(''), ms); };
   const flashMood = (m: ShiashiaMood, ms: number) => { setTempMood(m); setTimeout(() => setTempMood((x) => (x === m ? null : x)), ms); };
+
+  /** タイトルの虹色の「な」を割った：通知が鳴りやまない演出のあと、「運良くバズったエンド」へ */
+  const startLucky = () => {
+    if (luckyRef.current) return;
+    luckyRef.current = true;
+    setLuckyFx(true);
+    se('special', { gain: 0.9 });
+    [0.25, 0.45, 0.62, 0.77, 0.9, 1.0, 1.1].forEach((d, i) => se('ui_toggle', { gain: 0.5, rate: 1.1 + i * 0.05, delay: d }));
+    setTimeout(() => {
+      const e = endingById('lucky');
+      const seen = loadSeenEndings();
+      const isNew = !seen[e.id];
+      const nextSeen = { ...seen, [e.id]: seen[e.id] || Date.now() };
+      saveSeenEndings(nextSeen);
+      setSeenEndings(nextSeen);
+      checkAchievements(null, false);
+      setLuckyFx(false);
+      setEnding(e);
+      setEndingIsNew(isNew);
+      setGameState('ENDING');
+    }, 1700);
+  };
 
   /** タイトルの「な」の風船を割ったとき：初期の激しい「な」アニメのどれかを、割れた所から出す */
   const spawnBalloonNa = (x: number, y: number, gold: boolean) => {
@@ -1649,7 +1673,7 @@ const Game: React.FC = () => {
           </>
         );
       case 'ENDING':
-        return ending ? <EndingScene ending={ending} isNew={endingIsNew} notFull={runRef.current.mode !== 'FULL'} volume={settings.volume} audioCtx={playerRef.current?.ctx ?? null} onDone={() => setGameState('FINISHED')} /> : null;
+        return ending ? <EndingScene ending={ending} isNew={endingIsNew} notFull={!luckyRef.current && runRef.current.mode !== 'FULL'} volume={settings.volume} audioCtx={playerRef.current?.ctx ?? null} onDone={() => { if (luckyRef.current) { luckyRef.current = false; setEnding(null); setGameState('READY'); } else setGameState('FINISHED'); }} /> : null;
       case 'FINISHED':
         return (
           <ResultScreen run={runRef.current} revealT={revealT} ending={ending} endingIsNew={endingIsNew} isNewRecord={isNewRecordRef.current}
@@ -1704,7 +1728,17 @@ const Game: React.FC = () => {
       {banFlash && playing && <div className="absolute inset-0 z-[58] bg-red-700/40 pointer-events-none flash-white" />}
 
       {gameState !== 'PLAYING' && <AchievementToasts toasts={toasts} />}
-      {gameState === 'READY' && <NaBubbles volume={settings.volume} total={titlePops} disabled={kiaOn || deathOn} onBurst={spawnBalloonNa}
+      {luckyFx && (
+        <div className="fixed inset-0 z-[90] pointer-events-auto flex items-center justify-center bg-fuchsia-500/30">
+          <div className="absolute inset-0 bg-white flash-white" />
+          {['この子だれ？', '切り抜き、伸びてる', 'トレンド 1 位', '通知が止まらない'].map((c, i) => (
+            <div key={i} className="absolute lucky-in bg-white text-slate-700 font-black text-sm rounded-2xl px-3 py-2 border-2 border-fuchsia-300 shadow-lg whitespace-nowrap"
+              style={{ top: `${18 + i * 15}%`, left: `${i % 2 ? 46 : 8}%`, animationDelay: `${0.2 + i * 0.22}s`, opacity: 0 }}>{c}</div>
+          ))}
+          <div className="relative lucky-in text-5xl sm:text-6xl font-black text-fuchsia-600" style={{ WebkitTextStroke: '8px #fff', paintOrder: 'stroke fill', animationDelay: '0.1s', opacity: 0 }}>バズった！？</div>
+        </div>
+      )}
+      {gameState === 'READY' && <NaBubbles volume={settings.volume} total={titlePops} disabled={kiaOn || deathOn || luckyFx} onBurst={spawnBalloonNa} onRare={startLucky}
         onPop={(n) => { const v = (lifeRef.current.titlePops ?? 0) + n; bumpLife({ titlePops: v }); setTitlePops(v); if (v >= 50 && v - n < 50) checkAchievements(null, false); }} />}
       {kiaOn && <KiaKiaPunch volume={settings.volume} onShout={() => doShake('shake-hard', 600)}
         onImpact={() => { const lv = Math.max(1, Math.min(3, kiaCountRef.current)); setCrackLevel(lv); setCrackSeed((Date.now() % 99991) + 1); doShake('shake-hard', 700 + 300 * (lv - 1)); if (lv >= 2) { se('glass_crash', { gain: 0.5 + 0.2 * lv, rate: 0.85, delay: 0.08 }); se('boom_low', { gain: 0.6 * lv }); } bumpLife({ screenBroken: true }); checkAchievements(null, false); }}

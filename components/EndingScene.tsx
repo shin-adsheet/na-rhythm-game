@@ -426,6 +426,41 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
       );
       break;
     }
+    case 'lucky': {
+      // 切り抜きがバズる：再生回数がぐんぐん回って、コメントとハートが流れる
+      bg = 'bg-gradient-to-b from-fuchsia-300 via-pink-200 to-amber-100';
+      mood = progress > 0.45 ? 'celebrate' : 'dance';
+      textColor = 'text-fuchsia-950';
+      linesTop = 'top-[30%] md:top-[32%]';
+      linesPanel = 'bg-white/55 rounded-3xl px-3 py-2';
+      const k = Math.min(1, progress / 0.55), views = Math.floor(10_000_000 * (k * k * (3 - 2 * k)));
+      const COMS = ['この子だれ？', 'かわいい', '名前なに？', '「な」って何', '切り抜き助かる', '登録した', 'トレンド入りしてて草', 'な', '何回も見てる', '配信まだ？'];
+      extra = (
+        <>
+          <Confetti count={progress > 0.45 ? 80 : 20} colors={['#f0abfc', '#fbbf24', '#fff', '#f472b6', '#38bdf8']} />
+          <div className="absolute inset-0 bg-[conic-gradient(from_0deg,rgba(255,255,255,0)_0deg,rgba(255,255,255,0.5)_18deg,rgba(255,255,255,0)_36deg)] animate-[spin_7s_linear_infinite] opacity-50" />
+          <div className="absolute top-[13%] md:top-[12%] left-0 right-0 flex justify-center pointer-events-none">
+            <div className={`bg-white rounded-2xl border-4 border-fuchsia-400 shadow-[0_6px_0_rgba(0,0,0,0.15)] px-4 py-1.5 text-center ${progress > 0.55 ? 'animate-impact' : ''}`}>
+              <div className="text-[10px] font-black text-slate-400 tracking-widest">切り抜き動画　再生回数</div>
+              <div className="text-2xl sm:text-3xl font-black text-fuchsia-600 tabular-nums leading-tight">{views.toLocaleString()} 回</div>
+            </div>
+          </div>
+          {COMS.map((c, i) => {
+            const start = 0.06 + i * 0.07, u = (progress - start) / 0.38;
+            if (u < 0 || u > 1) return null;
+            return (
+              <div key={i} className="absolute whitespace-nowrap bg-white/90 text-slate-700 font-black text-xs sm:text-sm rounded-full px-3 py-1 border-2 border-fuchsia-200 shadow pointer-events-none"
+                style={{ top: `${22 + ((i * 37) % 50)}%`, left: `${105 - u * 130}%`, opacity: Math.min(1, u * 6, (1 - u) * 6) }}>{c}</div>
+            );
+          })}
+          {progress > 0.4 && Array.from({ length: 12 }).map((_, i) => {
+            const u = ((progress - 0.4) * 2.2 + i / 12) % 1;
+            return <div key={'h' + i} className="absolute text-pink-500 font-black pointer-events-none" style={{ left: `${8 + ((i * 53) % 84)}%`, bottom: `${8 + u * 70}%`, opacity: 1 - u, fontSize: 18 + (i % 3) * 8 }}>♥</div>;
+          })}
+        </>
+      );
+      break;
+    }
     case 'legend': {
       bg = 'bg-gradient-to-b from-amber-200 via-yellow-100 to-white';
       mood = 'celebrate';

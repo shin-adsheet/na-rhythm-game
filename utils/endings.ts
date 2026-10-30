@@ -4,6 +4,7 @@ import { LS_KEYS } from '../constants';
 /**
  * エンディングは「遊び方」で決まる（くじ引きではない）。
  * 上から順に条件を見て、最初に当てはまったものになる。条件はずかんにヒントとして出る。
+ * 「運良くバズったエンド」だけは遊ばずに見る：タイトル画面にごくまれに出る虹色の「な」を割ると入る（Game.tsx）。
  * レア度は、そのエンディングに行く難しさ。
  * 10秒・30秒でも、フルと同じエンディングに行ける。ただし一部（バグった・世界ゲーセン化・世界平和・伝説）はフルでしか見られない。
  */
@@ -29,6 +30,13 @@ export const ENDINGS: Ending[] = [
     hint: '視聴者ゲージが 0 になる',
     lines: ['同接が、1 人、また 1 人と減っていく。', 'そして、0 人になった。', '「配信を終了しますか？」', '……「はい」を押した。'],
     oneLiner: '（あなたの名を伝える前に、視聴者が全員ブラウザを閉じました）',
+  },
+  {
+    id: 'lucky', no: 0, title: '運良くバズったエンド', subtitle: '配信する前に、名が売れた',
+    scene: 'lucky', rarity: 'ultra', kind: 'secret', durationMs: 9000,
+    hint: 'タイトル画面に、ごくまれに出る虹色の「な」を割る',
+    lines: ['虹色の「な」を、割ってしまった。', 'その一瞬が、なぜか切り抜かれていた。', '「この子だれ？」 再生回数 1000万回。', 'まだ 1 回も配信していないのに、名が売れた。'],
+    oneLiner: '（運良くバズって、あなたの名が売れました。配信ボタンは、まだ押していません）',
   },
 
   // ===== クリア（レアな順） =====
@@ -183,7 +191,7 @@ export const TOTAL_ENDINGS = ENDINGS.length;
 export const countSeen = (seen: Record<string, number>) => ENDINGS.filter((e) => seen[e.id]).length;
 /** フルでしか見られないエンディング */
 export const FULL_ONLY = new Set(['glitch', 'peace', 'legend', 'arcade']);
-const byId = (id: string) => ENDINGS.find((e) => e.id === id)!;
+export const byId = (id: string) => ENDINGS.find((e) => e.id === id)!;
 
 export function loadSeenEndings(): Record<string, number> {
   try { return JSON.parse(localStorage.getItem(LS_KEYS.endings) || '{}'); } catch { return {}; }

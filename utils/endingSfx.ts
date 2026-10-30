@@ -98,6 +98,15 @@ export function startEndingSfx(scene: EndingScene, durationMs: number, volume: n
       smp('fanfare', sec(0.8), 0.8); smp('steel', sec(2.6), 0.7);
       break;
     }
+    case 'lucky': {
+      // スマホの通知が鳴りやまない → 再生回数が回る → ファンファーレ
+      for (let k = 0; k < 14; k++) smp('ui_toggle', sec(0.5 + k * (0.32 - k * 0.012)), 0.5, 1.2 + k * 0.04, (k % 2 ? 0.4 : -0.4));
+      smp('coins', sec(2.4), 0.6); smp('coin', sec(2.9), 0.6, 1.2); smp('coins', sec(3.4), 0.7, 1.1);
+      fanfare(sec(4.2), [[67, 0, 0.16], [72, 0.16, 0.16], [76, 0.32, 0.16], [79, 0.48, 1.0]]);
+      chord(sec(4.7), 2.2, [N(67), N(72), N(76), N(79)], 'square', 0.045);
+      smp('fanfare', sec(4.2), 0.8); smp('achieve', sec(D - 1.6), 0.6);
+      break;
+    }
     case 'nafy': {
       const scale = [57, 60, 62, 64, 67, 69, 72];
       for (let s = 0.6; s < D - 0.4; s += 0.125) tone(sec(s), 0.09, N(scale[Math.floor(Math.random() * scale.length)] + 12), undefined, 'square', 0.06);
