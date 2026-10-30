@@ -33,6 +33,7 @@ import Calibration from './Calibration';
 import RulesCard from './RulesCard';
 import AchievementToasts, { ToastItem } from './AchievementToast';
 import EndingScene from './EndingScene';
+import { loadRH } from '../utils/rhLoader';
 import ResultScreen from './ResultScreen';
 import CollectionBook from './CollectionBook';
 
@@ -365,6 +366,13 @@ const Game: React.FC = () => {
   };
 
   // メニュー BGM
+  // してみた動画（MV のミニゲーム）は読みこみが重いので、タイトル・あそびかたの画面で手があいているうちに読んでおく
+  useEffect(() => {
+    if ((gameState !== 'READY' && gameState !== 'RULES') || settings.arcade === false) return;
+    const id = window.setTimeout(() => { const ric = (window as any).requestIdleCallback; if (ric) ric(() => loadRH(), { timeout: 3000 }); else loadRH(); }, 2500);
+    return () => window.clearTimeout(id);
+  }, [gameState, settings.arcade]);
+
   useEffect(() => {
     const el = menuBgmRef.current;
     if (!el) return;
@@ -1562,7 +1570,7 @@ const Game: React.FC = () => {
             <div className="mode-change flex items-center gap-3 bg-slate-900/92 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
               <span className="shrink-0 text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
               <span className="flex flex-col leading-tight min-w-0">
-                <span className="font-black text-lg">{styleBanner.style === 'heaven' ? HEAVEN_GAMES[scheduleRef.current[styleBanner.id]?.games?.[0] ?? 'lift'].title : STYLE_INFO[styleBanner.style].label}<span className="text-xs font-bold text-white/60 ml-2">やることは同じ</span></span>
+                <span className="font-black text-lg">{styleBanner.style === 'heaven' ? HEAVEN_GAMES[scheduleRef.current[styleBanner.id]?.games?.[0] ?? 'plane'].title : STYLE_INFO[styleBanner.style].label}<span className="text-xs font-bold text-white/60 ml-2">やることは同じ</span></span>
                 <span className="text-[11px] font-bold text-white/85">{STYLE_INFO[styleBanner.style].hint}</span>
                 <span className="text-sm font-black text-yellow-300">→ {input === 'mic' ? `${nuNow ? '「ぬ」' : '「な」'}と言う` : settings.tapMode === 'normal' ? (styleBanner.style === 'heaven' ? 'どこでもタップ' : 'ノーツの場所をタップ') : isMobile ? '画面をタップ' : 'キーを押す'}</span>
               </span>

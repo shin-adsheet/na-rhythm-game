@@ -17,7 +17,7 @@ export const STYLE_INFO: Record<TrackStyle, { label: string; hint: string }> = {
   step: { label: 'ステップ', hint: '下から上がる「な」が、上の矢印の枠に重なったら' },
   rail: { label: 'レール', hint: 'レールを走る「な」が、左の丸に重なったら' },
   pop: { label: 'ポップ', hint: '落ちてくる「な」が、下の丸いボタンに重なったら' },
-  heaven: { label: 'してみた動画', hint: 'きあきあのお手本を見て（聞いて）、次の小節で同じリズムでまねする' },
+  heaven: { label: 'してみた動画', hint: 'お手本を見て（聞いて）、同じリズムでまねする' },
 };
 
 export const ARCADE_STYLES: TrackStyle[] = ['fall', 'drum', 'ring', 'highway', 'panel', 'step', 'rail', 'pop', 'heaven'];
@@ -69,93 +69,96 @@ export function laneOf(i: number, lanes: number) {
   return Math.round((p * (lanes - 1)) / 7);
 }
 
-/**
- * 「してみた動画」（リズム天国風）の配置。譜面の canvas（Track）と 3D の舞台（HeavenStage）で同じ数字を使う。
- * 左にお手本のきあきあ、右にあなた（しあしあ）。きあきあが 1 拍前にポーズを決め、しあしあは「な」の瞬間に同じポーズ。
- */
+/** 炎上の合図だけは、してみた動画でも下の帯を流れてくる（Track）。その帯の位置 */
 export const HEAVEN_LEAD_BEATS = 1;
 export function heavenLayout(W: number, H: number) {
   const SW = Math.min(W, 560);
   const charH = Math.min(H * 0.6, SW * 0.56);
-  // 床の下に「な」が流れる帯（stripY）。きあきあ → しあしあの距離が 1 拍ぶん
   return { kiaX: W / 2 - SW * 0.24, shiaX: W / 2 + SW * 0.24, floorY: H * 0.77, charH, stripY: H * 0.895, SW, x0: (W - SW) / 2 };
 }
 
 /**
- * 「してみた動画」（リズム天国風）のミニゲーム。2 小節ごとに次のゲームへ切り替わる（リミックスのように）。
- * どれも「きあきあが 1 拍前に投げる（送る）→ しあしあに届いた瞬間に『な』」で、遊び方は同じ。
+ * 「してみた動画」（リズム天国風）：MV 編集台「Keep it alive」のミニゲームを、そのまま曲に合わせて動かす（public/rh）。
+ * どのゲームも「お手本（コール）→ 同じリズムでまね（レスポンス）」。レスポンスの拍が、あなたが「な」を出す所。
+ * 拍は、そのゲームの中の拍（MV と同じ数え方）。曲の小節の頭が、ゲームの off 拍目になる。
  */
-export type HeavenGame = 'lift' | 'selfie' | 'fish' | 'donut' | 'cook' | 'gamer' | 'sing' | 'unbox' | 'workout' | 'dance';
-/** src・target：きあきあ／しあしあの足もとからの位置（キャラの高さに対する割合。x は右が＋、y は上が＋）、arc：山なりの高さ */
-export const HEAVEN_GAMES: Record<HeavenGame, { title: string; ono: string; bg: [string, string]; floor: string; src: [number, number]; target: [number, number]; arc: number }> = {
-  lift: { title: 'リフティングしてみた', ono: 'ポン', bg: ['#fff1d6', '#ffd29a'], floor: '#9bd36a', src: [0.12, 0.16], target: [-0.1, 0.18], arc: 0.3 },
-  selfie: { title: '自撮りしてみた', ono: 'カシャ', bg: ['#fde7f3', '#f9c6e0'], floor: '#f4a6c9', src: [0.12, 0.55], target: [-0.04, 0.98], arc: 0.25 },
-  fish: { title: '釣りしてみた', ono: 'ザバッ', bg: ['#e0f4ff', '#b5e3ff'], floor: '#4fa3e0', src: [0.25, 0.02], target: [-0.3, 0.04], arc: 0.35 },
-  donut: { title: 'ドーナツ大食いしてみた', ono: 'パクッ', bg: ['#fff3e6', '#ffd9b8'], floor: '#e3a868', src: [0.12, 0.55], target: [-0.06, 0.72], arc: 0.25 },
-  cook: { title: '料理してみた', ono: 'トン', bg: ['#f3f8e8', '#dcefc1'], floor: '#c9a27a', src: [0.12, 0.55], target: [-0.22, 0.3], arc: 0.3 },
-  gamer: { title: 'ゲーム実況してみた', ono: 'ドカン', bg: ['#e8e6ff', '#c9c4ff'], floor: '#6d74e0', src: [0.16, 0.06], target: [-0.16, 0.42], arc: 0.35 },
-  sing: { title: '歌ってみた', ono: 'なー', bg: ['#f5e8ff', '#e1c4ff'], floor: '#ae65fd', src: [0.12, 0.62], target: [-0.12, 0.66], arc: 0.15 },
-  unbox: { title: '開封してみた', ono: 'パカッ', bg: ['#fff8dc', '#ffe9a6'], floor: '#f7c76b', src: [0.2, 0.06], target: [-0.24, 0.06], arc: 0.02 },
-  workout: { title: '筋トレしてみた', ono: 'フンッ', bg: ['#e8fff4', '#bff0d8'], floor: '#58c98e', src: [0.12, 0.55], target: [-0.06, 0.5], arc: 0.25 },
-  dance: { title: '踊ってみた', ono: 'キメ', bg: ['#fff0f0', '#ffc9c9'], floor: '#ff8a8a', src: [0.12, 0.6], target: [-0.02, 0.6], arc: 0.25 },
+export type HeavenGame = 'plane' | 'milk' | 'click' | 'juggle' | 'count' | 'band' | 'puddle' | 'march';
+interface HeavenGameDef { title: string; how: string; off: number; keep?: number; calls: number[]; resps: number[] }
+const range = (n: number) => Array.from({ length: n }, (_, i) => i);
+const CLICK_PATS = [[0, 1], [0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1.5], [0, 0.75, 1.5], [0, 0.5, 1, 1.5], [0, 1], [0, 0.5, 1, 1.5]];
+const COUNT_PH = [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3], [0, 0.5, 1, 2], [0, 2], [0, 0.5, 1, 1.5], [0, 1, 2, 3]];
+const JUGGLE = (c: number) => (c % 2 ? [0, 1, 1.5, 2] : [0, 1, 2]);
+export const HEAVEN_GAMES: Record<HeavenGame, HeavenGameDef> = {
+  plane: { title: 'かみひこうき', how: 'ひこうきが来たら、よける', off: 0, keep: 0.86,
+    calls: [0, 1, 4, 5, 8, 9, 12, 16, 20], resps: [2, 3, 6, 7, 10, 11, 14, 18, 22] },
+  milk: { title: 'ミルクとスプーン', how: 'ミルクと同じリズムで、スプーン', off: 0,
+    calls: [0, 1, 4, 5, 8, 8.5, 9, 12, 13, 16, 17, 20, 20.5, 21], resps: [2, 3, 6, 7, 10, 10.5, 11, 14, 15, 18, 19, 22, 22.5, 23] },
+  click: { title: 'スマホでぽちぽち', how: 'きあきあと同じリズムで、ぽちぽち', off: 0,
+    calls: range(8).flatMap((n) => CLICK_PATS[n].map((x) => n * 4 + x)), resps: range(8).flatMap((n) => CLICK_PATS[n].map((x) => n * 4 + x + 2)) },
+  juggle: { title: 'ころころリフティング', how: 'きあきあと同じ回数、ヘディング', off: 0,
+    calls: range(4).flatMap((c) => [...JUGGLE(c), 3].map((x) => c * 8 + x)), resps: range(4).flatMap((c) => [...JUGGLE(c).map((x) => x + 4), 7].map((x) => c * 8 + x)) },
+  count: { title: 'かぞえうた', how: 'コンコンと同じ順番で、箱から出る', off: 16, keep: 1,
+    calls: range(5).flatMap((k) => COUNT_PH[k + 2].map((x) => (k + 2) * 8 + x)), resps: range(5).flatMap((k) => COUNT_PH[k + 2].map((x) => (k + 2) * 8 + x + 4)) },
+  band: { title: 'バンド', how: 'ギターと同じフレーズを、ベースで', off: 0,
+    calls: range(2).flatMap((c) => [0, 1, 1.5, 2.5].map((x) => c * 16 + x)), resps: range(2).flatMap((c) => [4, 5, 5.5, 6.5].map((x) => c * 16 + x)) },
+  puddle: { title: 'あめのバスてい', how: 'きあきあの 1 拍あとに、水たまりをジャンプ', off: 0,
+    calls: range(16).map((k) => k * 2), resps: range(16).map((k) => k * 2 + 1) },
+  march: { title: 'ちびしあ行進', how: '指揮棒の上・下のあとに、足ぶみ 2 回', off: 0,
+    calls: range(10).flatMap((k) => [k * 4, k * 4 + 1]), resps: range(10).flatMap((k) => [k * 4 + 2, k * 4 + 3]) },
 };
 export const HEAVEN_GAME_IDS = Object.keys(HEAVEN_GAMES) as HeavenGame[];
-export const HEAVEN_GAME_BARS = 2;
 function shuffledGames(): HeavenGame[] {
   const a = [...HEAVEN_GAME_IDS];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
-/** 時刻 t の「してみた動画」のゲームと、そのゲームが始まった時刻 */
-export function heavenGameAt(segs: StyleSeg[], t: number): { game: HeavenGame; t0: number; bar0: number } {
-  const k = segIndexAt(segs, t), sg = segs[k];
-  const games = sg.games && sg.games.length ? sg.games : HEAVEN_GAME_IDS;
-  // 小節の頭で切り替える（区間の最初の小節から 2 小節ずつ）
-  const G0 = timeOf(0), iAt = (x: number) => Math.floor((x - G0) / EIGHTH + 1e-6);
-  const b0 = sg.t < -1e8 ? 0 : barNo(iAt(sg.t) + 1), b = barNo(iAt(t));
-  const n = Math.max(0, Math.floor((b - b0) / HEAVEN_GAME_BARS));
-  const startBar = b0 + n * HEAVEN_GAME_BARS;
-  // その小節の頭の時刻
-  let i = iAt(t); while (barNo(i) > startBar) i -= 8; while (barNo(i) < startBar) i += 8; while (barPos(i) !== 0) i--;
-  return { game: games[n % games.length], t0: Math.max(sg.t, timeOf(i)), bar0: timeOf(i) };
-}
-
-/** ゲームごとの音（きあきあのお手本と、あなたが打ったとき。同じ音なので「まねする」のが耳で分かる） */
+/** ゲームごとの音（お手本と、あなたが打ったとき。同じ音なので「まねする」のが耳で分かる） */
 export const HEAVEN_SFX: Record<HeavenGame, { id: SfxId; rate: number }> = {
-  lift: { id: 'pop', rate: 0.8 }, selfie: { id: 'ui_toggle', rate: 1.1 }, fish: { id: 'slide', rate: 1.3 }, donut: { id: 'crunch', rate: 1.2 },
-  cook: { id: 'knock', rate: 1.6 }, gamer: { id: 'nes_short', rate: 1 }, sing: { id: 'bell', rate: 1.2 }, unbox: { id: 'card', rate: 1 },
-  workout: { id: 'hit_big', rate: 0.8 }, dance: { id: 'coin', rate: 1.1 },
+  plane: { id: 'slide', rate: 1.3 }, milk: { id: 'bell', rate: 1.3 }, click: { id: 'ui_toggle', rate: 1.1 }, juggle: { id: 'pop', rate: 0.8 },
+  count: { id: 'knock', rate: 1.6 }, band: { id: 'nes_short', rate: 1 }, puddle: { id: 'pop', rate: 1.2 }, march: { id: 'card', rate: 1 },
 };
 
+/** してみた動画の 1 本：どのゲームを、曲のどの時刻から（bar0＝ゲームの off 拍目）、いつまで */
+export interface HeavenWin { game: HeavenGame; bar0: number; t0: number; t1: number }
+const FORCED_WIN_BEATS = 24;
+/** 時刻 t の「してみた動画」。区間のはじめの小節の頭からゲームが始まる（区間の最初の 1 拍半は、ゲームの入り） */
+export function heavenGameAt(segs: StyleSeg[], t: number): HeavenWin {
+  const k = segIndexAt(segs, t), sg = segs[k], t1 = k + 1 < segs.length ? segs[k + 1].t : Infinity;
+  const BAR = EIGHTH * 8, G0 = timeOf(0);
+  if (sg.t < -1e8) {   // テスト用に画面を固定したとき：24 拍ごとに次のゲーム
+    const W = FORCED_WIN_BEATS * EIGHTH * 2, n = Math.max(0, Math.floor((t - G0) / W)), ids = sg.games?.length ? sg.games : HEAVEN_GAME_IDS;
+    return { game: ids[n % ids.length], bar0: G0 + n * W, t0: G0 + n * W - 1.5 * EIGHTH * 2, t1: G0 + (n + 1) * W - 1.5 * EIGHTH * 2 };
+  }
+  const bar0 = G0 + Math.ceil((sg.t - G0) / BAR - 1e-6) * BAR;
+  return { game: sg.games?.[0] ?? 'plane', bar0, t0: sg.t, t1 };
+}
+
 /**
- * してみた動画は「お手本 → まね」を交互にやる（リズム天国のように）。
- * 2 小節ずつのゲームのうち、1 小節目はきあきあのお手本（音符なし）、2 小節目にあなたが同じリズムでまねする。
- * 2 小節目に音符がなければ、1 小節目の音符を 1 小節うしろへずらして使う。
+ * してみた動画の音符：譜面の音符は使わず、ゲームのレスポンスの拍に「な」を置く。コールの拍はお手本（demos）にする。
+ * 区間の終わりぎりぎりのレスポンスと、炎上の近くは置かない（そのコールも鳴らさない）
  */
 export function heavenCallResponse(notes: ChartNote[], segs: StyleSeg[], blocked: (t: number) => boolean): ChartNote[] {
-  const BAR = EIGHTH * 8;
   const isHeaven = (t: number) => segs[segIndexAt(segs, t)].style === 'heaven';
-  const out: ChartNote[] = [];
-  const groups = new Map<number, { call: ChartNote[]; resp: ChartNote[]; game: HeavenGame; bar0: number; segT: number; seg: StyleSeg }>();
-  for (const n of notes) {
-    if (!isHeaven(n.t)) { out.push(n); continue; }
-    const g = heavenGameAt(segs, n.t);
-    const seg = segs[segIndexAt(segs, n.t)];
-    const key = Math.round(g.bar0 * 1000);
-    if (!groups.has(key)) groups.set(key, { call: [], resp: [], game: g.game, bar0: g.bar0, segT: seg.t, seg });
-    const gr = groups.get(key)!;
-    (n.t < g.bar0 + BAR - 0.02 ? gr.call : gr.resp).push(n);
-  }
-  for (const gr of groups.values()) {
-    let resp = gr.resp.filter((n) => n.t - BAR > gr.segT + 0.05 && (n.t2 ?? n.t) < gr.bar0 + 2 * BAR + 0.02);
-    if (!resp.length) {
-      resp = gr.call.filter((n) => n.kind !== 'hold' || (n.t2 ?? n.t) < gr.bar0 + BAR).map((n) => ({ ...n, i: n.i + 8, t: n.t + BAR, t2: n.t2 != null ? n.t2 + BAR : undefined }))
-        .filter((n) => isHeaven(n.t) && !blocked(n.t) && n.t - BAR > gr.segT + 0.05);
-    }
-    for (const n of resp) {
-      out.push(n);
-      (gr.seg.demos ??= []).push({ t: n.t - BAR, t2: n.t2 != null ? n.t2 - BAR : undefined, i: n.i - 8, game: gr.game, kind: n.kind, big: n.power === 'big' });
-    }
+  const out: ChartNote[] = notes.filter((n) => !isHeaven(n.t) && !(n.t2 != null && isHeaven(n.t2)));
+  const endT = notes.length ? notes[notes.length - 1].t + 2 : 0;
+  const B = EIGHTH * 2;
+  const wins: HeavenWin[] = [];
+  segs.forEach((sg, k) => {
+    if (sg.style !== 'heaven') return;
+    if (sg.t < -1e8) { for (let t = timeOf(0); t < endT; t += FORCED_WIN_BEATS * B) wins.push(heavenGameAt(segs, t + 0.01)); }
+    else wins.push(heavenGameAt(segs, sg.t + 0.001));
+    sg.demos = [];
+    void k;
+  });
+  for (const w of wins) {
+    const def = HEAVEN_GAMES[w.game], sg = segs[segIndexAt(segs, w.bar0)];
+    const tOf = (b: number) => w.bar0 + (b - def.off) * B;
+    const ok = (t: number) => t > w.t0 + 0.05 && t < Math.min(w.t1, endT) - 0.35 * B && !blocked(t);
+    // レスポンスの拍 → 音符。そのレスポンスのもとになったコール（直前のコール）だけお手本にする
+    const rs = def.resps.map(tOf).filter(ok);
+    for (const t of rs) out.push({ i: Math.round((t - timeOf(0)) / EIGHTH), t, strong: false, kind: 'tap' });
+    const lastR = rs.length ? rs[rs.length - 1] : -Infinity;
+    for (const c of def.calls) { const t = tOf(c); if (t > w.t0 + 0.02 && t < lastR && !blocked(t)) (sg.demos ??= []).push({ t, i: Math.round((t - timeOf(0)) / EIGHTH), game: w.game }); }
   }
   for (const sg of segs) sg.demos?.sort((a, b) => a.t - b.t);
   return out.sort((a, b) => a.t - b.t);

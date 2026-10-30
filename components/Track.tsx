@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import type { NoteState, BurnState } from '../utils/judge';
 import { BEAT } from '../utils/chart';
-import { StyleSeg, TrackStyle, laneOf, segIndexAt, heavenLayout, heavenGameAt, HEAVEN_GAMES, HEAVEN_LEAD_BEATS } from '../utils/arcade';
+import { StyleSeg, TrackStyle, laneOf, segIndexAt, heavenLayout, HEAVEN_LEAD_BEATS } from '../utils/arcade';
 import { pixelRatioCap } from '../utils/perf';
 import { BURN_INFO, BurnCue } from '../utils/burnChallenge';
 
