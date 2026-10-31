@@ -71,7 +71,8 @@ export class SongPlayer {
       const src = this.ctx.createBufferSource();
       src.buffer = this.buffer;
       src.connect(this.gain);
-      const when = this.ctx.currentTime + 0.06;
+      // 少し先から鳴らす（曲の頭ぴったりのカウント「3」も、出だしが欠けずに予約できるように）
+      const when = this.ctx.currentTime + 0.15;
       src.start(when, fromSong);
       this.src = src;
       this.anchorCtx = when;

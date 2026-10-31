@@ -45,9 +45,10 @@ const ASSET_BASE = (process.env.ASSET_BASE as string) || 'https://raw.githubuser
 const DEFAULT_BGM = ASSET_BASE + 'bgm/bgm.mp3';
 /**
  * カウント「3・2・3・2・1・GO」：[声, 8分の番号, 画面の文字]。
- * 曲のイントロに入っている「カッ」の音（0.71・1.39・1.74・2.08・2.42・2.77 秒）とぴったり同じ所。GO の 1 拍あとが最初の「な」
+ * 曲のイントロに入っている「カッ」の音（曲の頭 0.02・0.71・1.39・1.74・2.08・2.42 秒）とぴったり同じ所。
+ * 曲が始まった瞬間に「3」。GO の 1 拍あと（バンドが入る 2.77 秒）が最初の「な」
  */
-const COUNT_IN: [SfxId, number, string][] = [['v3', 3, '3'], ['v2', 7, '2'], ['v3', 9, '3'], ['v2', 11, '2'], ['v1', 13, '1'], ['v_go', 15, 'GO!']];
+const COUNT_IN: [SfxId, number, string][] = [['v3', -1, '3'], ['v2', 3, '2'], ['v3', 7, '3'], ['v2', 9, '2'], ['v1', 11, '1'], ['v_go', 13, 'GO!']];
 /** タイトル（OP）の曲。設定で切り替えられる */
 type MenuBgm = 'chip' | 'chip1' | 'original';
 const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
