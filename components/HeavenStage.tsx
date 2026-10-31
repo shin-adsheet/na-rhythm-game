@@ -240,7 +240,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
         c.lineWidth = 6; c.strokeStyle = '#334155'; c.strokeText('あっ…', L.sx + L.sw / 2, y); c.fillStyle = '#fff'; c.fillText('あっ…', L.sx + L.sw / 2, y); c.globalAlpha = 1;
       }
 
-      // ゲーム名のカード（出番のはじめに 1 回。画面のまん中）
+      // ゲーム名とやることのカード（出番のはじめに 1 回。ゲーム機の画面の上のほう）
       if (card && cardTitleRef.current && cardHowRef.current) {
         const inBurn = burnsRef.current.some((b) => t > b.t0 - 0.3 && t < b.t1);
         const since = into, dur = 2.2;
@@ -248,7 +248,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
         else {
           if (shown !== def.title) { cardTitleRef.current.textContent = def.title; cardHowRef.current.textContent = def.how; shown = def.title; }
           const inK = clamp01(since / 0.15), outK = clamp01((dur - since) / 0.3);
-          card.style.top = `${L.sy + L.sh * 0.42}px`;
+          card.style.top = `${L.sy + 40}px`;   // ゲーム機の画面の上のほう（キャラにかぶらないように）
           card.style.opacity = String(Math.min(inK, outK));
           card.style.transform = `translate(-50%, -50%) rotate(-3deg) scale(${0.7 + 0.3 * outE(inK)})`;
         }
