@@ -1247,7 +1247,10 @@ const Game: React.FC = () => {
     return (p.time() - 0.36) / BEAT;
   }, []);
   // 譜面は「耳に聞こえている所」に合わせて描く（スピーカー・イヤホンの遅れの分だけ遅らせる）
-  const getTime = useCallback(() => playerRef.current?.audibleTime() ?? 0, []);
+  // 画面の「な」（譜面・リング）の時計。耳に聞こえている曲の時刻より少しだけ先を描く：
+  // 押してから判定に届くまでの遅れと、目で見てから指が動くまでの遅れのぶん、丸が線に重なるのを早めて、押す気持ちよさを曲に合わせる
+  const VISUAL_LEAD = 0.04;
+  const getTime = useCallback(() => (playerRef.current?.audibleTime() ?? 0) + VISUAL_LEAD, []);
 
   /* ============================================================
    * 画面
@@ -1571,7 +1574,7 @@ const Game: React.FC = () => {
 
         {/* アイテム効果 */}
         {itemCard && performance.now() < itemCard.until + 400 && (
-          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: (() => { const A = playAreas(); return A.bottom.h >= 90 ? A.bottom.y + 4 : Math.max(A.top.y, A.top.y + A.top.h - 92); })() }}>
+          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: (() => { const A = playAreas(); return A.top.y + 62; })() }}>   {/* お知らせはぜんぶ画面の上（下はゲームの画面にかぶるので）。一時停止ボタンの下から */}
             <div className={`bg-gradient-to-r ${ITEM_COLOR[itemCard.def.kind]} text-white rounded-2xl px-4 py-2 border-4 border-white shadow-xl text-center min-w-[220px]`}>
               <div className="text-[10px] font-black tracking-widest opacity-80">special「な」</div>
               <div className="font-black text-lg md:text-2xl leading-tight">{itemCard.def.name}</div>
@@ -1604,9 +1607,9 @@ const Game: React.FC = () => {
             <HeavenStage getTime={getTime} notesRef={notesRef} burnsRef={burnsRef} scheduleRef={scheduleRef} visible={trackStyle === 'heaven'} band={(() => { const A = playAreas(); return { y0: A.tTop, y1: A.tBot }; })()} />
           </div>
         )}
-        {/* 画面チェンジのお知らせ（譜面の下に出す。譜面は隠さない） */}
+        {/* 画面チェンジのお知らせ（画面の上に出す。下はゲームの画面にかぶるので） */}
         {styleBanner && (
-          <div key={styleBanner.id} className="absolute left-0 right-0 z-30 pointer-events-none flex justify-center px-3" style={{ top: `calc(54% + ${laneStyle ? 62 : trackH / 2 - 6}px)` }}>
+          <div key={styleBanner.id} className="absolute left-0 right-0 z-[46] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y + 62 }}>
             <div className="mode-change flex items-center gap-3 bg-slate-900/92 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
               <span className="shrink-0 text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
               <span className="flex flex-col leading-tight min-w-0">
@@ -1617,7 +1620,7 @@ const Game: React.FC = () => {
             </div>
           </div>
         )}
-        <div className="absolute left-0 right-0 z-20" style={{ top: laneStyle ? 'calc(54% + 58px)' : `calc(54% + ${trackH / 2 + 4}px)`, display: styleBanner ? 'none' : undefined }}>
+        <div className="absolute left-0 right-0 z-30" style={{ top: playAreas().tTop - 24, display: styleBanner ? 'none' : undefined }}>
           <div className="flex justify-center gap-2 mt-1 pointer-events-none">
             {activeFx.length > 0 && activeFx.map((id) => (
               <span key={id} className="text-[10px] font-black text-white bg-slate-800/80 rounded-full px-2 py-0.5">
@@ -1629,7 +1632,7 @@ const Game: React.FC = () => {
 
         {/* カウントダウン（曲のイントロで数える） */}
         {countdown && (
-          <div className="absolute inset-x-0 z-40 pointer-events-none flex justify-center" style={{ top: 'calc(54% + 70px)' }}>
+          <div className="absolute inset-x-0 z-40 pointer-events-none flex justify-center" style={{ top: (() => { const A = playAreas(); return Math.max(A.top.y + 60, A.tTop - 84); })() }}>
             <div key={countdown} className="animate-impact font-black text-white text-5xl md:text-7xl" style={{ WebkitTextStroke: '6px #ec4899', paintOrder: 'stroke fill' }}>{countdown}</div>
           </div>
         )}
@@ -1742,7 +1745,7 @@ const Game: React.FC = () => {
         </div>
       )}
 
-      {playing && <EventCutIn data={cutIn} mobile={isMobile} area={(() => { const A = playAreas(); return A.top.h >= 120 || A.top.h >= A.bottom.h ? A.top : A.bottom; })()} />}
+      {playing && <EventCutIn data={cutIn} mobile={isMobile} area={playAreas().top} />}
       {banFlash && playing && <div className="absolute inset-0 z-[58] bg-red-700/40 pointer-events-none flash-white" />}
 
       {gameState !== 'PLAYING' && <AchievementToasts toasts={toasts} />}

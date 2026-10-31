@@ -5,6 +5,8 @@
  * - 通り過ぎた音符は「MISS」
  */
 import { ChartNote, BurnSection, WIN_PERFECT, WIN_GREAT, WIN_GOOD } from './chart';
+/** 音符ごとの判定幅の倍率の最大（してみた動画） */
+const MAX_WIN = 1.6;
 import type { Judge } from './economy';
 import type { BurnPlan, BurnCue } from './burnChallenge';
 
@@ -51,19 +53,21 @@ export class JudgeEngine {
   input(t: number, accept?: (n: NoteState) => boolean): InputResult {
     const good = WIN_GOOD * this.winMul;
     // まだ判定していない音符のうち、いちばん近いもの（通常モードは、押した場所にある音符だけ）
-    let best: NoteState | null = null, bestD = Infinity, rejected = false;
+    // 音符ごとの判定幅の倍率（win）があるので、近さは「その音符の幅に対する割合」でくらべる
+    let best: NoteState | null = null, bestD = Infinity, bestW = 1, rejected = false;
     for (let k = this.cursor; k < this.notes.length; k++) {
-      const n = this.notes[k];
-      if (n.t - t > good) break;
+      const n = this.notes[k], w = n.win ?? 1;
+      if (n.t - t > good * MAX_WIN) break;
       if (n.res) continue;
       const d = Math.abs(n.t - t);
-      if (d > good) continue;
+      if (d > good * w) continue;
       if (accept && !accept(n)) { rejected = true; continue; }
-      if (d < bestD) { best = n; bestD = d; }
+      if (d / w < bestD / bestW) { best = n; bestD = d; bestW = w; }
     }
     if (!best && rejected) return { type: 'wrongSpot' };
     if (best) {
-      const j: Judge = bestD <= WIN_PERFECT * this.winMul ? 'perfect' : bestD <= WIN_GREAT * this.winMul ? 'great' : 'good';
+      const m = this.winMul * bestW;
+      const j: Judge = bestD <= WIN_PERFECT * m ? 'perfect' : bestD <= WIN_GREAT * m ? 'great' : 'good';
       best.res = j; best.at = t;
       return { type: 'hit', note: best, judge: j, dt: t - best.t };
     }
@@ -98,7 +102,7 @@ export class JudgeEngine {
     while (this.cursor < this.notes.length) {
       const n = this.notes[this.cursor];
       if (n.res) { this.cursor++; continue; }
-      if (t > n.t + good) { n.res = 'miss'; out.push({ type: 'miss', note: n }); this.cursor++; continue; }
+      if (t > n.t + good * (n.win ?? 1)) { n.res = 'miss'; out.push({ type: 'miss', note: n }); this.cursor++; continue; }
       break;
     }
     for (const b of this.burns) {

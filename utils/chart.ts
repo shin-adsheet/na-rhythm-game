@@ -49,6 +49,7 @@ export interface ChartNote {
   vel?: number;              // 見た目の大きさ（だんだん大きく・小さくで変わる。1 がふつう）
   power?: Power;             // 強弱の指定（なければどちらでもよい）
   tag?: 'cresc' | 'decresc' | 'accent';
+  win?: number;              // 判定幅の倍率（してみた動画は甘め）
 }
 export interface BurnSection { start: number; end: number; t0: number; t1: number; id: number }
 

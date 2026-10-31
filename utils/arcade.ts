@@ -164,7 +164,8 @@ export function heavenCallResponse(notes: ChartNote[], segs: StyleSeg[], blocked
     const ok = (t: number) => t > w.t0 + 0.05 && t < Math.min(w.t1, endT) - 0.35 * B && !blocked(t);
     // レスポンスの拍 → 音符。そのレスポンスのもとになったコール（直前のコール）だけお手本にする
     const rs = def.resps.map(tOf).filter(ok);
-    for (const t of rs) out.push({ i: Math.round((t - timeOf(0)) / EIGHTH), t, strong: false, kind: 'tap' });
+    // してみた動画は、見てまねするので判定を甘く（ふつうの 1.6 倍の幅）
+    for (const t of rs) out.push({ i: Math.round((t - timeOf(0)) / EIGHTH), t, strong: false, kind: 'tap', win: 1.6 });
     const lastR = rs.length ? rs[rs.length - 1] : -Infinity;
     for (const c of def.calls) { const t = tOf(c); if (t > w.t0 + 0.02 && t < lastR && !blocked(t)) (sg.demos ??= []).push({ t, i: Math.round((t - timeOf(0)) / EIGHTH), game: w.game }); }
   }
