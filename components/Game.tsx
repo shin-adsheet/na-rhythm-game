@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GameState, GameMode, Difficulty, ScoreEntry, NaParticle, NaVariant, Rarity, RunStats, Ending } from '../types';
 import { MODE_LABEL, MODE_DESC, LS_KEYS, DIFF_LABEL, DIFF_DESC } from '../constants';
-import { buildChart, BEAT, EIGHTH } from '../utils/chart';
+import { buildChart, BEAT, EIGHTH, timeOf } from '../utils/chart';
 import { JudgeEngine, NoteState, BurnState } from '../utils/judge';
 import {
   gainFor, VIEWERS, FUEL_LOSS, BAN_STRIKES, BUZZ_EIGHTHS, QUOTA, MILESTONES, fmtSubs, Judge, comboMul, viewerMul,
@@ -43,8 +43,11 @@ import CollectionBook from './CollectionBook';
 const TAP_ONLY = !!process.env.TAP_ONLY;           // マイクを使わない版を作るとき（ビルド時に TAP_ONLY=1）
 const ASSET_BASE = (process.env.ASSET_BASE as string) || 'https://raw.githubusercontent.com/mshinyukari/-/main/';
 const DEFAULT_BGM = ASSET_BASE + 'bgm/bgm.mp3';
-/** カウント「3・2・3・2・1・GO」：[声, 最初の「な」の何拍前, 画面の文字] */
-const COUNT_IN: [SfxId, number, string][] = [['v3', 8, '3'], ['v2', 6, '2'], ['v3', 4, '3'], ['v2', 3, '2'], ['v1', 2, '1'], ['v_go', 1, 'GO!']];
+/**
+ * カウント「3・2・3・2・1・GO」：[声, 8分の番号, 画面の文字]。
+ * 曲のイントロに入っている「カッ」の音（0.71・1.39・1.74・2.08・2.42・2.77 秒）とぴったり同じ所。GO の 1 拍あとが最初の「な」
+ */
+const COUNT_IN: [SfxId, number, string][] = [['v3', 3, '3'], ['v2', 7, '2'], ['v3', 9, '3'], ['v2', 11, '2'], ['v1', 13, '1'], ['v_go', 15, 'GO!']];
 /** タイトル（OP）の曲。設定で切り替えられる */
 type MenuBgm = 'chip' | 'chip1' | 'original';
 const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
@@ -843,10 +846,10 @@ const Game: React.FC = () => {
     // カウントダウンの声「3・2・1」を、曲の拍ぴったりに予約する（声で遊ぶときはマイクが拾うので鳴らさない）
     cancelPendingSfx();
     if (voiceOn() && (TAP_ONLY || settingsRef.current.input === 'tap')) {
-      // 4 拍子 2 小節ぶん：1 小節目は「3（1 拍目）・2（3 拍目）」、2 小節目は「3・2・1・GO」を 1 拍ずつ。そのあとの小節の頭が最初の「な」
+      // 曲のイントロの「カッ」と同じタイミングで鳴らす
       // 声の「聞こえる拍の位置」は音の頭ではなく母音の立ち上がりなので、声ごとに測った分だけ早めに鳴らす（sfx.ts の ONSET）
-      COUNT_IN.forEach(([id, beats]) => {
-        const when = p.ctxTimeOf(ch.firstT - BEAT * beats);
+      COUNT_IN.forEach(([id, i]) => {
+        const when = p.ctxTimeOf(timeOf(i));
         if (when != null) playSfxAt(id, when, { ctx: p.ctx, volume: settingsRef.current.volume, onBeat: true });
       });
     }
@@ -1102,7 +1105,9 @@ const Game: React.FC = () => {
         lastUi = now;
         const left = ch.firstT - p.audibleTime();   // 数え始めも、耳に聞こえている曲に合わせる
         const bl = left / BEAT;
-        const cd = bl > 8 ? '準備して' : bl > 0 ? COUNT_IN.find(([, b]) => bl <= b + 1e-6 && bl > b - (b > 4 ? 2 : 1))?.[2] ?? null : left > -0.45 ? 'な！' : null;
+        // 画面の数字も、曲の「カッ」から次の「カッ」まで出す
+        const tA = p.audibleTime(), ck = COUNT_IN.findIndex(([, i], j) => tA >= timeOf(i) - 0.03 && tA < (j + 1 < COUNT_IN.length ? timeOf(COUNT_IN[j + 1][1]) - 0.03 : ch.firstT - 0.03));
+        const cd = tA < timeOf(COUNT_IN[0][1]) - 0.03 ? (bl > 0 ? '準備して' : null) : ck >= 0 ? COUNT_IN[ck][2] : left > -0.45 ? 'な！' : null;
         setCountdown((c) => (c === cd ? c : cd));
         const pct = Math.max(0, Math.min(1, (ch.endT - t) / (ch.endT - ch.firstT)));
         setTimePct(pct);
