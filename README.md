@@ -170,6 +170,10 @@ npm run dev
 
 Tailwind CSS は Vite で事前にビルドします（`index.css`・`@tailwindcss/vite`）。以前の CDN 読み込みはやめました。
 
+### Web で公開（GitHub Pages）
+
+`gh-pages` ブランチに、そのまま遊べるページ（`index.html`・`bgm/`・`sfx/`・`rh/`）が入っています。リポジトリの Settings → Pages で「Deploy from a branch」→ ブランチ `gh-pages`・フォルダ `/ (root)` を選ぶと、`https://shin-adsheet.github.io/na-rhythm-game/` で遊べます。three.js は CDN（jsDelivr）から読みます。
+
 ## ファイル構成
 
 ```
