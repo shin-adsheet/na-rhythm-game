@@ -15,9 +15,13 @@ export interface RHEngine {
   TITLES: Record<string, string>;
   drawGame: (name: string, b: number, t: number, opt?: { into?: number; fail?: number; failWho?: 'shia' | 'kia'; failAge?: number; keep?: number; punch?: number; shake?: number }) => void;
   hideAll: () => void;
+  warm?: (name: string) => void;
 }
 let p: Promise<RHEngine | null> | null = null;
 let ready: RHEngine | null = null;
+/** してみた動画が始まったら、前もって描く準備はやめる（本番の描画のじゃまをしないように） */
+let warmStop = false;
+export const stopWarm = () => { warmStop = true; };
 export const rhReady = () => ready;
 export function loadRH(): Promise<RHEngine | null> {
   if (p) return p;
@@ -25,10 +29,19 @@ export function loadRH(): Promise<RHEngine | null> {
   // 実際に描く細かさ（scale）だけ、画面に映る大きさに合わせて下げる（スマホの画面は 300px くらいなので、そんなに細かくなくてよい）
   const a = HEAVEN_SCREEN_ASPECT;
   const W = Math.round(Math.sqrt(1280 * 720 * a)), H = Math.round(W / a);
-  const shownW = Math.min(window.innerWidth || 390, 560) * 0.8, dpr = Math.min(1.5, window.devicePixelRatio || 1);
-  const scale = Math.max(0.35, Math.min(1, (shownW * dpr) / W)) * (perf.lite ? 0.8 : 1);
+  const shownW = Math.min(window.innerWidth || 390, 560) * 0.8, dpr = Math.min(1.25, window.devicePixelRatio || 1);
+  const scale = Math.max(0.3, Math.min(0.8, (shownW * dpr) / W)) * (perf.lite ? 0.8 : 1);
   (window as any).__RH = { W, H, beat: BEAT, scale };
   const url = new URL('rh/engine.js', document.baseURI).href;
-  p = import(/* @vite-ignore */ url).then((m: any) => (ready = m as RHEngine)).catch((e) => { console.warn('rh load failed', e); return null; });
+  p = import(/* @vite-ignore */ url).then((m: any) => {
+    const E = m as RHEngine;
+    // 読みこんだら、手があいているときに 1 ゲームずつ 1 回描いておく（はじめての出番で 3D の準備に止まって、押すのがずれないように）
+    const names = ['plane', 'milk', 'click', 'juggle', 'count', 'band', 'puddle', 'march'];
+    const ric = (window as any).requestIdleCallback || ((f: () => void) => setTimeout(f, 200));
+    ready = E;
+    const next = () => { const n = names.shift(); if (!n || warmStop) return; E.warm?.(n); ric(next, { timeout: 4000 }); };
+    ric(next, { timeout: 4000 });
+    return E;
+  }).catch((e) => { console.warn('rh load failed', e); return null; });
   return p;
 }

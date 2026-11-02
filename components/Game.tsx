@@ -592,7 +592,11 @@ const Game: React.FC = () => {
 
   const segsStyleAt = (tt: number) => { const sg = scheduleRef.current; return sg[segIndexAt(sg, tt)].style; };
   const hitPosRef = useRef<((n: NoteState) => { x: number; y: number; r: number } | null) | null>(null);
-  const handleInput = (src: 'mic' | 'tap', pos?: { x: number; y: number }) => {
+  /**
+   * evT：押した瞬間の時刻（イベントの timeStamp、performance.now() と同じ時計）。
+   * 画面の描画が重くて、押してから処理されるまで遅れても、押した瞬間の曲の時刻で判定する
+   */
+  const handleInput = (src: 'mic' | 'tap', pos?: { x: number; y: number }, evT?: number) => {
     if (gameStateRef.current !== 'PLAYING' || finishingRef.current) return;
     const p = playerRef.current, e = engineRef.current;
     if (!p || !e) return;
@@ -606,7 +610,9 @@ const Game: React.FC = () => {
       judgePower(lh.note, true);
       return;
     }
-    const t = p.time();
+    // 押した瞬間までさかのぼる（処理が遅れたぶん。おかしな値のときは使わない）
+    const lag = evT != null && evT > 0 ? (performance.now() - evT) / 1000 : 0;
+    const t = p.time() - (lag > 0 && lag < 0.3 ? lag : 0) * p.getRate();
     if (t < chartRef.current.firstT - 0.6) return;     // カウント中は数えない
     const off = effOffset(src);
     const tc = t - off * p.getRate();
@@ -717,7 +723,7 @@ const Game: React.FC = () => {
         if (e.repeat) return;
         if (PLAY_KEYS.has(e.code)) keysDownRef.current.add(e.code);
         if (PLAY_KEYS.has(e.code) && (TAP_ONLY || settingsRef.current.input === 'tap')) {
-          e.preventDefault(); handleInputRef.current('tap');
+          e.preventDefault(); handleInputRef.current('tap', undefined, e.timeStamp);
         }
       }
     };
@@ -1713,13 +1719,13 @@ const Game: React.FC = () => {
     <div
       className={`w-full h-full flex items-center justify-center relative overflow-hidden ${bgClass} select-none ${shake}`}
       style={{ touchAction: playing ? 'none' : undefined }}
-      onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); pointersDownRef.current.add(e.pointerId); handleInputRef.current('tap', { x: e.clientX, y: e.clientY }); } : undefined}
+      onPointerDown={playing && input === 'tap' ? (e) => { if ((e.target as HTMLElement).closest('[data-noinput]')) return; e.preventDefault(); pointersDownRef.current.add(e.pointerId); handleInputRef.current('tap', { x: e.clientX, y: e.clientY }, e.timeStamp); } : undefined}
     >
       <audio ref={menuBgmRef} loop preload="auto" src={ASSET_BASE + (MENU_BGMS.find((x) => x.id === settings.menuBgm) || MENU_BGMS[0]).file} />
 
-      {(playing || gameState === 'PAUSED') && <Crowd subs={subs} buzz={buzz} />}
+      {(playing || gameState === 'PAUSED') && trackStyle !== 'heaven' && <Crowd subs={subs} buzz={buzz} />}
       {(playing || gameState === 'PAUSED') && (
-        <CommentStream active={playing} level={lite ? chaos * 0.5 : chaos} mood={commentMood} sparse={isMobile || lite}
+        <CommentStream active={playing && trackStyle !== 'heaven'} level={lite ? chaos * 0.5 : chaos} mood={commentMood} sparse={isMobile || lite}
           avoid={(() => { const th = Math.min(420, vp.h * 0.5); const half = trackStyle === 'lane' ? 60 : th / 2; return [((vp.h * 0.54 - half) / vp.h) * 100, ((vp.h * 0.54 + half) / vp.h) * 100] as [number, number]; })()} />
       )}
       {buzz && playing && <div className="fever-glow absolute inset-0 z-[2] pointer-events-none" />}

@@ -98,3 +98,5 @@ export function drawGame(name, b, t, opt = {}) {
   if (into >= 0 && into < 0.12) { X.fillStyle = `rgba(255,255,255,${0.55 * (1 - into / 0.12)})`; X.fillRect(0, 0, W, H); }
 }
 export function hideAll() { activate('__none__'); last = null; }
+/** 前もって 1 回ずつ描いておく（はじめて出たときの 3D の準備で止まらないように）。手があいているときに 1 ゲームずつ呼ぶ */
+export function warm(name) { try { drawGame(name, 0.5, 0.5, { into: 9 }); } catch (e) { console.warn(e); } hideAll(); }

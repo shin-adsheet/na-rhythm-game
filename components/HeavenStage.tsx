@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import type { NoteState } from '../utils/judge';
 import { BEAT } from '../utils/chart';
 import { segIndexAt, heavenGameAt, HEAVEN_GAMES, StyleSeg, HeavenWin } from '../utils/arcade';
-import { loadRH, rhReady, HEAVEN_SCREEN_ASPECT } from '../utils/rhLoader';
+import { loadRH, rhReady, stopWarm, HEAVEN_SCREEN_ASPECT } from '../utils/rhLoader';
 
 /**
  * 「してみた動画」（リズム天国風）の舞台。画面いっぱいに、携帯ゲーム機（ゲームボーイっぽい形の「NA BOY」）が出てくる。
@@ -68,7 +68,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
     const root = rootRef.current, mount = mountRef.current, bgc = bgRef.current, fgc = fgRef.current;
     if (!root || !mount || !bgc || !fgc) return;
     const bx = bgc.getContext('2d')!, fx = fgc.getContext('2d')!;
-    let raf = 0, lastDraw = 0, shown = '', lastMiss = -9, attached = false, pressAt = -9, statKey = '', dirty = true;
+    let raf = 0, lastDraw = 0, drawCost = 12, shown = '', lastMiss = -9, attached = false, pressAt = -9, statKey = '', dirty = true;
     const stat = document.createElement('canvas');
     const seen = new Set<NoteState>();
     const hitAt = new Map<NoteState, number>();
@@ -79,7 +79,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
     const loop = () => {
       raf = requestAnimationFrame(loop);
       const vis = visRef.current;
-      const W = root.clientWidth, H = root.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+      const W = root.clientWidth, H = root.clientHeight, dpr = Math.min(1.5, window.devicePixelRatio || 1);   // 本体とボタンの絵は 1.5 倍まで（軽くするため）
       const t = getTime(), segs = scheduleRef.current;
       const sg = segs[segIndexAt(segs, t)];
       const card = cardRef.current;
@@ -88,7 +88,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
         if (dirty) { if (card) card.style.opacity = '0'; fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fgc.width, fgc.height); bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, bgc.width, bgc.height); dirty = false; }
         return;
       }
-      dirty = true;
+      dirty = true; stopWarm();
       for (const cv of [fgc, bgc]) if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
       fx.setTransform(dpr, 0, 0, dpr, 0, 0); fx.clearRect(0, 0, W, H);
       const L = consoleLayout(W, H, bandRef.current);
@@ -110,7 +110,13 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
         if (bgc.style.display !== 'none') bgc.style.display = 'none';
         if (!attached) { E.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block'; mount.appendChild(E.canvas); attached = true; }
         const now = performance.now();
-        if (now - lastDraw > 30) { lastDraw = now; try { E.drawGame(win.game, Math.max(0, lb) * def.spd + def.off, t, { into, fail, failWho: def.who, failAge: ago / BEAT * def.spd, keep: def.keep }); } catch (e) { console.warn(e); } }
+        // ミニゲームの絵は 1 秒に 30 回まで。描くのに時間がかかる端末では、自動で回数を減らす（押す処理が遅れないように）
+        const interval = Math.min(66, Math.max(32, drawCost * 2.4));
+        if (now - lastDraw > interval) {
+          lastDraw = now;
+          try { E.drawGame(win.game, Math.max(0, lb) * def.spd + def.off, t, { into, fail, failWho: def.who, failAge: ago / BEAT * def.spd, keep: def.keep }); } catch (e) { console.warn(e); }
+          drawCost = drawCost * 0.85 + (performance.now() - now) * 0.15;
+        }
       } else {
         // まだ読みこみ中
         bgc.style.display = 'block'; bx.clearRect(0, 0, W, H);

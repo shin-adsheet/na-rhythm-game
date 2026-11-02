@@ -43,7 +43,7 @@ const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, schedul
   useEffect(() => {
     const cv = ref.current!;
     const ctx = cv.getContext('2d')!;
-    let raf = 0;
+    let raf = 0, cleared = false;
     let W = 0, H = 0, dpr = 1;
     const resize = () => {
       dpr = pixelRatioCap(2);
@@ -57,6 +57,13 @@ const Track: React.FC<Props> = ({ getTime, notesRef, burnsRef, flagsRef, schedul
       raf = requestAnimationFrame(draw);
       const t = getTime();
       const f = flagsRef.current;
+      // してみた動画の間は、炎上の合図がないかぎり描くものがないので、一度消したら何もしない（軽くするため）
+      {
+        const sg0 = scheduleRef?.current, k0 = sg0 ? segIndexAt(sg0, t) : 0;
+        const idle = !!sg0 && sg0[k0].style === 'heaven' && t - sg0[k0].t > TRANSITION && !burnsRef.current.some((b) => t > b.t0 - LEAD_ALL - 0.5 && t < b.t1 + 0.5);
+        if (idle) { if (!cleared) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); cleared = true; } if (hitPosRef) hitPosRef.current = null; return; }
+        cleared = false;
+      }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
       if (f.mirror) { ctx.translate(W, 0); ctx.scale(-1, 1); }
