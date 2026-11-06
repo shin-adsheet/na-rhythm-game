@@ -247,6 +247,8 @@ const Game: React.FC = () => {
   const [viewers, setViewers] = useState(VIEWERS.start);
   const [strikes, setStrikes] = useState(0);
   const [judge, setJudge] = useState<{ id: number; text: string; cls: string } | null>(null);
+  /** 次の炎上の予告（何秒前から、どの炎上か・やること） */
+  const [burnNotice, setBurnNotice] = useState<{ id: number; pattern: BurnPattern; sec: number } | null>(null);
   const [countdown, setCountdown] = useState<string | null>(null);
   // 上の時間のバー：毎回 Game ぜんぶを描き直さないよう、バーの幅だけ直接書きかえる
   const timeBarRef = useRef<HTMLDivElement>(null);
@@ -658,7 +660,8 @@ const Game: React.FC = () => {
         else if (pl && when != null) playSfxAt(sx.id, Math.max(pl.ctx.currentTime, when), { ctx: pl.ctx, volume: settingsRef.current.volume, rate: sx.rate, gain: 0.95, onBeat: true });
         else se(sx.id, { rate: sx.rate, gain: 0.95 }, true);
       }
-      if (src === 'tap' && settingsRef.current.hitSound !== false) se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
+      // してみた動画は、ゲームの音（お手本と同じ音）だけにする（音が重なってずれて聞こえないように）
+      if (src === 'tap' && settingsRef.current.hitSound !== false && segsStyleAt(n.t) !== 'heaven') se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
       // コンボの声（「コンボ！」）は、プレイの途中で耳に残って気になるので鳴らさない（文字の COMBO だけ）
       if (Math.random() < 0.18 + chaos * 0.6) spawnBackgroundNa();
       checkViewers(t);
@@ -840,7 +843,7 @@ const Game: React.FC = () => {
     nextSpecialRef.current = 6.5 + Math.random() * 2;
     announcedRef.current = new Set(); finishingRef.current = false; runUnlockedRef.current = [];
     setSubs(0); setCombo(0); setViewersV(VIEWERS.start); setStrikes(0); setBuzz(false); setActiveFx([]); setItemCard(null);
-    setSpecials([]); setParticles([]); setEnding(null); setTempMood(null); setBanFlash(false); setTimePct(1); setCommentMood('normal');
+    setSpecials([]); setParticles([]); setBurnNotice(null); setEnding(null); setTempMood(null); setBanFlash(false); setTimePct(1); setCommentMood('normal');
     clearCuts();
     try {
       const prev: ScoreEntry[] = JSON.parse(localStorage.getItem(LS_KEYS.scores(mode, ch.difficulty)) || '[]');
@@ -1075,7 +1078,8 @@ const Game: React.FC = () => {
         for (const sg of scheduleRef.current) {
           if (!sg.demos) continue;
           for (const d of sg.demos) {
-            if (d.t < t - 0.05 || d.t > t + 0.35 || heavenCueRef.current.has(d.t)) continue;
+            // 1.5 秒先まで前もって予約しておく（画面が重くて処理が遅れても、音は曲の時計どおりに鳴る）
+            if (d.t < t - 0.05 || d.t > t + 1.5 || heavenCueRef.current.has(d.t)) continue;
             heavenCueRef.current.add(d.t);
             const sx = HEAVEN_SFX[d.game], when = p.ctxTimeOf(d.t);
             if (when != null && !e.burns.some((b) => d.t > b.t0 - 0.2 && d.t < b.t1)) playSfxAt(sx.id, when, { ctx: p.ctx, volume: settingsRef.current.volume, rate: sx.rate * (d.big ? 0.85 : 1), gain: d.big ? 1.2 : 0.95, onBeat: true });
@@ -1121,6 +1125,12 @@ const Game: React.FC = () => {
         const inBurn = e.burns.some((b) => t >= b.t0 - 0.85 && t <= b.t1);
         const m: CommentMood = inBurn ? 'burn' : flagsRef.current.nu ? 'nu' : flagsRef.current.buzz ? 'hype' : 'normal';
         setCommentMood((x) => (x === m ? x : m));
+        // 炎上の予告：始まる 6 秒前から、どの炎上か・やることを画面の上に出しておく（あと何秒かも）
+        {
+          const nb = e.burns.find((b) => !b.started && b.t0 - t > 0 && b.t0 - t <= 6.5);
+          const nn = nb ? { id: nb.id, pattern: (nb.plan?.pattern ?? 'silent') as BurnPattern, sec: Math.ceil(nb.t0 - t) } : null;
+          setBurnNotice((x) => (x?.id === nn?.id && x?.sec === nn?.sec ? x : nn));
+        }
         // 画面チェンジ：今の見た目と、切り替えのお知らせ
         const segs = scheduleRef.current;
         const k = segIndexAt(segs, t);
@@ -1614,7 +1624,7 @@ const Game: React.FC = () => {
           </div>
         )}
         {/* 画面チェンジのお知らせ（画面の上に出す。下はゲームの画面にかぶるので） */}
-        {styleBanner && (
+        {styleBanner && !burnNotice && (
           <div key={styleBanner.id} className="absolute left-0 right-0 z-[46] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y + 62 }}>
             <div className="mode-change flex items-center gap-3 bg-slate-900/92 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
               <span className="shrink-0 text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
@@ -1635,6 +1645,26 @@ const Game: React.FC = () => {
             ))}
           </div>
         </div>
+
+        {/* 炎上の予告（始まる 6 秒前から） */}
+        {burnNotice && (() => {
+          const info = BURN_INFO[burnNotice.pattern];
+          return (
+            <div className="absolute left-0 right-0 z-[47] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y + 62 }}>
+              <div key={burnNotice.id} className="mode-change flex items-center gap-3 bg-red-700/95 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
+                <span className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-white text-red-600 leading-none">
+                  <span className="text-[9px] font-black">あと</span>
+                  <span key={burnNotice.sec} className="text-2xl font-black tabular-nums animate-impact">{burnNotice.sec}</span>
+                </span>
+                <span className="flex flex-col leading-tight min-w-0">
+                  <span className="text-[10px] font-black tracking-widest text-yellow-200">まもなく炎上</span>
+                  <span className="font-black text-lg">{info.title}</span>
+                  <span className="text-[11px] font-bold text-white/90">{info.how}</span>
+                </span>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* カウントダウン（曲のイントロで数える） */}
         {countdown && (
