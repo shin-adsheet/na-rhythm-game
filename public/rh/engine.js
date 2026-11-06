@@ -105,3 +105,4 @@ export function drawGame(name, b, t, opt = {}) {
 export function hideAll() { activate('__none__'); last = null; }
 /** 前もって 1 回ずつ描いておく（はじめて出たときの 3D の準備で止まらないように）。手があいているときに 1 ゲームずつ呼ぶ */
 export function warm(name) { try { drawGame(name, 0.5, 0.5, { into: 9 }); } catch (e) { console.warn(e); } hideAll(); }
+

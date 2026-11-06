@@ -29,7 +29,9 @@ export type InputResult =
   | { type: 'burnHit'; burn: BurnState; cue: BurnCue; judge: Judge }
   | { type: 'burnMash'; burn: BurnState }
   | { type: 'burnHold'; burn: BurnState }
-  | { type: 'burnJump'; burn: BurnState };
+  | { type: 'burnJump'; burn: BurnState }
+  /** 炎上のはじめの 1 拍（まだ始まっていない）：何も起きない */
+  | { type: 'burnWait'; burn: BurnState };
 
 export type TickEvent =
   | { type: 'miss'; note: NoteState }
@@ -72,6 +74,7 @@ export class JudgeEngine {
       return { type: 'hit', note: best, judge: j, dt: t - best.t };
     }
     const b = this.burns.find((x) => t >= x.t0 && t <= x.t1);
+    if (b && b.plan && t < b.plan.graceUntil) return { type: 'burnWait', burn: b };
     if (b) {
       const plan = b.plan;
       if (plan && plan.pattern !== 'silent') {

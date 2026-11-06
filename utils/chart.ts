@@ -57,6 +57,9 @@ export const burnAt = (i: number) => BURNS.findIndex(([a, b]) => i >= a && i <= 
 /** 炎上のすぐあと（6 マス）は音符を置かない。炎上中は音符を見せないので、終わってから次の「な」が見えるまでの間 */
 export const BURN_REST = 6;
 const inBurnRest = (i: number) => BURNS.some(([, b]) => i > b && i <= b + BURN_REST);
+/** 炎上の前（6 マス＝3 拍）も音符を置かない。ここで画面のまん中に「次の炎上・やること」を出す */
+export const BURN_PRE_REST = 6;
+const inBurnPre = (i: number) => BURNS.some(([a]) => i >= a - BURN_PRE_REST && i < a);
 
 /**
  * 曲の構成（8分の番号）。1 小節 = 8 個で、小節の頭（1 拍目）は 19, 27, 35 …（小節の中の位置 0〜7。偶数＝4分の拍）
@@ -119,7 +122,7 @@ function place(i: number, d: Difficulty): boolean {
 export const CRESC: [number, number][] = [[187, 202], [403, 415]];
 export const DECRESC: [number, number][] = [[275, 290]];
 function addSpecials(notes: ChartNote[], mode: GameMode, endT: number, useBurns: boolean) {
-  const blocked = (i: number) => (useBurns && (burnAt(i) >= 0 || inBurnRest(i))) || (mode !== '10s' && inSwitchRest(i));
+  const blocked = (i: number) => (useBurns && (burnAt(i) >= 0 || inBurnRest(i) || inBurnPre(i))) || (mode !== '10s' && inSwitchRest(i));
   const remove = new Set<number>();
   const makeHold = (n: ChartNote, len: number) => {
     const iEnd = n.i + len;
@@ -165,7 +168,7 @@ function rawChart(mode: GameMode, d: Difficulty) {
   for (let i = FIRST_NOTE; i <= LAST_NOTE; i++) {
     const t = timeOf(i);
     if (t >= endT) break;
-    if (useBurns && (burnAt(i) >= 0 || inBurnRest(i))) continue;
+    if (useBurns && (burnAt(i) >= 0 || inBurnRest(i) || inBurnPre(i))) continue;
     if (mode !== '10s' && inSwitchRest(i)) continue;
     if (!place(i, d)) continue;
     notes.push({ i, t, strong: barPos(i) % 2 === 0 });   // 4分の拍＝大きい丸

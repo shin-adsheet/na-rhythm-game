@@ -15,6 +15,7 @@ export interface BurnPlan {
   cues: BurnCue[];
   mash: number; mashTarget: number;
   holdFrom: number;            // がまん：この時刻から最後まで押しっぱなし
+  graceUntil: number;          // 炎上のはじめの 1 拍：この時刻までは押しても声を出しても何も起きない
   result?: 'ok' | 'fail';
 }
 
@@ -40,9 +41,10 @@ export function pickBurnPatterns(n: number, voice: boolean, rnd = Math.random): 
 
 /** 炎上区間（8 分の番号 start〜end）に合図を並べる */
 export function planBurn(start: number, end: number, t0: number, t1: number, pattern: BurnPattern, rnd = Math.random): BurnPlan {
-  const plan: BurnPlan = { pattern, cues: [], mash: 0, mashTarget: 0, holdFrom: t0 + EIGHTH };
+  // はじめの 1 拍は何もしない（指示を見てから 1 拍おいて始まる）。合図はそのあとから
+  const plan: BurnPlan = { pattern, cues: [], mash: 0, mashTarget: 0, holdFrom: t0 + 2 * EIGHTH + EIGHTH / 2, graceUntil: t0 + 2 * EIGHTH };
   const idx: number[] = [];
-  for (let i = start; i <= end; i++) idx.push(i);
+  for (let i = start + 2; i <= end; i++) idx.push(i);
   const pick = <T,>(a: T[]) => a[Math.floor(rnd() * a.length)];
   switch (pattern) {
     case 'apology':
@@ -78,7 +80,7 @@ export function planBurn(start: number, end: number, t0: number, t1: number, pat
       break;
     }
     case 'mash':
-      plan.mashTarget = Math.max(6, Math.round((t1 - t0) * 5.5));
+      plan.mashTarget = Math.max(6, Math.round((t1 - plan.graceUntil) * 5.5));
       break;
     default: break;
   }

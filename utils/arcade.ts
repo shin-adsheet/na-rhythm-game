@@ -79,21 +79,20 @@ export function heavenLayout(W: number, H: number) {
 
 /**
  * 「してみた動画」（リズム天国風）：MV 編集台「Keep it alive」のミニゲームを、そのまま曲に合わせて動かす（public/rh）。
+ * かみひこうきは重いので使わない（紙ひこうきがたくさん飛ぶ・カメラが大きく動く）
  * どのゲームも「お手本（コール）→ 同じリズムでまね（レスポンス）」。レスポンスの拍が、あなたが「な」を出す所。
  * 拍は、そのゲームの中の拍（MV と同じ数え方）。曲の小節の頭が、ゲームの off 拍目になる。
  * spd：曲の 1 拍で、ゲームが何拍進むか。MV はお手本の 2 拍あとにまねするゲームが多く、曲（175 BPM）だと速すぎるので、
  *      0.5（ゆっくり）にして、お手本 1 小節 → まね 1 小節（お手本のあとに 1 拍以上あく）にする。
  * who：まねする役（失敗したときに、がくっとする人）
  */
-export type HeavenGame = 'plane' | 'milk' | 'click' | 'juggle' | 'count' | 'band' | 'puddle' | 'march';
+export type HeavenGame = 'milk' | 'click' | 'juggle' | 'count' | 'band' | 'puddle' | 'march';
 interface HeavenGameDef { title: string; how: string; off: number; spd: number; who: 'shia' | 'kia'; keep?: number; calls: number[]; resps: number[] }
 const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 const CLICK_PATS = [[0, 1], [0, 0.5, 1], [0, 1, 1.5], [0, 0.5, 1.5], [0, 0.75, 1.5], [0, 0.5, 1, 1.5], [0, 1], [0, 0.5, 1, 1.5]];
 const COUNT_PH = [[0, 1, 2, 3], [0, 1, 2, 3], [0, 1, 2, 3], [0, 0.5, 1, 2], [0, 2], [0, 0.5, 1, 1.5], [0, 1, 2, 3]];
 const JUGGLE = (c: number) => (c % 2 ? [0, 1, 1.5, 2] : [0, 1, 2]);
 export const HEAVEN_GAMES: Record<HeavenGame, HeavenGameDef> = {
-  plane: { title: 'かみひこうき', how: 'ひこうきが来たら、よける', off: 0, spd: 0.5, who: 'kia', keep: 0.86,
-    calls: [0, 1, 4, 5, 8, 9, 12, 16, 20], resps: [2, 3, 6, 7, 10, 11, 14, 18, 22] },
   milk: { title: 'ミルクとスプーン', how: 'ミルクと同じリズムで、スプーン', off: 0, spd: 0.5, who: 'kia',
     calls: [0, 1, 4, 5, 8, 8.5, 9, 12, 13, 16, 17, 20, 20.5, 21], resps: [2, 3, 6, 7, 10, 10.5, 11, 14, 15, 18, 19, 22, 22.5, 23] },
   click: { title: 'スマホでぽちぽち', how: 'きあきあと同じリズムで、ぽちぽち', off: 0, spd: 0.5, who: 'shia',
@@ -117,12 +116,12 @@ function shuffledGames(): HeavenGame[] {
 }
 /** ゲームごとの音（お手本と、あなたが打ったとき。同じ音なので「まねする」のが耳で分かる） */
 export const HEAVEN_SFX: Record<HeavenGame, { id: SfxId; rate: number }> = {
-  plane: { id: 'slide', rate: 1.3 }, milk: { id: 'bell', rate: 1.3 }, click: { id: 'ui_toggle', rate: 1.1 }, juggle: { id: 'pop', rate: 0.8 },
+  milk: { id: 'bell', rate: 1.3 }, click: { id: 'ui_toggle', rate: 1.1 }, juggle: { id: 'pop', rate: 0.8 },
   count: { id: 'knock', rate: 1.6 }, band: { id: 'nes_short', rate: 1 }, puddle: { id: 'pop', rate: 1.2 }, march: { id: 'hit_big', rate: 1.3 },
 };
 /** まねできなかったときの音（ぶつかる・すべる・ブザー…）。このあとに「がっかり」の音も鳴る */
 export const HEAVEN_FAIL_SFX: Record<HeavenGame, { id: SfxId; rate: number }> = {
-  plane: { id: 'punch', rate: 1.1 }, milk: { id: 'metal', rate: 0.8 }, click: { id: 'buzz', rate: 1.2 }, juggle: { id: 'punch', rate: 0.9 },
+  milk: { id: 'metal', rate: 0.8 }, click: { id: 'buzz', rate: 1.2 }, juggle: { id: 'punch', rate: 0.9 },
   count: { id: 'metal', rate: 0.7 }, band: { id: 'scratch', rate: 1 }, puddle: { id: 'slide', rate: 0.7 }, march: { id: 'buzz', rate: 1 },
 };
 
@@ -138,7 +137,7 @@ export function heavenGameAt(segs: StyleSeg[], t: number): HeavenWin {
     return { game: ids[n % ids.length], bar0: G0 + n * W, t0: G0 + n * W - 1.5 * EIGHTH * 2, t1: G0 + (n + 1) * W - 1.5 * EIGHTH * 2 };
   }
   const bar0 = G0 + Math.ceil((sg.t - G0) / BAR - 1e-6) * BAR;
-  return { game: sg.games?.[0] ?? 'plane', bar0, t0: sg.t, t1 };
+  return { game: sg.games?.[0] ?? 'milk', bar0, t0: sg.t, t1 };
 }
 
 /**

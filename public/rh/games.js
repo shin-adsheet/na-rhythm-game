@@ -443,7 +443,7 @@ mkGame('juggle', 'ころころリフティング', {
     hideAll([SH, KI]); const L = ((b % 8) + 8) % 8, cyc = Math.floor(b / 8), alt = ((cyc % 2) + 2) % 2; this.fx = []; const fx = this.fx; let punch = 0, shake = 0;
     const kx = -360, sx = 360;
     const call = alt ? [0, 1, 1.5, 2] : [0, 1, 2], resp = call.map((x) => x + 4);
-    const PT = { kL: new THREE.Vector3(kx + 70, 360, 30), kR: new THREE.Vector3(kx + 40, 360, 50), foot: new THREE.Vector3(kx + 110, 150, 40), head: new THREE.Vector3(sx - 20, 1010, 20) };
+    const PT = { kL: new THREE.Vector3(kx + 70, 360, 30), kR: new THREE.Vector3(kx + 40, 360, 50), foot: new THREE.Vector3(kx + 110, 150, 40), head: new THREE.Vector3(sx + 28, 780, 0) };   // しあしあの頭のてっぺん（ヘディングの瞬間の頭の位置に合わせた）
     const seq = [...call.map((hb, i) => [hb, i % 2 ? 'kR' : 'kL']), [3, 'foot'], ...resp.map((hb) => [hb, 'head']), [7, 'head'], [8, 'kL']];
     // カメラ：ボールを少し追う。蹴り・ヘディングでパンチ
     const i0 = seq.findIndex(([hb], i) => i < seq.length - 1 && L >= hb && L < seq[i + 1][0]), [h0, p0] = seq[Math.max(0, i0)], [h1, p1] = seq[Math.max(0, i0) + 1];

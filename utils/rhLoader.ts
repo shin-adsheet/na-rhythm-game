@@ -36,7 +36,7 @@ export function loadRH(): Promise<RHEngine | null> {
   p = import(/* @vite-ignore */ url).then((m: any) => {
     const E = m as RHEngine;
     // 読みこんだら、手があいているときに 1 ゲームずつ 1 回描いておく（はじめての出番で 3D の準備に止まって、押すのがずれないように）
-    const names = ['plane', 'milk', 'click', 'juggle', 'count', 'band', 'puddle', 'march'];
+    const names = ['milk', 'click', 'juggle', 'count', 'band', 'puddle', 'march'];
     const ric = (window as any).requestIdleCallback || ((f: () => void) => setTimeout(f, 200));
     ready = E;
     const next = () => { const n = names.shift(); if (!n || warmStop) return; E.warm?.(n); ric(next, { timeout: 4000 }); };

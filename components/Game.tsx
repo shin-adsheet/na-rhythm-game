@@ -248,7 +248,7 @@ const Game: React.FC = () => {
   const [strikes, setStrikes] = useState(0);
   const [judge, setJudge] = useState<{ id: number; text: string; cls: string } | null>(null);
   /** 次の炎上の予告（何秒前から、どの炎上か・やること） */
-  const [burnNotice, setBurnNotice] = useState<{ id: number; pattern: BurnPattern; sec: number } | null>(null);
+  const [burnNotice, setBurnNotice] = useState<{ id: number; pattern: BurnPattern; sec: number; center: boolean } | null>(null);
   const [countdown, setCountdown] = useState<string | null>(null);
   // 上の時間のバー：毎回 Game ぜんぶを描き直さないよう、バーの幅だけ直接書きかえる
   const timeBarRef = useRef<HTMLDivElement>(null);
@@ -818,7 +818,7 @@ const Game: React.FC = () => {
     const forcedStyle = (window as any).__forceStyle as TrackStyle | undefined;      // テスト用：画面を固定
     if (forcedStyle) scheduleRef.current = [{ t: -1e9, style: forcedStyle }];
     // してみた動画：1 小節目はきあきあのお手本、2 小節目にあなたがまねする（音符を並べかえる）
-    ch.notes = heavenCallResponse(ch.notes, scheduleRef.current, (tt) => ch.burns.some((b) => tt > b.t0 - 0.3 && tt < b.t1 + 1.1));
+    ch.notes = heavenCallResponse(ch.notes, scheduleRef.current, (tt) => ch.burns.some((b) => tt > b.t0 - 3 * BEAT - 0.1 && tt < b.t1 + 1.1));
     heavenCueRef.current = new Set();
     segDirtyRef.current = new Set(); lastSegRef.current = 0;
     activeHoldRef.current = null; holdGapRef.current = null; lastHitRef.current = null; keysDownRef.current.clear(); pointersDownRef.current.clear();
@@ -1055,11 +1055,9 @@ const Game: React.FC = () => {
 
       // 炎上の予告カットイン：やること（パターン）を見せる。炎上が始まるころには引っこめて、画面の合図を見せる
       for (const b of e.burns) {
-        if (!announcedRef.current.has(b.id) && t >= b.t0 - 1.5) {
+        if (!announcedRef.current.has(b.id) && t >= b.t0 - 3 * BEAT) {
           announcedRef.current.add(b.id);
-          const info = BURN_INFO[b.plan?.pattern ?? 'silent'];
-          const silent = !b.plan || b.plan.pattern === 'silent';
-          queueCut({ event: 'burn', title: silent ? '炎上した！' : `炎上！${info.title}`, sub: silent ? '黙れ！ 声を出すと火に油' : info.how, durationMs: silent ? Math.max(1700, ((b.t1 - t) / p.getRate()) * 1000) : 1650 }, true);
+          // 予告は画面のまん中のカード（burnNotice）が出すので、カットインは出さない。音だけ
           se('fire', { gain: 0.7 }, true);
         }
       }
@@ -1127,9 +1125,11 @@ const Game: React.FC = () => {
         setCommentMood((x) => (x === m ? x : m));
         // 炎上の予告：始まる 6 秒前から、どの炎上か・やることを画面の上に出しておく（あと何秒かも）
         {
-          const nb = e.burns.find((b) => !b.started && b.t0 - t > 0 && b.t0 - t <= 6.5);
-          const nn = nb ? { id: nb.id, pattern: (nb.plan?.pattern ?? 'silent') as BurnPattern, sec: Math.ceil(nb.t0 - t) } : null;
-          setBurnNotice((x) => (x?.id === nn?.id && x?.sec === nn?.sec ? x : nn));
+          // 6 秒前〜3 拍前：画面の上に小さく。3 拍前〜始まり：画面のまん中に大きく（3・2・1）。そのあと 1 拍おいて合図が始まる
+          const nb = e.burns.find((b) => b.t0 - t > 0 && b.t0 - t <= 6.5);
+          const center = !!nb && nb.t0 - t <= 3 * BEAT;
+          const nn = nb ? { id: nb.id, pattern: (nb.plan?.pattern ?? 'silent') as BurnPattern, sec: center ? Math.ceil((nb.t0 - t) / BEAT) : Math.ceil(nb.t0 - t), center } : null;
+          setBurnNotice((x) => (x?.id === nn?.id && x?.sec === nn?.sec && x?.center === nn?.center ? x : nn));
         }
         // 画面チェンジ：今の見た目と、切り替えのお知らせ
         const segs = scheduleRef.current;
@@ -1629,7 +1629,7 @@ const Game: React.FC = () => {
             <div className="mode-change flex items-center gap-3 bg-slate-900/92 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
               <span className="shrink-0 text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
               <span className="flex flex-col leading-tight min-w-0">
-                <span className="font-black text-lg">{styleBanner.style === 'heaven' ? HEAVEN_GAMES[scheduleRef.current[styleBanner.id]?.games?.[0] ?? 'plane'].title : STYLE_INFO[styleBanner.style].label}<span className="text-xs font-bold text-white/60 ml-2">やることは同じ</span></span>
+                <span className="font-black text-lg">{styleBanner.style === 'heaven' ? HEAVEN_GAMES[scheduleRef.current[styleBanner.id]?.games?.[0] ?? 'milk'].title : STYLE_INFO[styleBanner.style].label}<span className="text-xs font-bold text-white/60 ml-2">やることは同じ</span></span>
                 <span className="text-[11px] font-bold text-white/85">{STYLE_INFO[styleBanner.style].hint}</span>
                 <span className="text-sm font-black text-yellow-300">→ {input === 'mic' ? `${nuNow ? '「ぬ」' : '「な」'}と言う` : settings.tapMode === 'normal' ? (styleBanner.style === 'heaven' ? 'どこでもタップ' : 'ノーツの場所をタップ') : isMobile ? '画面をタップ' : 'キーを押す'}</span>
               </span>
@@ -1646,8 +1646,26 @@ const Game: React.FC = () => {
           </div>
         </div>
 
-        {/* 炎上の予告（始まる 6 秒前から） */}
-        {burnNotice && (() => {
+        {/* 炎上の予告（始まる 6 秒前から上に小さく、3 拍前からまん中に大きく） */}
+        {burnNotice && burnNotice.center && (() => {
+          const info = BURN_INFO[burnNotice.pattern];
+          return (
+            <div className="absolute inset-0 z-[64] pointer-events-none flex items-center justify-center px-4">
+              <div key={burnNotice.id} className="stamp-in w-full max-w-sm bg-red-700/95 text-white rounded-3xl px-5 py-4 border-4 border-yellow-300 shadow-2xl text-center">
+                <div className="text-xs font-black tracking-[0.3em] text-yellow-200">炎上！</div>
+                <div className="text-3xl font-black leading-tight mt-0.5">{info.title}</div>
+                <div className="text-sm font-bold text-white/95 mt-1.5 leading-snug">{info.how}</div>
+                <div className="mt-3 flex items-center justify-center gap-3">
+                  {[3, 2, 1].map((n) => (
+                    <span key={n} className={`w-10 h-10 rounded-full flex items-center justify-center text-xl font-black tabular-nums ${burnNotice.sec === n ? 'bg-yellow-300 text-red-700 animate-impact' : burnNotice.sec < n ? 'bg-white/25 text-white/60' : 'bg-white/10 text-white/40'}`}>{n}</span>
+                  ))}
+                </div>
+                <div className="text-[11px] font-bold text-yellow-100 mt-2">カウントのあと 1 拍おいてスタート</div>
+              </div>
+            </div>
+          );
+        })()}
+        {burnNotice && !burnNotice.center && (() => {
           const info = BURN_INFO[burnNotice.pattern];
           return (
             <div className="absolute left-0 right-0 z-[47] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y + 62 }}>

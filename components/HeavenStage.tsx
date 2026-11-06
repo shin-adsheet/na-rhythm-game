@@ -88,6 +88,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
         if (dirty) { if (card) card.style.opacity = '0'; fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fgc.width, fgc.height); bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, bgc.width, bgc.height); dirty = false; }
         return;
       }
+      if (W < 2 || H < 2) return;          // まだ大きさがない（画面に出る前）
       dirty = true; stopWarm();
       for (const cv of [fgc, bgc]) if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
       fx.setTransform(dpr, 0, 0, dpr, 0, 0); fx.clearRect(0, 0, W, H);
