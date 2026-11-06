@@ -1467,9 +1467,15 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
   if (O.blush) for (const s of [-1, 1]) {
     const b = new THREE.Mesh(new THREE.CircleGeometry(1, 20), fm('blush')); b.scale.set(9, 4.5, 1); b.position.set(s * 33, 671, fz(33, 671) + 1.2); b.rotation.y = s * 0.35; b.renderOrder = 2; head.add(b);
   }
-  { const mo = new THREE.Group(); mo.position.set(0, T.mouthY, fz(0, T.mouthY) + 1); mo.scale.set(4.2 * T.mouthS, 3.4 * T.mouthS, 1); mo.visible = false; head.add(mo); J.mouth = mo;   // 小さな「o」の口
-    const ring = new THREE.Mesh(new THREE.CircleGeometry(1, 24), fm('line')); ring.renderOrder = 3; mo.add(ring);
-    if (ID.mouthIn != null) { const inn = new THREE.Mesh(new THREE.CircleGeometry(0.5, 20), fm('mouthIn')); inn.position.z = 0.05; inn.renderOrder = 4; mo.add(inn); } }
+  { // 口：主線なしの小さな「D」形（上はゆるいカーブ、下は丸い）。頂点ひとつずつを顔の表面に貼りつけるので、横から見ても浮かない
+    const my = T.mouthY, SX = 4.3 * T.mouthS, SY = 5.2 * T.mouthS;
+    const mo = new THREE.Group(); mo.visible = false; head.add(mo); J.mouth = mo;
+    const dShape = (k) => { const sh = new THREE.Shape(); sh.moveTo(-k, 0.28 * k); sh.quadraticCurveTo(0, 0.42 * k, k, 0.28 * k); sh.bezierCurveTo(k, -0.55 * k, 0.55 * k, -1.0 * k, 0, -1.0 * k); sh.bezierCurveTo(-0.55 * k, -1.0 * k, -k, -0.55 * k, -k, 0.28 * k); return new THREE.ShapeGeometry(sh, 20); };
+    const onFace = (g, lift) => { const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i) * SX, y = my + p.getY(i) * SY; p.setXYZ(i, x, y, fz(x, y) + lift); } p.needsUpdate = true; g.computeBoundingSphere(); return g; };
+    const inC = new THREE.Color(ID.mouthIn ?? ID.mouth ?? 0xe58a96);
+    const mk = (geo, col, ro) => { const m = new THREE.Mesh(geo, fm('line')); m.material = m.material.clone(); m.material.color.copy(col); m.material.depthTest = false; m.renderOrder = ro; return m; };   // 顔の面にぴったり貼っているので、奥行きテストなし（顔のステンシルの中だけに描く）
+    mo.add(mk(onFace(dShape(0.86), 0.25), inC, 5));
+    if (T.mouthTongue ?? 1) { const tg = new THREE.CircleGeometry(0.3, 16, Math.PI, Math.PI); tg.scale(1.25, 0.8, 1); tg.translate(0, -0.48, 0); mo.add(mk(onFace(tg, 0.35), inC.clone().lerp(new THREE.Color(0xffffff), 0.28), 6)); } }
   if (O.highlight) for (const e of J.eyes) { const hl = new THREE.Mesh(new THREE.CircleGeometry(2.6, 16), fm('pure')); hl.position.set(3, -5, 0.3); hl.renderOrder = 4; e.add(hl); }
 }
 

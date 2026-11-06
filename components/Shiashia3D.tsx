@@ -343,7 +343,9 @@ const Shiashia3D: React.FC<Props> = ({
         J.mouth.visible = hitPulse > 0.3 || (s === 1 && pokePulse > 0.4) || singing || m === 'shock' || (ANGRY_MOODS.has(m) && m !== 'huff' && Math.sin(time * 11) > -0.6);
         const ms = r.mouthS;
         const yell = ANGRY_MOODS.has(m) && m !== 'huff' ? 1 + 0.5 * Math.abs(Math.sin(time * 11)) : 0;   // 怒鳴っている口
-        J.mouth.scale.set(4.2 * ms * (1 + 0.35 * hitPulse + 0.5 * yell), 3.4 * ms * (1 + 1.1 * hitPulse + 1.4 * yell), 1);
+        const ox = 1 + 0.35 * hitPulse + 0.5 * yell, oy = 1 + 1.1 * hitPulse + 1.4 * yell;
+        // 新しい口（しあしあ：顔に貼りついた形）は open で開き具合を変える。きあきあなど前の口は、今までどおり拡大で
+        if (J.mouth.userData.open) J.mouth.userData.open(ox, oy); else J.mouth.scale.set(4.2 * ms * ox, 3.4 * ms * oy, 1);
       }
       if (r.setBlink) {
         const P = 3.4, n = Math.floor(time / P), local = time - n * P, start = P * 0.4 * hash1(n * 7 + 3 + (s < 0 ? 9 : 0));

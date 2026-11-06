@@ -569,7 +569,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
         J.head.rotation.y += D2(pose.head[1] * free);
         J.head.rotation.z += D2((pose.head[2] + headWobZ + twHead * 8 + curious * 16) * free);
       }
-      if (J.mouth) { const mo = Math.max(mouth, curious * 0.35, Math.max(0, twBody + twHead + twL + twR + twArmL + twArmR) * 0.8); J.mouth.visible = mo > 0.25; const ms = rig.mouthS; J.mouth.scale.set(4.2 * ms, 3.4 * ms * (0.6 + mo * 0.9), 1); }
+      if (J.mouth) { const mo = Math.max(mouth, curious * 0.35, Math.max(0, twBody + twHead + twL + twR + twArmL + twArmR) * 0.8); J.mouth.visible = mo > 0.25; J.mouth.userData.open?.(1, 0.6 + mo * 0.9); }
       if (rig.setBlink) {
         const P2 = 3.8, n = Math.floor(time / P2), local = time - n * P2;
         const blink = local > 3.55 ? Math.sin(((local - 3.55) / 0.25) * Math.PI) : 0;
