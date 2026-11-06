@@ -44,6 +44,12 @@ const ShareBox: React.FC<Props> = ({ run, ending, rank, endSeen, endTotal, vs })
   const [msg, setMsg] = useState('');
   const blobRef = useRef<Blob | null>(null);
   const imgRef = useRef('');
+  // Claude のアーティファクトの中では、ふつうのダウンロードが効かないので「downloads」の機能で保存する
+  const dlRef = useRef<any>(null);
+  useEffect(() => {
+    const c = (window as any).claude;
+    if (c?.use) Promise.resolve(c.use('downloads')).then((d: any) => { dlRef.current = d; }, () => { dlRef.current = null; });
+  }, []);
   const msgTimer = useRef(0);
   const flash = (m: string, ms = 2600) => { setMsg(m); clearTimeout(msgTimer.current); msgTimer.current = window.setTimeout(() => setMsg(''), ms); };
 
@@ -81,9 +87,16 @@ const ShareBox: React.FC<Props> = ({ run, ending, rank, endSeen, endTotal, vs })
     const q = new URLSearchParams({ text, url });
     return window.open(`https://twitter.com/intent/tweet?${q.toString()}`, '_blank', 'noopener');
   };
-  const download = () => {
-    if (!img) return false;
-    try { const a = document.createElement('a'); a.href = img; a.download = 'na-result.png'; document.body.appendChild(a); a.click(); a.remove(); return true; } catch { return false; }
+  /** 画像を保存。'saved'＝保存した、'no'＝やめた、'fail'＝保存できない */
+  const download = async (): Promise<'saved' | 'no' | 'fail'> => {
+    if (!img || !blobRef.current) return 'fail';
+    const dl = dlRef.current;
+    if (dl?.save) {
+      try { await dl.save({ filename: 'na-result.png', data: blobRef.current }); return 'saved'; }
+      catch (e: any) { return e?.code === 'declined' || e?.code === 'rate_limited' ? 'no' : 'fail'; }
+    }
+    if ((window as any).claude) return 'fail';     // 保存の機能がない画面
+    try { const a = document.createElement('a'); a.href = img; a.download = 'na-result.png'; document.body.appendChild(a); a.click(); a.remove(); return 'saved'; } catch { return 'fail'; }
   };
   const copyText = async (s: string) => {
     try { await navigator.clipboard.writeText(s); return true; }
@@ -108,11 +121,11 @@ const ShareBox: React.FC<Props> = ({ run, ending, rank, endSeen, endTotal, vs })
     } catch { /* noop */ }
     const w = openX();
     if (await copied) flash('画像をコピーしました。Xの投稿画面で貼り付け（Ctrl+V / ⌘+V）してね', 5000);
-    else if (download()) flash('画像を保存しました。Xの投稿画面で画像を添付してね', 5000);
+    else if ((await download()) === 'saved') flash('画像を保存しました。Xの投稿画面で画像を添付してね', 5000);
     else if (!w) { await copyText(`${text}\n${url}`); flash('文をコピーしました'); }
   };
   const postText = () => { if (!openX()) copyText(`${text}\n${url}`).then((ok) => ok && flash('文をコピーしました')); };
-  const save = () => { if (download()) flash('画像を保存しました'); else flash('この画面では保存できませんでした'); };
+  const save = async () => { const r = await download(); if (r === 'saved') flash('画像を保存しました'); else if (r === 'fail') flash('この画面では保存できませんでした。画像を長押し（右クリック）で保存してね', 4000); };
   const copyLink = async () => { flash((await copyText(`${text}\n${url}`)) ? '挑戦状のリンクと文をコピーしました' : 'コピーできませんでした'); };
 
   return (
