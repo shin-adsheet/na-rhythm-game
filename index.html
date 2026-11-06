@@ -503,6 +503,24 @@
         100% { transform: translateX(60vw) scaleX(1); }
       }
       .cat-walk { animation: cat-walk 6s ease-in-out forwards; }
+
+      /* シェアカード：レア度で光り方が変わる */
+      .share-card { transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform 0.15s ease-out; touch-action: pan-y; }
+      .share-card.tier-shabby { transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) rotate(-0.6deg); }
+      .share-card.tier-uncommon::after, .share-card.tier-rare::after, .share-card.tier-ultra::after {
+        content: ''; position: absolute; inset: 0; pointer-events: none;
+        background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.55) 48%, transparent 62%);
+        background-size: 260% 100%; animation: card-shine 3.2s ease-in-out infinite; mix-blend-mode: soft-light;
+      }
+      .share-card.tier-rare::after { background-image: linear-gradient(115deg, transparent 35%, rgba(255,240,180,0.85) 48%, transparent 62%); animation-duration: 2.4s; mix-blend-mode: overlay; }
+      .share-card.tier-ultra::after { background-image: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.9) 48%, transparent 66%); animation-duration: 2s; mix-blend-mode: overlay; }
+      .share-card.tier-ultra::before {
+        content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: 0.2; mix-blend-mode: color-dodge;
+        background: linear-gradient(125deg, #f472b6, #facc15, #4ade80, #38bdf8, #a78bfa, #f472b6, #facc15);
+        background-size: 300% 300%; background-position: var(--hx, 50%) 50%; animation: card-holo 6s linear infinite;
+      }
+      @keyframes card-shine { 0% { background-position: 130% 0; } 60%, 100% { background-position: -130% 0; } }
+      @keyframes card-holo { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
       @keyframes clock-back { from { transform: rotate(0deg); } to { transform: rotate(-1440deg); } }
       .clock-back { animation: clock-back 5s cubic-bezier(0.3, 0, 0.2, 1) forwards; }
       @keyframes halo { 0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.8; } 50% { transform: translateX(-50%) scale(1.15); opacity: 1; } }

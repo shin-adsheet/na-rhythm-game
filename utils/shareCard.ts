@@ -86,6 +86,8 @@ export async function drawShareCard(d: CardData): Promise<HTMLCanvasElement> {
   const ratio = run.quota > 0 ? run.subs / run.quota : 0;
   const head = run.ban ? 'BAN' : run.cutoff ? '配信終了' : run.cleared ? 'ノルマ達成' : 'ノルマ未達';
   const rare = !!ending && (ending.rarity === 'rare' || ending.rarity === 'ultra');
+  const tier = cardTier(ending);
+  const rnd = seeded((ending?.no ?? 0) * 7919 + 13);
   const subsTxt = fmtSubs(run.subs);
   const label = name ? `${name}のチャンネル登録者` : 'チャンネル登録者';
   const cond = `ノルマの${ratio >= 1 ? `${ratio.toFixed(1)}倍` : `${Math.floor(ratio * 100)}%`}　${MODE_LABEL[run.mode]}・${DIFF_LABEL[run.difficulty]}・${run.input === 'mic' ? '声' : 'タップ'}`;
@@ -100,11 +102,32 @@ export async function drawShareCard(d: CardData): Promise<HTMLCanvasElement> {
   const x = c.getContext('2d')!;
   x.textBaseline = 'alphabetic'; x.textAlign = 'left';
 
-  // 背景：ゲームと同じ水玉
-  x.fillStyle = rare ? '#fffbeb' : '#ffffff'; x.fillRect(0, 0, CARD_W, CARD_H);
-  x.fillStyle = rare ? '#fdeccb' : '#eef2f7';
+  // 背景：ゲームと同じ水玉。レア度で紙の色が変わる（ノーマルは古い紙、ウルトラレアは虹色のホロ）
+  const BG = { shabby: ['#f1ede4', '#e4ddcf'], uncommon: ['#ffffff', '#e9eef5'], rare: ['#fffbeb', '#fdeccb'], ultra: ['#fdf4ff', '#f5d0fe'] }[tier];
+  x.fillStyle = BG[0]; x.fillRect(0, 0, CARD_W, CARD_H);
+  x.fillStyle = BG[1];
   for (let row = 0; row * 50 < CARD_H + 50; row++) for (let col = 0; col * 100 < CARD_W + 100; col++) {
     x.beginPath(); x.arc(col * 100 + (row % 2) * 50, row * 50, 11, 0, Math.PI * 2); x.fill();
+  }
+  if (tier === 'ultra') {
+    // ホロ：ななめの虹の帯と、写真のうしろから出る光
+    x.save(); x.globalAlpha = 0.2;
+    const hg = x.createLinearGradient(0, 0, CARD_W, CARD_H);
+    ['#f472b6', '#facc15', '#4ade80', '#38bdf8', '#a78bfa', '#f472b6', '#facc15', '#4ade80'].forEach((col, i, a) => hg.addColorStop(i / (a.length - 1), col));
+    x.fillStyle = hg; x.fillRect(0, 0, CARD_W, CARD_H);
+    x.restore();
+    x.save(); x.translate(312, 380); x.globalAlpha = 0.22;
+    for (let i = 0; i < 18; i++) { x.rotate((Math.PI * 2) / 18); x.fillStyle = i % 2 ? '#ffffff' : '#fde68a'; x.beginPath(); x.moveTo(0, 0); x.lineTo(-40, -900); x.lineTo(40, -900); x.closePath(); x.fill(); }
+    x.restore();
+  } else if (tier === 'rare') {
+    x.save(); x.translate(312, 380); x.globalAlpha = 0.16;
+    for (let i = 0; i < 14; i++) { x.rotate((Math.PI * 2) / 14); x.fillStyle = '#fbbf24'; x.beginPath(); x.moveTo(0, 0); x.lineTo(-36, -900); x.lineTo(36, -900); x.closePath(); x.fill(); }
+    x.restore();
+  } else if (tier === 'shabby') {
+    // しょぼい：紙のしわ
+    x.save(); x.strokeStyle = 'rgba(120,100,70,0.12)'; x.lineWidth = 2;
+    for (const [a, b, c2, d2] of [[0, 210, 1200, 120], [380, 0, 520, 675], [760, 0, 690, 675]]) { x.beginPath(); x.moveTo(a, b); x.lineTo(c2, d2); x.stroke(); }
+    x.restore();
   }
 
   // 左：エンディングの名場面を切り抜いた写真（なければ、しあしあの丸い部屋）
@@ -259,18 +282,69 @@ export async function drawShareCard(d: CardData): Promise<HTMLCanvasElement> {
   }
 
   // 下の帯：挑戦をあおる
-  const bb = rare ? 14 : 0;
-  x.fillStyle = '#ec4899'; x.fillRect(0, CARD_H - 64 - bb, CARD_W, 64 + bb);
+  const bb = tier === 'shabby' ? 0 : 14;
+  if (tier === 'ultra') { const bg2 = x.createLinearGradient(0, 0, CARD_W, 0); bg2.addColorStop(0, '#ec4899'); bg2.addColorStop(0.5, '#a855f7'); bg2.addColorStop(1, '#ec4899'); x.fillStyle = bg2; }
+  else x.fillStyle = tier === 'shabby' ? '#a8a29e' : '#ec4899';
+  x.fillRect(0, CARD_H - 64 - bb, CARD_W, 64 + bb);
   x.font = `30px ${FONT}`; x.fillStyle = '#fff'; x.fillText('この記録、超えられる？', 40, CARD_H - 22 - bb);
-  x.font = `20px ${FONT}`; x.fillStyle = '#fde68a'; x.textAlign = 'right'; x.fillText('#名をたくさん伝えれる画期的ツール', CARD_W - 36, CARD_H - 26 - bb); x.textAlign = 'left';
+  const cw0 = x.measureText('この記録、超えられる？').width;
+  x.font = `20px ${FONT}`; x.fillStyle = tier === 'shabby' ? '#f5f5f4' : '#fde68a'; x.textAlign = 'right'; x.fillText('#名をたくさん伝えれる画期的ツール', CARD_W - 36, CARD_H - 26 - bb); x.textAlign = 'left';
+  // レア度のマーク（トレカの右下の記号のように）
+  {
+    const M = { shabby: ['N', 'ノーマル', '#78716c', '#e7e5e4'], uncommon: ['UC', 'アンコモン', '#475569', '#e2e8f0'], rare: ['R', 'レア', '#92400e', '#fde68a'], ultra: ['UR', 'ウルトラレア', '#6b21a8', '#f5d0fe'] }[tier];
+    const mx = 40 + cw0 + 22, my = CARD_H - 50 - bb;
+    x.font = `16px ${FONT}`; const mw = x.measureText(M[1]).width + 68;
+    x.fillStyle = M[3]; rr(x, mx, my, mw, 36, 18); x.fill();
+    x.fillStyle = M[2]; x.beginPath(); x.arc(mx + 20, my + 18, 15, 0, Math.PI * 2); x.fill();
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.font = `${M[0].length > 1 ? 12 : 15}px ${FONT}`; x.fillText(M[0], mx + 20, my + 23);
+    x.textAlign = 'left'; x.font = `16px ${FONT}`; x.fillStyle = M[2]; x.fillText(M[1], mx + 42, my + 24);
+  }
 
-  // レアのときは金のふち
-  if (rare) {
+  // ふち：ノーマルは灰色の細い線だけ。アンコモンは銀、レアは金、ウルトラレアは虹
+  if (tier === 'shabby') {
+    x.save(); x.strokeStyle = '#c4bdb0'; x.lineWidth = 3; x.setLineDash([10, 8]); x.strokeRect(10, 10, CARD_W - 20, CARD_H - 20); x.restore();
+    // コーヒーのしみ
+    x.save(); x.strokeStyle = 'rgba(146,110,70,0.22)'; x.lineWidth = 9; x.beginPath(); x.arc(560, 600, 46, 0.3, Math.PI * 1.85); x.stroke(); x.restore();
+  } else {
     const fg = x.createLinearGradient(0, 0, CARD_W, CARD_H);
-    fg.addColorStop(0, '#fbbf24'); fg.addColorStop(0.5, '#fde68a'); fg.addColorStop(1, '#f59e0b');
-    x.strokeStyle = fg; x.lineWidth = 14; x.strokeRect(7, 7, CARD_W - 14, CARD_H - 14);
+    const stops = tier === 'uncommon' ? ['#94a3b8', '#f8fafc', '#cbd5e1', '#f8fafc', '#94a3b8']
+      : tier === 'rare' ? ['#f59e0b', '#fde68a', '#fbbf24', '#fff7d6', '#f59e0b']
+      : ['#f472b6', '#facc15', '#4ade80', '#38bdf8', '#a78bfa', '#f472b6'];
+    stops.forEach((col, i) => fg.addColorStop(i / (stops.length - 1), col));
+    x.strokeStyle = fg; x.lineWidth = tier === 'ultra' ? 18 : 14; x.strokeRect(8, 8, CARD_W - 16, CARD_H - 16);
+    x.strokeStyle = 'rgba(255,255,255,0.85)'; x.lineWidth = 2; x.strokeRect(18, 18, CARD_W - 36, CARD_H - 36);
+    // キラキラ
+    const n = tier === 'ultra' ? 30 : tier === 'rare' ? 16 : 6;
+    const cols = tier === 'ultra' ? ['#ffffff', '#fde68a', '#f9a8d4', '#a5f3fc', '#ddd6fe'] : tier === 'rare' ? ['#ffffff', '#fde68a', '#fbbf24'] : ['#ffffff', '#e2e8f0'];
+    for (let i = 0; i < n; i++) {
+      // ふちのまわりと、写真のまわりに多めに
+      const zone = rnd();
+      let sx: number, sy: number;
+      if (zone < 0.25) { sx = 24 + rnd() * 50; sy = 30 + rnd() * (CARD_H - 130); }                // 左のふち
+      else if (zone < 0.45) { sx = CARD_W - 24 - rnd() * 50; sy = 30 + rnd() * (CARD_H - 130); }  // 右のふち
+      else if (zone < 0.6) { sx = 40 + rnd() * (CARD_W - 80); sy = 24 + rnd() * 40; }               // 上のふち
+      else { sx = 40 + rnd() * 560; sy = 140 + rnd() * 460; }                                         // 写真のまわり
+      sparkle(x, sx, sy, (tier === 'ultra' ? 10 : 8) + rnd() * (tier === 'uncommon' ? 8 : 16), cols[i % cols.length]);
+    }
   }
   return c;
+}
+
+export type CardTier = 'shabby' | 'uncommon' | 'rare' | 'ultra';
+/** カードのレア度（エンディングのレア度。エンディングなし・ノーマルは「しょぼい」カード） */
+export function cardTier(ending: Ending | null): CardTier {
+  if (!ending || ending.rarity === 'normal') return 'shabby';
+  return ending.rarity;
+}
+function seeded(n: number) { let a = n >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+/** 4 つの角のキラッ */
+function sparkle(x: CanvasRenderingContext2D, cx: number, cy: number, r: number, color: string) {
+  x.save(); x.translate(cx, cy);
+  x.shadowColor = color; x.shadowBlur = r * 0.8;
+  x.fillStyle = color; x.beginPath();
+  for (let i = 0; i < 4; i++) { const a = (i * Math.PI) / 2; x.lineTo(Math.cos(a) * r, Math.sin(a) * r); x.lineTo(Math.cos(a + Math.PI / 4) * r * 0.22, Math.sin(a + Math.PI / 4) * r * 0.22); }
+  x.closePath(); x.fill();
+  x.restore();
 }
 
 export function canvasToBlob(c: HTMLCanvasElement): Promise<Blob | null> {

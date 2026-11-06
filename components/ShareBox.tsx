@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Ending, RunStats } from '../types';
 import { fmtSubs } from '../utils/economy';
 import { Challenge, challengeUrl, cleanName, loadShareName, saveShareName, xWeight } from '../utils/challenge';
-import { drawShareCard, canvasToBlob, shareTitle } from '../utils/shareCard';
+import { drawShareCard, canvasToBlob, shareTitle, cardTier } from '../utils/shareCard';
 import { getShot, getScene } from '../utils/shareShot';
 
 interface Props {
@@ -135,10 +135,28 @@ const ShareBox: React.FC<Props> = ({ run, ending, rank, endSeen, endTotal, vs })
         <div className="text-[10px] font-bold text-slate-400 shrink-0">リンクを開いた人に挑戦状が届く</div>
       </div>
 
-      <div className="relative rounded-2xl overflow-hidden border-4 border-slate-100 bg-slate-50" style={{ aspectRatio: '1200 / 675' }}>
-        {img ? <img src={img} alt="シェア用の結果画像" className="w-full h-full object-contain block" />
-          : <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-400">画像をつくっています…</div>}
-      </div>
+      {(() => {
+        const tier = cardTier(ending);
+        const TL = { shabby: ['ノーマルカード', 'text-stone-500 bg-stone-100'], uncommon: ['アンコモンカード', 'text-slate-600 bg-gradient-to-r from-slate-100 via-white to-slate-200'],
+          rare: ['レアカード！', 'text-amber-800 bg-gradient-to-r from-amber-200 via-yellow-100 to-amber-300'], ultra: ['ウルトラレアカード！！', 'text-white bg-gradient-to-r from-pink-500 via-violet-500 to-sky-500'] }[tier];
+        // さわると傾く（トレカを手に持ったように）。レア以上は光が流れる
+        const tilt = (e: React.PointerEvent<HTMLDivElement>) => {
+          const r = e.currentTarget.getBoundingClientRect(), px = (e.clientX - r.left) / r.width - 0.5, py = (e.clientY - r.top) / r.height - 0.5;
+          e.currentTarget.style.setProperty('--rx', `${(-py * 10).toFixed(2)}deg`); e.currentTarget.style.setProperty('--ry', `${(px * 14).toFixed(2)}deg`);
+          e.currentTarget.style.setProperty('--hx', `${Math.round((px + 0.5) * 100)}%`);
+        };
+        const untilt = (e: React.PointerEvent<HTMLDivElement>) => { e.currentTarget.style.setProperty('--rx', '0deg'); e.currentTarget.style.setProperty('--ry', '0deg'); };
+        return (
+          <>
+            <div className={`mb-1.5 inline-block px-3 py-0.5 rounded-full text-[11px] font-black ${TL[1]}`}>{TL[0]}</div>
+            <div className={`share-card tier-${tier} relative rounded-2xl overflow-hidden border-4 border-slate-100 bg-slate-50`} style={{ aspectRatio: '1200 / 675' }}
+              onPointerMove={tilt} onPointerLeave={untilt} onPointerUp={untilt}>
+              {img ? <img src={img} alt="シェア用の結果画像" className="w-full h-full object-contain block" draggable={false} />
+                : <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-slate-400">画像をつくっています…</div>}
+            </div>
+          </>
+        );
+      })()}
 
       <label className="mt-2.5 flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
         <span className="text-[11px] font-black text-slate-500 shrink-0">あなたの名前</span>

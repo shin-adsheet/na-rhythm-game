@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Ending } from '../types';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
+import Prop3D, { PropItem } from './Prop3D';
 import { RARITY_LABEL } from '../utils/naEffects';
 import { startEndingSfx, EndingSfx } from '../utils/endingSfx';
 import { requestShot, captureScene } from '../utils/shareShot';
@@ -93,19 +94,6 @@ const Crown: React.FC = () => (
     <circle cx="50" cy="10" r="5" fill="#fff" stroke="#b45309" strokeWidth="2" />
     <circle cx="14" cy="22" r="4" fill="#fff" stroke="#b45309" strokeWidth="2" />
     <circle cx="86" cy="22" r="4" fill="#fff" stroke="#b45309" strokeWidth="2" />
-  </svg>
-);
-const Cat: React.FC = () => (
-  <svg viewBox="0 0 120 90" width="150" height="112" aria-hidden="true">
-    <ellipse cx="62" cy="62" rx="40" ry="24" fill="#374151" />
-    <path d="M100 60 Q118 50 112 30" stroke="#374151" strokeWidth="9" fill="none" strokeLinecap="round" />
-    <circle cx="34" cy="42" r="22" fill="#374151" />
-    <path d="M16 30 L18 8 L34 22 Z M52 30 L50 8 L34 22 Z" fill="#374151" />
-    <path d="M20 29 L21 15 L31 24 Z M48 29 L47 15 L37 24 Z" fill="#f9a8d4" />
-    <circle cx="27" cy="43" r="3.2" fill="#fde047" /><circle cx="41" cy="43" r="3.2" fill="#fde047" />
-    <circle cx="27" cy="43" r="1.2" fill="#111" /><circle cx="41" cy="43" r="1.2" fill="#111" />
-    <path d="M30 52 Q34 56 38 52" stroke="#f9a8d4" strokeWidth="2" fill="none" strokeLinecap="round" />
-    <rect x="30" y="80" width="10" height="8" rx="3" fill="#374151" /><rect x="76" y="80" width="10" height="8" rx="3" fill="#374151" />
   </svg>
 );
 const Clock: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -336,6 +324,61 @@ const Cabinet: React.FC<{ kind: number; w: number; hue: number }> = ({ kind, w, 
   );
 };
 
+/**
+ * エンディングの 3D 小物（Kenney の CC0 フリー素材の家具・食べ物と、3D のねこ）。
+ * 単位はしあしあと同じ（しあしあの背が 800 くらい）。E はスマホでも画面に入る横の位置
+ */
+function endingProps(scene: string, p: number, E: number): PropItem[] | null {
+  const dim: [number, number, number] = [0.42, 0.47, 0.78], dull: [number, number, number] = [0.7, 0.72, 0.84];
+  switch (scene) {
+    case 'cat': {
+      const lx = -E * 0.6;
+      return [
+        { id: 'lap', model: 'laptop', x: lx, z: 70, rot: 50, S: 1050 },
+        { id: 'cat', model: 'cat', x: p < 0.02 ? lx - 1500 : lx, y: p > 0.3 ? 16 : 0, z: 110, catMode: p > 0.3 ? 'sit' : 'walk' },
+      ];
+    }
+    case 'bottom': return [
+      { id: 'box', model: 'cardboardBoxOpen', x: E * 0.85, z: 20, rot: -15, S: 1300, tint: dull },
+      { id: 'trash', model: 'trashcan', x: -E * 0.85, z: -40, S: 1050, tint: dull, anim: p > 0.6 ? 'wobble' : 'none' },
+      ...(p > 0.45 ? [{ id: 'cat', model: 'cat', x: E * 0.85, y: 10, z: 60, catMode: 'sit' as const }] : []),
+    ];
+    case 'sleep': return [
+      { id: 'bed', model: 'bedSingle', x: -E * 0.95, z: -320, rot: 90, S: 800, tint: dim },
+      { id: 'tbl', model: 'sideTable', x: E * 0.85, z: -60, S: 800, tint: dim },
+      { id: 'lamp', model: 'lampRoundTable', x: E * 0.85, y: 0.38 * 800, z: -40, S: 900, pal: { lamp: '#fff3b0' }, tint: [0.75, 0.75, 0.9] },
+    ];
+    case 'snooze': return [{ id: 'bed', model: 'bedSingle', x: E * 0.95, z: -340, rot: -90, S: 760 }];
+    case 'self': return [
+      { id: 'sofa', model: 'loungeSofa', x: -E * 0.2, z: -560, S: 900, tint: [0.38, 0.38, 0.46] },
+      { id: 'tv', model: 'televisionVintage', x: E * 0.85, z: -60, rot: -25, S: 900, tint: [0.55, 0.55, 0.66] },
+    ];
+    case 'lucky': return [
+      { id: 'tbl', model: 'sideTable', x: E * 0.85, z: -20, S: 900 },
+      ...(p > 0.28 ? [{ id: 'cake', model: 'cake', x: E * 0.85, y: 0.38 * 900, z: -20, S: 640, anim: 'drop' as const }] : []),
+      ...(p > 0.4 ? [{ id: 'cup1', model: 'cupcake', x: -E * 0.8, z: 40, S: 700, anim: 'drop' as const }] : []),
+      ...(p > 0.52 ? [{ id: 'cup2', model: 'donutSprinkles', x: -E * 0.5, z: 120, S: 900, anim: 'drop' as const }] : []),
+    ];
+    case 'legend': return [
+      { id: 'shelf', model: 'bookcaseOpen', x: -E * 0.9, z: -180, S: 900 },
+      ...[0, 1, 2, 3].filter((i) => p > 0.22 + i * 0.12).map((i) => ({ id: 'bk' + i, model: 'books', x: E * 0.66 + (i % 2 ? 14 : -10), y: i * 92, z: 0, rot: i * 23 - 20, S: 1000, anim: 'drop' as const })),
+    ];
+    case 'mom': return [
+      { id: 'bar', model: 'kitchenBar', x: E * 0.9, z: -120, S: 900 },
+      { id: 'coffee', model: 'kitchenCoffeeMachine', x: E * 0.9, y: 0.42 * 900, z: -120, S: 900 },
+    ];
+    case 'silent': return [
+      { id: 'spL', model: 'speaker', x: -E * 0.88, z: -60, S: 900, tint: [0.5, 0.5, 0.56] },
+      { id: 'spR', model: 'speaker', x: E * 0.88, z: -60, rot: 180, S: 900, tint: [0.5, 0.5, 0.56] },
+    ];
+    case 'peace': return [
+      { id: 'pl1', model: 'pottedPlant', x: -E * 0.85, z: -40, S: 1050, anim: 'wobble' },
+      { id: 'pl2', model: 'plantSmall1', x: E * 0.8, z: 20, S: 1500, anim: 'wobble' },
+    ];
+  }
+  return null;
+}
+
 const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, audioCtx = null, notFull = false }) => {
   const [elapsed, setElapsed] = useState(0);
   const sfxRef = useRef<EndingSfx | null>(null);
@@ -363,6 +406,10 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
   const mirrorSize = Math.round(Math.min(300, vw * 0.47, vh * 0.34));
   const smallChar = Math.round(Math.min(230, vw * 0.5, vh * 0.3));
   const propW = Math.round(Math.min(200, vw * 0.4, vh * 0.26));
+  // 3D 小物の帯：しあしあと同じ大きさ（1 単位＝U px）。E＝画面の端より少し内側の位置
+  const stripH = ending.short ? smallChar : charSize;
+  const U = stripH / 879;
+  const propE = Math.min(520, vw / 2 / U - 120);
 
   // --- シーンごとの背景・キャラ・演出 ---
   let bg = 'bg-slate-900';
@@ -523,14 +570,12 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
       bg = 'bg-gradient-to-b from-sky-100 to-white';
       mood = progress > 0.45 ? 'shock' : 'dance';
       textColor = 'text-slate-800';
-      extra = (
-        <div className="cat-walk absolute bottom-[7%] left-[8%] sm:left-[20%] flex flex-col items-center z-10">
-          {progress > 0.4 && progress < 0.75 && (
-            <div className="mb-2 bg-white border-4 border-slate-800 rounded-2xl px-5 py-2 text-3xl sm:text-4xl font-black text-slate-800 animate-impact">な</div>
-          )}
-          <div className="w-[110px] sm:w-[150px]"><Cat /></div>
+      // 3D のねこがノートパソコンに乗って「な」と打つ（ねこは endingProps）
+      extra = progress > 0.4 && progress < 0.78 ? (
+        <div className="absolute z-10 -translate-x-1/2" style={{ left: vw / 2 - propE * 0.6 * U, bottom: `calc(6% + ${Math.round(330 * U)}px)` }}>
+          <div className="bg-white border-4 border-slate-800 rounded-2xl px-5 py-2 text-3xl sm:text-4xl font-black text-slate-800 animate-impact">な</div>
         </div>
-      );
+      ) : null;
       break;
     }
     case 'sleep': {
@@ -902,10 +947,17 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
     }
   }
 
+  const props3d = endingProps(ending.scene, progress, propE);
+
   return (
     <div ref={rootRef} className={`absolute inset-0 z-[70] ${bg} ending-fade overflow-hidden select-none ${wrapperClass}`} onClick={onDone}>
       {extra}
 
+      {props3d && (
+        <div className={`absolute left-0 right-0 ${ending.short ? 'bottom-[9%]' : 'bottom-[6%]'} pointer-events-none`}>
+          <Prop3D items={props3d} height={stripH} />
+        </div>
+      )}
       {/* キャラ（中央寄せは外側の flex でする：中のアニメーションが transform を使っても崩れない） */}
       {ending.short ? (
         <div className="absolute left-0 right-0 bottom-[9%] flex items-end justify-center gap-1 sm:gap-6 px-2 pointer-events-none">
