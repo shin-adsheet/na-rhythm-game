@@ -6,6 +6,8 @@ import { buildHeadphones } from './headphones.js';
 export const ID = {
   skin: 0xefcdc1, skin2: 0xefcdba, mouth: 0xe9b1ab, hair: 0x8ac6cd, suit: 0x838295,
   eye: 0x8c8a9a, eye2: 0x7e7c90, lash: 0x86868d, brow: 0x757d7b,
+  cover: 0x1b1d26,   // アームカバー
+  shorts: 0x3d4358,  // 短パン
 };
 // しあしあの配色（Keep it alive のパステル）。buildELGirl({ shia: true }) のときだけ使う
 export const SHIA_ID = {
@@ -31,6 +33,7 @@ function limb(r0, r1, len, k, seg = 20) {
 }
 
 // 寸法（px）。足裏 y=0、頭頂 y=780
+export const BODY_DEF = [[-21, 34], [-17, 56], [-14, 65], [3, 64.7], [30, 58.7], [55.5, 50.2], [69, 45.2], [96, 43.8], [135.5, 43.8], [155, 43.6], [166, 44.4], [174, 43.6], [180, 41.0], [185, 36.2], [189, 29.8], [192.5, 22.0], [195.5, 15.2], [198, 11.4], [201, 9.2], [204, 8.5], [236, 8.5]];
 export const DIM = {
   H: 780, headTop: 780, chin: 620, neckTop: 625, neckBot: 600, shoulderY: 585,
   crotch: 390, hipX: 38, legR0: 21, legR1: 18.2, knee: 195, armR0: 12, armR1: 9, upperArm: 112, foreArm: 100,
@@ -87,7 +90,7 @@ export function buildELGirl(opt = {}) {
   const T = Object.assign({ neck: 37, faceW: 1, eyeX: 30, eyeY: 697, eyeScale: 1.08, eyeTilt: 0, eyeTurn: 0.3, lashLen: 1, lashThick: 1.35, browY: 0, browShow: 1, eyeW: 1, eyeH: 1, eyeTopR: 1, eyeTopTilt: 0, eyeMid: 0, eyeBot: 1, eyeLo: 1, lashIn: 0, lashOut: 0, lashDroop: 0, lashArch: 1, lashX: 0, lashY: 0, lashTilt: 0, lowLash: 0, lowLashY: 0, browX: 35, browW: 1, browH: 1, browRot: 0, browBoth: 0, hlOn: 0, nade: 0, clothOn: 1, clothPad: 7, clothFree: 0.6, clothStiff: 0.1, clothDamp: 0.6, clothMax: 45, clothSmooth: 3, clothKnee: 8, clothDrape: 0, clothSag: 0.05, undFollow: 1, undCrouchY: 400, clothShow: 0, clothRoot: 12, clothThighK: 1, clothRootK: 1, clothShinK: 1, clothFlipT: 0.22, clothFlipW: 1.05, clothRaise0: 14, clothRaise1: 49, undPad: 1.5, undBallK: 1, undBodyY: 12, undBodyYF: 70, undCrK: 0.85, undTop: 0.35, tailOn: 0, tailSize: 16, tailW: 1, tailH: 1, tailD: 0.9, tailX: 0, tailY: -32, tailZ: 40, tailTilt: 0, tailSpin: 0, tailFluff: 0.35, tailPuffs: 14, tailSharp: 1, hemLift: 0, hemLiftW: 40, hemLiftH: 22, hemLiftA: 0, hemLiftOut: 4, legPtsOn: 0, legPts: null, kneeU: null, footW: 1, footH: 1, footLen: 1, footY: 0, footZ: 0, footTilt: 0, legSpread: 0, legToe: 0, nadeR: 11, colSh: 0, colShY: 200, colShW: 14, colShH: 8, colShTail: 0, neckSh: 0, neckShY: 30, neckShCurve: 8, neckShBack: 1, neckR: 1, neckRD: 1, backSet: 0, backN: 4, backFrom: 100, backW: 56, backT: 9, backOut: 1.04, backLen: 0, hlX: 3, hlY: -5, hlR: 2.6, hl2: 0, slvElbow: 1,
     bangN: 8, bangY: 718, bangDepth: 19, bangJitter: 0.5, bangSeed: 3, bangWidthVar: 0.35, bangRound: 1, bangLean: 0, bangSide: 6, bangTilt: 0, strands: null, bangEdits: null, hairFlare: 1, hairLen: 0, tipN: 15, tipSize: 19, ahoge: 1,
     earLen: 1, earW: 1, earSpread: 0.32, earBack: 0.18, dressHem: -100, dressFlare: 1, collar: 1.25, buttons: 1, pinX: 22, pinY: 738, pinRot: -0.9, earX: 26, earYaw: 0, neckW: 16, neckD: 9, neckSq: 0,
-    bodyW: 1, bodyH: 1, bodyD: 1, earInW: 1, handS: 1, hairW: 1, hairD: 1, earTipLen: 0.3, earCup: 0, earThick: 4, earRootZ: 0, earRootY: 0, earDPtsOn: 0, earDPts: null, earRound: 0, earEdge: 3, earShapeOn: 0, earBaseW: 11, earMaxW: 15, earMaxY: 0.45, earTopW: 10, earTipSharp: 0, earTipShift: 0, earBow: 0, earInH: 0.86, earCurl: 0, earLip: 0, earInX: 0, ahogeTilt: 0, ahogeZ: 0, ahogeX: -10, ahogeY: 770, ahogeW: 1, ahogeD: 1, swBot: -14, swW: 96, swD: 0.55, swZ: 4, swRound: 22, swArms: 0, bobMax: 80, bobY: -28, bobTop: 70, hairZ: 0, bobBot: -62, bobBotR: 74, swBell: 0.8, slR: 30, faceCut: 0, faceCutY: -12, faceCutSlope: 0, faceCutJag: 0, faceCutJagP: 12, bobSq: 2, sideChin: 0, hairInY: 999, napeTuck: 0, tuftN: 0, tuftLen: 30, tuftW: 9, tuftDroop: 0.5, tuftSeed: 5, tuftTop: 0.6, tailLen: 1, tailR: 34, tailSide: 0.5, tailOut: 1, tailTip: 0.3, tailDrop: 1, chinL: 1, closedY: -6, mouthY: 664, mouthS: 1, neckShadeY: 999, winDX: 0, winDY: 0, winSX: 1, winTilt: 0, bpinX: 14, bpinY: 731, hipW: 1, legW: 1, armW: 1, armL: 1, skirtLen: 0, skirtFlare: 1, suitNeckW: 0, suitNeckD: 0, suitNeckSq: 0.8, faceCutCtr: 0, faceCutCtrW: 40, faceCutCtrF: 15, hairInX: 999, lockOn: 0, lockZ: 28, lockZT: 28, lockZB: 28, lockXi: 46.5, lockXo: 90, lockIn: 2, lockTop: 722, lockBot: 650, lockSlope: 0, lockTip: 10, lockTipN: 3, lockTipPh: 0, bangFwd: 0, bangFwdZ: 26, bangFwdTop: 75, bangFwdFull: 15, bangFwdP: 1.5, faceCutTilt: 0, faceCutJagZ: 0, faceCutJagZP: 14, hairWave: 0, hairWaveN: 0, hairWaveTop: 40, headFill: 0, headFillZ: -15, headFillY: 0, headFillW: 1, swSleeve: 0, slvCuff: 0, slvCuffH: 0.85, slvCuffY: -6, profW: 0, eyeFwd: 0, foreheadZ: -5, foreheadY: -20, foreheadW: 54, cheekDot: 1, faceCutJagSkew: 0.5, faceCutJagZSkew: 0.5, flip: 0, flipH: 14, flipUp: 4, flipBack: 1, swHemR: null, swHemY: 0, undOn: 0, undW: 2.5, undLen: 34, undCrH: 22, undCrD: 30, undCrY: 2, strandIn: 0, capOn: 0, capR: 64, capRy: 72, capD: 0.96, capY: 2, capZ: -6, capLine: 24, capJag: 8, capJagP: 14, capSideZ: 18, capBot: -50, bangSheet: 0, bangOff: 1.2, faceFlat: 2, sideSet: 0, hairUnder: 0, hairUnderK: 0.96, underTilt: 0, underTiltY: 0, sideTop: 0, underZ: 12, underX: 1e6, underY: 1e6, scalpPaint: 0, scalpZ: 0, scalpTilt: 0.35, strandRound: 0, bangThick: 0, bangRoot: 0.9, bangLocks: 0, strandCurl: 0, strandSharp: 0.9, strandTipMul: 1, ahogeMoon: 0, ahogeThick: 1, ahogeSharp: 1, ahogeMid: 0.5 }, O.t || {});
+    bodyW: 1, bodyH: 1, bodyD: 1, earInW: 1, handS: 1, hairW: 1, hairD: 1, earTipLen: 0.3, earCup: 0, earThick: 4, bodyPtsOn: 0, bodyPts: null, bodyDPtsOn: 0, bodyDPts: null, bodyBPtsOn: 0, bodyBPts: null, armPtsOn: 0, armPts: null, armD: 1, shX: 0, shY: 0, shZ: 0, handW: 1, handH: 1, handD: 1, thumbX: 5.5, thumbY: 10, thumbZ: 3.6, thumbFwd: 0.3, thumbIn: 0.15, thumbS: 0.9, pantsPts: null, pantsHide: 6, suitArm: 0, tailFx: 1, tailWag: 0.6, tailWagHz: 0.8, tailWagLag: 2.4, tailWagUp: 0.25, tailFreq: 2.2, tailZeta: 0.35, tailGrav: 0.6, tailSwing: 1.6, tailMax: 140, pantsHipBot: -26, pantsKneeCap: 0.35, pantsKneeBall: 0.86, thumbOn: 1, pantsFx: 1, pantsFollow: 1, pantsLegFollow: 1, pantsJiggle: 0.5, pantsStiff: 0.3, pantsDamp: 0.65, pantsD: 0.85, pantsTop: 14, pantsHip: 0, earRootZ: 0, earRootY: 0, earDPtsOn: 0, earDPts: null, earRound: 0, earEdge: 3, earShapeOn: 0, earBaseW: 11, earMaxW: 15, earMaxY: 0.45, earTopW: 10, earTipSharp: 0, earTipShift: 0, earBow: 0, earInH: 0.86, earCurl: 0, earLip: 0, earInX: 0, ahogeTilt: 0, ahogeZ: 0, ahogeX: -10, ahogeY: 770, ahogeW: 1, ahogeD: 1, swBot: -14, swW: 96, swD: 0.55, swZ: 4, swRound: 22, swArms: 0, bobMax: 80, bobY: -28, bobTop: 70, hairZ: 0, bobBot: -62, bobBotR: 74, swBell: 0.8, slR: 30, faceCut: 0, faceCutY: -12, faceCutSlope: 0, faceCutJag: 0, faceCutJagP: 12, bobSq: 2, sideChin: 0, hairInY: 999, napeTuck: 0, tuftN: 0, tuftLen: 30, tuftW: 9, tuftDroop: 0.5, tuftSeed: 5, tuftTop: 0.6, tailLen: 1, tailR: 34, tailSide: 0.5, tailOut: 1, tailTip: 0.3, tailDrop: 1, chinL: 1, closedY: -6, mouthY: 664, mouthS: 1, neckShadeY: 999, winDX: 0, winDY: 0, winSX: 1, winTilt: 0, bpinX: 14, bpinY: 731, hipW: 1, legW: 1, armW: 1, armL: 1, skirtLen: 0, skirtFlare: 1, suitNeckW: 0, suitNeckD: 0, suitNeckSq: 0.8, faceCutCtr: 0, faceCutCtrW: 40, faceCutCtrF: 15, hairInX: 999, lockOn: 0, lockZ: 28, lockZT: 28, lockZB: 28, lockXi: 46.5, lockXo: 90, lockIn: 2, lockTop: 722, lockBot: 650, lockSlope: 0, lockTip: 10, lockTipN: 3, lockTipPh: 0, bangFwd: 0, bangFwdZ: 26, bangFwdTop: 75, bangFwdFull: 15, bangFwdP: 1.5, faceCutTilt: 0, faceCutJagZ: 0, faceCutJagZP: 14, hairWave: 0, hairWaveN: 0, hairWaveTop: 40, headFill: 0, headFillZ: -15, headFillY: 0, headFillW: 1, swSleeve: 0, slvCuff: 0, slvCuffH: 0.85, slvCuffY: -6, profW: 0, eyeFwd: 0, foreheadZ: -5, foreheadY: -20, foreheadW: 54, cheekDot: 1, faceCutJagSkew: 0.5, faceCutJagZSkew: 0.5, flip: 0, flipH: 14, flipUp: 4, flipBack: 1, swHemR: null, swHemY: 0, undOn: 0, undW: 2.5, undLen: 34, undCrH: 22, undCrD: 30, undCrY: 2, strandIn: 0, capOn: 0, capR: 64, capRy: 72, capD: 0.96, capY: 2, capZ: -6, capLine: 24, capJag: 8, capJagP: 14, capSideZ: 18, capBot: -50, bangSheet: 0, bangOff: 1.2, faceFlat: 2, sideSet: 0, hairUnder: 0, hairUnderK: 0.96, underTilt: 0, underTiltY: 0, sideTop: 0, underZ: 12, underX: 1e6, underY: 1e6, scalpPaint: 0, scalpZ: 0, scalpTilt: 0.35, strandRound: 0, bangThick: 0, bangRoot: 0.9, bangLocks: 0, strandCurl: 0, strandSharp: 0.9, strandTipMul: 1, ahogeMoon: 0, ahogeThick: 1, ahogeSharp: 1, ahogeMid: 0.5 }, O.t || {});
   if (SHIA && O.dressColor != null) ID.dress = O.dressColor; else ID.dress = ID.pure;
   if (SHIA && O.eyeMono) ID.eye2 = ID.eye;
   if (SHIA && O.lineColor != null) { ID.lash = O.lineColor; ID.brow = O.lineColor; }
@@ -108,8 +111,10 @@ export function buildELGirl(opt = {}) {
   // 胴〜肩〜首の付け根を 1 本のなめらかな回転体（断面は楕円）で作る。
   // a(y) = 横の半幅、b(y) = 奥行きの半幅。胴は b = 0.58a、肩から首へ向かって真円（b = a）に近づける。
   // 肩はほんの少しなで肩：首の付け根 (±11, 198) から肩先 (±44, 170) へ、ゆるい S 字で下がる
-  const BODY = [[-24, 0], [-21, 34], [-17, 56], [-14, 65], [3, 64.7], [30, 58.7], [55.5, 50.2], [69, 45.2], [96, 43.8], [135.5, 43.8],
+  const BODY0 = [[-24, 0], [-21, 34], [-17, 56], [-14, 65], [3, 64.7], [30, 58.7], [55.5, 50.2], [69, 45.2], [96, 43.8], [135.5, 43.8],
     [155, 43.6], [166, 44.4], [174, 43.6], [180, 41.0], [185, 36.2], [189, 29.8], [192.5, 22.0], [195.5, 15.2], [198, 11.4], [201, 9.2], [204, 8.5], [236, 8.5], [240, 0]];
+  // 胴の幅を点で決める（T.bodyPts：[高さ, 半幅] の並び。両端の 0 は自動でつける）
+  const BODY = T.bodyPtsOn && Array.isArray(T.bodyPts) && T.bodyPts.length >= 2 ? [[-24, 0], ...T.bodyPts.filter((p) => p[0] > -24 && p[0] < 240).slice().sort((a, b) => a[0] - b[0]), [240, 0]] : BODY0;
   const lerp = (t, A, B) => A + (B - A) * t, sstep = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
   const bodyA0 = (y) => {   // 単調三次補間で a(y)
     const P = BODY; if (y <= P[0][0]) return 0; if (y >= P[P.length - 1][0]) return 0;
@@ -123,12 +128,19 @@ export function buildELGirl(opt = {}) {
   const bodyA = (y) => { const n = T.nade || 0; if (n <= 0 || y < 140 || y > 204) return bodyA0(y);
     const w = sstep(140, 172, y), yr = 204 - (204 - y) / (1 + n); return bodyA0(y) + (bodyA0(yr) - bodyA0(y)) * w;
   };
-  const depth = (y, a) => a * lerp(sstep(176, 199, y), 0.58, 1.0);          // 胴は平たく、首は丸く
+  // 胴の厚み（横から）：T.bodyDPts＝[高さ, 厚み÷幅] の点。なければ 胴は平たく、首は丸く
+  const DPB = T.bodyDPtsOn && Array.isArray(T.bodyDPts) && T.bodyDPts.length >= 2 ? T.bodyDPts.slice().sort((a, b) => a[0] - b[0]) : null;
+  const dRatio = (y) => { const P = DPB; if (y <= P[0][0]) return P[0][1]; for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1]; if (y <= b[0]) { const k = (y - a[0]) / Math.max(1e-6, b[0] - a[0]), e = k * k * (3 - 2 * k); return a[1] + (b[1] - a[1]) * e; } } return P[P.length - 1][1]; };
+  const depth = (y, a) => a * (DPB ? dRatio(y) : lerp(sstep(176, 199, y), 0.58, 1.0));
+  // 背中側の厚み：T.bodyBPts＝[高さ, 厚み÷幅]（なければおなか側と同じ）
+  const BPB = T.bodyBPtsOn && Array.isArray(T.bodyBPts) && T.bodyBPts.length >= 2 ? T.bodyBPts.slice().sort((a, b) => a[0] - b[0]) : null;
+  const bRatio = (y) => { const P = BPB; if (y <= P[0][0]) return P[0][1]; for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1]; if (y <= b[0]) { const k = (y - a[0]) / Math.max(1e-6, b[0] - a[0]), e = k * k * (3 - 2 * k); return a[1] + (b[1] - a[1]) * e; } } return P[P.length - 1][1]; };
+  const depthB = (y, a) => BPB ? a * bRatio(y) : depth(y, a);
   function loft(off, seg = 64, pinch = 0) {
     const ys = []; for (let y = -14; y <= 240; y += 1) ys.push(y);   // 股の下は閉じない（v14 と同じ）
     const pos = [], idx = [];
-    for (const y of ys) { const k = 1 - pinch * sstep(12, -8, y), A = bodyA(y) * k, Bz = depth(y, A); const a = A > 0 ? A + off : 0, b = A > 0 ? Bz + off * 0.8 : 0;
-      for (let j = 0; j <= seg; j++) { const t = (j / seg) * Math.PI * 2; pos.push(a * Math.sin(t), y, b * Math.cos(t)); } }
+    for (const y of ys) { const k = 1 - pinch * sstep(12, -8, y), A = bodyA(y) * k, Bz = depth(y, A), Bb = depthB(y, A); const a = A > 0 ? A + off : 0, b = A > 0 ? Bz + off * 0.8 : 0, bb = A > 0 ? Bb + off * 0.8 : 0;
+      for (let j = 0; j <= seg; j++) { const t = (j / seg) * Math.PI * 2, c = Math.cos(t); pos.push(a * Math.sin(t), y, (c > 0 ? b : bb) * c); } }   // 前（＋z）はおなか側、後ろは背中側の厚み
     for (let i = 0; i < ys.length - 1; i++) for (let j = 0; j < seg; j++) { const p0 = i * (seg + 1) + j, p1 = p0 + seg + 1; idx.push(p0, p1, p0 + 1, p0 + 1, p1, p1 + 1); }
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
   }
@@ -136,12 +148,17 @@ export function buildELGirl(opt = {}) {
   let UND_U = null;
   if (T.neckShadeY < 900 || T.colSh || T.undOn) {   // 首の付け根より上（鎖骨から上）を影色に塗る／首元（首の付け根の前）に楕円の影
     skinBody = new THREE.MeshBasicMaterial({ color: ID.skin, side: THREE.DoubleSide });
-    const U = { uNY: { value: T.neckShadeY }, uNC: { value: new THREE.Color(ID.mouth) }, uCS: { value: new THREE.Vector4(T.colSh ? 1 : 0, T.colShY, T.colShW, T.colShH) }, uCT: { value: T.colShTail }, uUY: { value: T.undOn ? T.undBodyY : -1e6 }, uUF: { value: T.undOn ? Math.max(T.undBodyY, T.undBodyYF ?? 70) : -1e6 }, uUC: { value: new THREE.Color(ID.under ?? ID.sweaterIn ?? 0x9756f9) } };
+    const U = { uNY: { value: T.neckShadeY }, uNC: { value: new THREE.Color(ID.mouth) }, uCS: { value: new THREE.Vector4(T.colSh ? 1 : 0, T.colShY, T.colShW, T.colShH) }, uCT: { value: T.colShTail }, uUY: { value: T.undOn ? T.undBodyY : -1e6 }, uUF: { value: T.undOn ? Math.max(T.undBodyY, T.undBodyYF ?? 70) : -1e6 }, uUC: { value: new THREE.Color(ID.under ?? ID.sweaterIn ?? 0x9756f9) }, uTY: { value: -1e6 }, uTH: { value: -1e6 }, uTC: { value: new THREE.Color(ID.sweater ?? ID.hair ?? 0xffffff) } };
     UND_U = U; skinBody.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, U);
       sh.vertexShader = 'varying vec3 vB;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vB = position;');
-      sh.fragmentShader = 'varying vec3 vB; uniform float uNY; uniform vec3 uNC; uniform vec4 uCS; uniform float uCT; uniform float uUY; uniform float uUF; uniform vec3 uUC;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n if (vB.y > uNY) diffuseColor.rgb = uNC;\n if (vB.y < (vB.z > 0.0 ? uUF : uUY)) diffuseColor.rgb = uUC; if (uUY > -1e5 && !gl_FrontFacing) diffuseColor.rgb = uUC;\n if (uCS.x > 0.5) { float ex = vB.x / uCS.z, ey = (vB.y - uCS.y) / uCS.w; if ((ex * ex + ey * ey < 1.0 && (vB.z > 0.0 || uCT > 0.5)) || (uCT > 0.5 && vB.y > uCS.y)) diffuseColor.rgb = uNC; }'); };
-    skinBody.customProgramCacheKey = () => 'skinNeck5';
+      sh.fragmentShader = 'varying vec3 vB; uniform float uNY; uniform vec3 uNC; uniform vec4 uCS; uniform float uCT; uniform float uUY; uniform float uUF; uniform vec3 uUC; uniform float uTY; uniform float uTH; uniform vec3 uTC;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n if (vB.y > uNY) diffuseColor.rgb = uNC;\n if (vB.y < uTY && vB.y > uTH) diffuseColor.rgb = uTC;\n if (vB.y < (vB.z > 0.0 ? uUF : uUY)) diffuseColor.rgb = uUC; if (uUY > -1e5 && !gl_FrontFacing && vB.y < 120.0 && ' + ((T.undBack ?? 1) > 0.5 ? '1.0' : '0.0') + ' > 0.5) diffuseColor.rgb = uUC;\n if (uCS.x > 0.5) { float ex = vB.x / uCS.z, ey = (vB.y - uCS.y) / uCS.w; if ((ex * ex + ey * ey < 1.0 && (vB.z > 0.0 || uCT > 0.5)) || (uCT > 0.5 && vB.y > uCS.y)) diffuseColor.rgb = uNC; }'); };
+    skinBody.customProgramCacheKey = () => 'skinNeck8-' + ((T.undBack ?? 1) > 0.5 ? 1 : 0);
   }
+  if (O.pants && ID.pants != null) {   // ズボンの中の胴（腰から下）はズボンの色
+    const bm = typeof skinBody === 'string' ? new THREE.MeshBasicMaterial({ color: ID.skin, side: THREE.DoubleSide }) : skinBody, ob = bm.onBeforeCompile, pc = new THREE.Color(ID.pants), py = (T.pantsTop ?? 14) - (T.pantsHide ?? 6), f = (v) => Number(v).toFixed(4), ok = bm.customProgramCacheKey?.bind(bm);
+    bm.onBeforeCompile = (sh, r) => { if (ob) ob.call(bm, sh, r); if (!sh.vertexShader.includes('varying vec3 vPB;')) { sh.vertexShader = 'varying vec3 vPB;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vPB = position;');
+      sh.fragmentShader = 'varying vec3 vPB;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n if (vPB.y < ' + f(py) + ') diffuseColor.rgb = vec3(' + f(pc.r) + ',' + f(pc.g) + ',' + f(pc.b) + ');'); } };
+    bm.customProgramCacheKey = () => (ok ? ok() : 'skin') + '-pants-' + py + pc.getHexString(); skinBody = bm; }
   J.spine.add(mesh(loft(0, 64, 0.12), skinBody));                             // 素体（脚ぐりの下は太ももの幅まで細める）
 
   // 水着：素体より 1.0 だけ外側の殻を作り、原作から採寸した形でくり抜く（単位：胸幅 W = 92）
@@ -150,17 +167,17 @@ export function buildELGirl(opt = {}) {
   //  肩ひも … 内側 ±0.22W〜外側 ±0.375W の帯。肩の上に乗って、そのまま背中へ回る
   //  袖ぐり … 肩ひもの外側を、脇の下（深さ 0.16W）まで丸くえぐる
   const suitMat = new THREE.MeshBasicMaterial({ color: ID.suit, side: THREE.DoubleSide });
-  const suitU = { uSNW: { value: T.suitNeckW }, uSND: { value: T.suitNeckD }, uSNP: { value: 1 + 5 * T.suitNeckSq } };
+  const suitU = { uSNW: { value: T.suitNeckW }, uSND: { value: T.suitNeckD }, uSNP: { value: 1 + 5 * T.suitNeckSq }, uSA: { value: T.suitArm ?? 0 }, uPY: { value: O.pants && ID.pants != null && !O.tights ? (T.pantsTop ?? 14) - (T.pantsHide ?? 6) : -1e6 }, uPC: { value: new THREE.Color(ID.pants ?? 0) } };
   suitMat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, suitU);
     sh.vertexShader = 'varying vec3 vS;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vS = position;');
-    sh.fragmentShader = 'varying vec3 vS; uniform float uSNW, uSND, uSNP;\n' + sh.fragmentShader.replace('void main() {', `void main() {
+    sh.fragmentShader = 'varying vec3 vS; uniform float uSNW, uSND, uSNP, uPY, uSA; uniform vec3 uPC;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n if (vS.y < uPY) diffuseColor.rgb = uPC;').replace('void main() {', `void main() {
       float ax = abs(vS.x), y = vS.y, d = 176.0 - y;
       if (vS.z > 0.0 && uSND > 0.0) { float dq = 200.5 - y; if (dq >= 0.0 && dq < uSND && ax < uSNW * sqrt(max(0.0, 1.0 - pow(dq / uSND, uSNP)))) discard; }   // 襟ぐりを広げる（素体 v1 は 0）
       float xu = max(0.0, ax / 92.0 - 0.1);
       if (y < -14.0 + 92.0 * 0.26 * xu) discard;          // 裾（脚ぐり）
       // 水着の上端は首の付け根のすぐ下（前 y=190・後ろ y=192）。そこから襟ぐりをくり抜く
-      float sOut = 39.0;
+      float sOut = 39.0 - uSA;   // 袖ぐりを広げると肩ひもが細くなり、肩の肌が見える
       if (vS.z > 0.0) {
         float dn = 200.5 - y;                                                // 前の襟ぐり：首の付け根のすぐ下から
         if (dn < 0.0 && ax < 17.5) discard;
@@ -172,21 +189,21 @@ export function buildELGirl(opt = {}) {
         if (db < 0.0 && ax < 18.5) discard;
         if (db >= 0.0 && db < 6.0 && ax < 18.0 * sqrt(1.0 - db / 6.0)) discard;
       }
-      if (d < 15.0 && ax > sOut + 6.0 * clamp(d / 15.0, 0.0, 1.0)) discard;  // 袖ぐり（肩ひもの外側）`);
+      if (d < 15.0 + uSA * 0.6 && ax > sOut + 6.0 * clamp(d / (15.0 + uSA * 0.6), 0.0, 1.0)) discard;  // 袖ぐり（肩ひもの外側）`);
   };
-  suitMat.customProgramCacheKey = () => 'suitShell7';
-  if (!SHIA && O.outfit !== 'sweater') J.spine.add(mesh(loft(1.0), suitMat));
+  suitMat.customProgramCacheKey = () => 'suitShell9';
+  if (!SHIA && O.outfit !== 'sweater' && O.outfit !== 'tee') J.spine.add(mesh(loft(1.0), suitMat));
 
   // --- 首（素体の首の付け根に、首の色（影色）の筒を重ねる。頭と一緒に動く）---
   const HJ = D.crotch + 12 + 120 + (D.neckBot - (D.crotch + 12 + 120)) + 13;   // 頭の関節のワールド高さ
   if (T.neckSh) {   // 首：肌色の筒の、あごの下だけを影色に塗る（影の下の線は U 字。中央が下がる）
-    const nm = new THREE.MeshBasicMaterial({ color: ID.skin }); const NU = { uSY: { value: T.neckShY }, uSC: { value: T.neckShCurve }, uSR: { value: 9 * T.neckR }, uSB: { value: T.neckShBack }, uSCol: { value: new THREE.Color(ID.mouth) } };
+    const nm = new THREE.MeshBasicMaterial({ color: ID.skin }); const NU = { uSY: { value: T.neckShY }, uSC: { value: T.neckShCurve }, uSR: { value: 9 * T.neckR }, uSB: { value: T.neckShBack }, uSCol: { value: new THREE.Color(ID.neckSh ?? ID.mouth) } };
     nm.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, NU);
       sh.vertexShader = 'varying vec3 vN;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vN = position;');
       sh.fragmentShader = 'varying vec3 vN; uniform float uSY, uSC, uSR, uSB; uniform vec3 uSCol;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n { float q = clamp(vN.x / uSR, -1.0, 1.0); if (vN.y > uSY + uSC * q * q || (uSB > 0.5 && vN.z < 0.0)) diffuseColor.rgb = uSCol; }'); };
     nm.customProgramCacheKey = () => 'neckSh1';
     const nk = new THREE.Mesh(new THREE.CylinderGeometry(9 * T.neckR, 9.2 * T.neckR, 70, 32).translate(0, 25, 0), nm); nk.scale.z = T.neckRD; nk.name = 'neck'; J.neck.add(nk);
-  } else J.neck.add(mesh(new THREE.CylinderGeometry(8.9, 9.1, 70, 20).translate(0, 25, 0), 'mouth'));
+  } else J.neck.add(mesh(new THREE.CylinderGeometry(8.9, 9.1, 70, 20).translate(0, 25, 0), ID.neckSh != null ? 'neckSh' : 'mouth'));
   // --- 頭：素材 c004 の正面アップから採寸（顔は横長：幅 100 × 前髪下〜あご 80）---
   // 以下の座標はモデル全体の座標（足裏 y=0）。head グループで関節位置ぶん戻す
   const head = new THREE.Group(); J.head.add(head); head.position.y = -HJ - T.neck; const HS = O.headScale; head.scale.setScalar(HS); head.position.multiplyScalar(HS);   // 頭身：頭を 86% に   // 首を原作どおり短く
@@ -509,16 +526,50 @@ export function buildELGirl(opt = {}) {
 
 
   // --- 腕 ---
+  const armInMat = (s) => {   // ダボTシャツ：上腕の付け根の内側（脇側）を服の色に。外側（肩の上）は肌のまま
+    if (!(O.outfit === 'tee' && (T.teeArmIn ?? 0.7) > 0)) return 'skin';
+    const c = 1 - 2 * Math.min(1, T.teeArmIn ?? 0.7), m = new THREE.MeshBasicMaterial({ color: ID.skin, side: THREE.DoubleSide }), C = new THREE.Color(ID.sweater ?? ID.hair);
+    m.onBeforeCompile = (sh) => { sh.uniforms.uAC = { value: C };
+      sh.vertexShader = 'varying vec3 vA;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vA = position;');
+      sh.fragmentShader = 'varying vec3 vA; uniform vec3 uAC;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n if (' + (-s).toFixed(1) + ' * vA.x > ' + c.toFixed(3) + ' * length(vA.xz)) diffuseColor.rgb = uAC;'); };
+    m.customProgramCacheKey = () => 'armIn' + s + '_' + c.toFixed(3); return m; };
   for (const s of [-1, 1]) {
     const S = s < 0 ? 'R' : 'L';
-    const sh = joint(J.chest, s * D.shoulderX, 50, 0, 'shoulder' + S); J['shoulder' + S] = sh;   // 肩先（素体の最も広い所）の少し内側   // なで肩なので腕の付け根も低め
-    const ua = joint(sh, 0, 0, 0, 'upperArm' + S); ua.add(limb(D.armR0 + 0.5, D.armR0 - 0.6, D.upperArm, 'skin'));
-    const el = joint(ua, 0, -D.upperArm, 0, 'elbow' + S); el.add(limb(D.armR0 - 0.8, D.armR1, D.foreArm, 'skin'));
-    const hand = joint(el, 0, -D.foreArm, 0, 'hand' + S);
-    const hm = mesh(new THREE.SphereGeometry(1, 16, 12), 'skin'); hm.scale.set(9, 16, 5.5); hm.position.y = -10; hand.add(hm);
-    const th = mesh(new THREE.SphereGeometry(1, 10, 8), 'skin'); th.scale.set(3.2, 8, 3); th.position.set(-s * 8, -6, 2); th.rotation.z = s * 0.7; hand.add(th);
+    const sh = joint(J.chest, s * (D.shoulderX + (T.shX ?? 0)), 50 + (T.shY ?? 0), T.shZ ?? 0, 'shoulder' + S); J['shoulder' + S] = sh;   // 肩先（素体の最も広い所）の少し内側   // なで肩なので腕の付け根も低め
+    const ua = joint(sh, 0, 0, 0, 'upperArm' + S);
+    const AW = T.armW ?? 1, AL = T.armL ?? 1;   // 腕の太さ・長さは形で作る（関節に倍率をかけない＝曲げても形がくずれない）
+    const el = joint(ua, 0, -D.upperArm * AL, 0, 'elbow' + S);
+    if (T.armPtsOn && Array.isArray(T.armPts) && T.armPts.length >= 2) {   // 腕の太さを点で決める：[半径, 位置 0＝肩〜1＝手首]。ひじに同じ太さの玉
+      const LA = (D.upperArm + D.foreArm) * AL, kE = D.upperArm / (D.upperArm + D.foreArm), AP = T.armPts.slice().sort((a, b) => a[1] - b[1]).map(([r, u]) => [r * AW, u]);
+      const rA = (u) => { if (u <= AP[0][1]) return AP[0][0]; for (let i = 0; i < AP.length - 1; i++) { const a = AP[i], b = AP[i + 1]; if (u <= b[1]) { const k = (u - a[1]) / Math.max(1e-6, b[1] - a[1]), e = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e; } } return AP[AP.length - 1][0]; };
+      const aseg = (u0, u1, capTop, capBot, add = 0) => { const pts = []; const N = 24; const rA0 = rA; const rA_ = (u) => rA0(u) + add;
+        if (capTop) { const r = Math.max(1, rA_(u0)); for (let i = 6; i >= 1; i--) { const a = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(a)), r * Math.sin(a))); } }
+        for (let i = 0; i <= N; i++) { const u = u0 + (u1 - u0) * i / N; pts.push(new THREE.Vector2(Math.max(1, rA_(u)), -(u - u0) * LA)); }
+        if (capBot) { const r = Math.max(1, rA_(u1)), y = -(u1 - u0) * LA; for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(a)), y - r * Math.sin(a))); } }
+        const g = new THREE.LatheGeometry(pts.reverse(), 28); g.scale(1, 1, T.armD ?? 1); return g; };
+      if (T.sleeveOn > 0.5) { const sv = mesh(aseg(0, Math.min(kE, T.sleeveLen ?? 0.2), true, false, T.sleevePuff ?? 3.5), 'suit'); sv.name = 'sleeve'; sv.scale.x = sv.scale.z = 1; ua.add(sv);   // 半袖（服と同じ色）
+        const sr = mesh(new THREE.TorusGeometry(rA(Math.min(kE, T.sleeveLen ?? 0.2)) + (T.sleevePuff ?? 3.5), 1.1, 8, 28), 'suit'); sr.rotation.x = Math.PI / 2; sr.scale.y = T.armD ?? 1; sr.position.y = -Math.min(kE, T.sleeveLen ?? 0.2) * LA; ua.add(sr); }
+      if (T.armCover > 0.5) {   // アームカバー：上腕の途中（coverTop：0＝肩〜1＝手首）から指先まで。布の厚みぶん少し太く
+        const uC = Math.max(0.02, Math.min(kE - 0.02, T.coverTop ?? 0.25)), pf = T.coverPuff ?? 0.8;
+        ua.add(mesh(aseg(0, uC, true, false), armInMat(s)));
+        const cu = mesh(aseg(uC, kE, false, false, pf), 'cover'); cu.position.y = -uC * LA; ua.add(cu);
+        { const ring = mesh(new THREE.TorusGeometry(rA(uC) + pf, (T.coverCuff ?? 1.2), 8, 28), 'cover'); ring.rotation.x = Math.PI / 2; ring.scale.z = 1; ring.scale.y = T.armD ?? 1; ring.position.y = -uC * LA; ring.visible = (T.coverCuff ?? 1.2) > 0.05; ua.add(ring); }   // 上のふち（はき口のゴム）
+        el.add(mesh(aseg(kE, 1, false, true, pf), 'cover'));
+        const eb = mesh(new THREE.SphereGeometry(1, 20, 14), 'cover'); eb.scale.set(rA(kE) + pf, rA(kE) + pf, (rA(kE) + pf) * (T.armD ?? 1)); el.add(eb);
+      } else {
+      ua.add(mesh(aseg(0, kE, true, false), armInMat(s))); el.add(mesh(aseg(kE, 1, false, true), 'skin'));
+      const eb = mesh(new THREE.SphereGeometry(1, 20, 14), 'skin'); eb.scale.set(rA(kE), rA(kE), rA(kE) * (T.armD ?? 1)); el.add(eb);
+      }
+    } else { const ad = (o) => { o.scale.z = T.armD ?? 1; return o; };
+      ua.add(ad(limb((D.armR0 + 0.5) * AW, (D.armR0 - 0.6) * AW, D.upperArm * AL, 'skin'))); el.add(ad(limb((D.armR0 - 0.8) * AW, D.armR1 * AW, D.foreArm * AL, 'skin')));
+      const eb = mesh(new THREE.SphereGeometry(1, 20, 14), 'skin'); eb.scale.set((D.armR0 - 0.7) * AW, (D.armR0 - 0.7) * AW, (D.armR0 - 0.7) * AW * (T.armD ?? 1)); el.add(eb); }   // ひじの玉：曲げても上腕と前腕のつなぎ目に段や穴ができない
+    const hand = joint(el, 0, -D.foreArm * AL, 0, 'hand' + S); hand.scale.setScalar(T.handS ?? 1);
+    const HSK = T.armCover > 0.5 ? 'cover' : 'skin';   // アームカバーは指先まで
+    const hm = mesh(new THREE.SphereGeometry(1, 16, 12), HSK); hm.scale.set(9 * (T.handW ?? 1), 16 * (T.handH ?? 1), 5.5 * (T.handD ?? 1)); hm.position.y = -10 * (T.handH ?? 1); hand.add(hm);
+    const th = mesh(new THREE.SphereGeometry(1, 12, 10), HSK); th.scale.set(3.2 * (T.thumbS ?? 0.9), 8 * (T.thumbS ?? 0.9), 3 * (T.thumbS ?? 0.9)); th.position.set(-s * (T.thumbX ?? 5.5), -(T.thumbY ?? 10), T.thumbZ ?? 3.6); th.rotation.set(-(T.thumbFwd ?? 0.3), 0, s * (T.thumbIn ?? 0.15)); th.name = 'thumb'; th.visible = T.thumbOn !== 0; hand.add(th);   // 親指：手のひらの前側から、前・下向きに
     J['upperArm' + S] = ua; J['elbow' + S] = el; J['hand' + S] = hand;
   }
+  const LSK = O.pants && ID.pants != null ? 'pants' : 'skin';   // ズボンの中の脚はズボンの色（すき間から肌が見えない）
   // --- 脚（ほぼ同じ太さのまっすぐな円柱）---
   for (const s of [-1, 1]) {
     const S = s < 0 ? 'R' : 'L';
@@ -533,15 +584,34 @@ export function buildELGirl(opt = {}) {
         for (let i = 0; i <= N; i++) { const u = u0 + (u1 - u0) * i / N; pts.push(new THREE.Vector2(Math.max(1, rAt(u)), -(u - u0) * LT)); }
         if (capBot) { const r = Math.max(1, rAt(u1)), y = -(u1 - u0) * LT; for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(a)), y - r * Math.sin(a))); } }
         return new THREE.LatheGeometry(pts.reverse(), 32); };
-      th.add(mesh(seg(0, kU, true, false), 'skin')); kn.add(mesh(seg(kU, 1, false, true), 'skin'));
-      const kb = mesh(new THREE.SphereGeometry(1, 24, 16), 'skin'); kb.scale.setScalar(Math.max(1, rAt(kU))); kb.name = 'kneeBall'; kn.add(kb);
+      th.add(mesh(seg(0, kU, true, false), LSK)); kn.add(mesh(seg(kU, 1, false, true), LSK));
+      const kb = mesh(new THREE.SphereGeometry(1, 24, 16), LSK); kb.scale.setScalar(Math.max(1, rAt(kU))); kb.name = 'kneeBall'; kn.add(kb);
     } else {
-      th.add(limb(D.legR0, D.legR0 - 1.2, L1, 'skin'));
-      kn.add(limb(D.legR0 - 1.2, D.legR1, L2, 'skin'));
-      { const kb = mesh(new THREE.SphereGeometry(1, 24, 16), 'skin'); kb.scale.setScalar(D.legR0 - 1.2); kb.name = 'kneeBall'; kn.add(kb); }   // ひざの玉（脚を短くしても丸いまま。曲げても角が欠けない）
+      th.add(limb(D.legR0, D.legR0 - 1.2, L1, LSK));
+      kn.add(limb(D.legR0 - 1.2, D.legR1, L2, LSK));
+      { const kb = mesh(new THREE.SphereGeometry(1, 24, 16), LSK); kb.scale.setScalar(D.legR0 - 1.2); kb.name = 'kneeBall'; kn.add(kb); }   // ひざの玉（脚を短くしても丸いまま。曲げても角が欠けない）
+    }
+    if (O.pants && !O.tights) {   // だぼっとしたズボン：脚の太さと同じ作り方（点 [半径, 位置 0＝股〜1＝足首]）で、ももとすねに分けて付ける。ひざに同じ太さの玉
+      const LTp = L1 + L2, PP = (Array.isArray(T.pantsPts) && T.pantsPts.length >= 2 ? T.pantsPts : [[44, -0.06], [48, 0.1], [54, 0.4], [60, 0.7], [64, 0.88], [60, 0.95], [46, 0.985], [40, 1.0]]).slice().sort((a, b) => a[1] - b[1]);
+      const pr = (u) => { if (u <= PP[0][1]) return PP[0][0]; for (let i = 0; i < PP.length - 1; i++) { const a = PP[i], b = PP[i + 1]; if (u <= b[1]) { const k = (u - a[1]) / Math.max(1e-6, b[1] - a[1]), e = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e; } } return PP[PP.length - 1][0]; };
+      const u0 = PP[0][1], u1 = PP[PP.length - 1][1], pz = T.pantsD ?? 0.85, pm = ID.pants != null ? 'pants' : 'suit';
+      const KC = T.pantsKneeCap ?? 0.35;   // ひざの所の丸み（つなぎ目の角を丸めて、曲げたときに角が突き出ないように）
+      const pseg = (a, b, capTop, capKneeTop, capKneeBot) => { const pts = []; const N = 30; if (capTop) pts.push(new THREE.Vector2(0.01, 4));
+        if (capKneeTop) { const r = Math.max(1, pr(a)); for (let i = 6; i >= 1; i--) { const t = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(t)), r * KC * Math.sin(t))); } }
+        for (let i = 0; i <= N; i++) { const u = a + (b - a) * i / N; pts.push(new THREE.Vector2(Math.max(1, pr(u)), -(u - a) * LTp)); }
+        if (capKneeBot) { const r = Math.max(1, pr(b)), y = -(b - a) * LTp; for (let i = 1; i <= 6; i++) { const t = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(t)), y - r * KC * Math.sin(t))); } }
+        const g = new THREE.LatheGeometry(pts.reverse(), 40); g.scale(1, 1, pz); return g; };
+      const pt = mesh(pseg(u0, kU, true, false, true), pm); pt.position.y = -u0 * LTp; pt.name = 'pants'; th.add(pt);
+      const pk = mesh(pseg(kU, u1, false, true, false), pm); pk.name = 'pants'; kn.add(pk);
+      const pb = mesh(new THREE.SphereGeometry(1, 24, 16), pm); const kb = pr(kU) * (T.pantsKneeBall ?? 0.86); pb.scale.set(kb, kb, kb * pz); pb.name = 'pantsKnee'; kn.add(pb);
+    }
+    if (O.shorts) {   // 短パン：ももの付け根から shortsLen（0＝股〜1＝足首）まで、すそが少し広がる筒
+      const LTs = L1 + L2, sl = T.shortsLen ?? 0.28, r0 = D.legR0 + (T.shortsPuff ?? 6), r1 = r0 * (T.shortsFlare ?? 1.12), pts = [];
+      for (let i = 0; i <= 14; i++) { const u = i / 14; pts.push(new THREE.Vector2(r0 + (r1 - r0) * u * u, 8 - (8 + sl * LTs) * u)); }
+      const sg = new THREE.LatheGeometry(pts.reverse(), 36); sg.scale(1, 1, T.shortsD ?? 1); const sm = mesh(sg, 'shorts'); sm.name = 'shorts'; th.add(sm);
     }
     const ft = joint(kn, 0, -(L1 + L2) * (1 - kU), 0, 'foot' + S);
-    const foot = mesh(new THREE.SphereGeometry(1, 24, 16), 'skin'); foot.scale.set(16.5 * T.footW, 9 * T.footH, 24 * T.footLen); foot.position.set(0, -4 + T.footY, 9 + T.footZ); foot.rotation.x = T.footTilt; if (!SHIA || O.feet === 'bare') ft.add(foot);
+    const foot = mesh(new THREE.SphereGeometry(1, 24, 16), O.tights ? LSK : 'skin'); foot.scale.set(16.5 * T.footW, 9 * T.footH, 24 * T.footLen); foot.position.set(0, -4 + T.footY, 9 + T.footZ); foot.rotation.x = T.footTilt; if (!SHIA || O.feet === 'bare') ft.add(foot);
     if (T.undOn) { if (ID.under == null) ID.under = ID.sweaterIn ?? 0x9756f9;   // 紫の下着：太ももの付け根の短いすそ＋またの部分
       // セーターのすその高さより下には出さない（下からのぞいたときだけ見える）
       const hemD = Array.isArray(T.swPts) && T.swPts.length ? -Math.min(...T.swPts.map((p) => p[1])) : 1e9, uLen = Math.max(4, Math.min(T.undLen, hemD - 4)), uCrH = Math.max(4, Math.min(T.undCrH, hemD - 4));
@@ -550,6 +620,16 @@ export function buildELGirl(opt = {}) {
       { const ub = mesh(new THREE.SphereGeometry(1, 28, 18), 'under'); ub.scale.setScalar((Math.max(rU(0), rU(uLen * 0.5)) + T.undW - 0.4) * (T.undBallK ?? 1)); ub.visible = (T.undBallK ?? 1) > 0; ub.userData.noOutline = true; ub.name = 'undBall'; th.add(ub); }   // ももの付け根の玉：脚を曲げても付け根の白がおしりから出ない
       if (s > 0) { const cr = mesh(new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, Math.PI * 0.5 - (T.undTop ?? 0.35), Math.PI * 0.5 + (T.undTop ?? 0.35)), 'under'); cr.scale.set(D.hipX + Math.max(D.legR0, rU(0)) + T.undW, uCrH, T.undCrD * (T.undCrK ?? 0.85)); cr.userData.noOutline = true; /* 下半分だけ（上はセーターの中なので不要。お尻からはみ出さない） */ cr.position.y = T.undCrY; cr.name = 'undCr'; J.hips.add(cr); J.undCr = cr; } }
     J['thigh' + S] = th; J['knee' + S] = kn; J['foot' + S] = ft;
+  }
+  if ((O.pants && !O.tights) || O.shorts) {   // ズボン（短パン）の腰まわり：タンクトップのすそ（胴にぴったり）から股の下（脚の筒の太さ）へ広がる
+    const top = O.shorts ? (T.shortsTop ?? 12) : T.pantsTop ?? 14, bot = O.shorts ? (T.shortsHipBot ?? -30) : T.pantsHipBot ?? -26, pts = [], legR = O.shorts ? (D.legR0 + (T.shortsPuff ?? 6)) * (T.legW ?? 1) : (Array.isArray(T.pantsPts) && T.pantsPts[0] ? T.pantsPts[0][0] : 44);
+    for (let i = 0; i <= 20; i++) { const y = top - (top - bot) * i / 20, k = i / 20, e = k * k * (3 - 2 * k), A = bodyA(Math.max(-14, Math.min(top, y))) || 60;
+      pts.push(new THREE.Vector2((A + 2.5) * (1 - e) + (D.hipX + legR * 0.95 + (T.pantsHip ?? 0)) * e, y)); }
+    const g = new THREE.LatheGeometry(pts.reverse(), 48), P = g.attributes.position;
+    for (let i = 0; i < P.count; i++) { const y = P.getY(i), k = Math.min(1, Math.max(0, (top - y) / (top - bot))), A = bodyA(Math.max(-14, Math.min(top, y))) || 60, zt = (depth(Math.max(-14, Math.min(top, y)), A) + 2.5) / (A + 2.5);
+      const rB = D.hipX * (O.shorts ? (T.hipW ?? 1) : 1) + legR * 0.95 + (O.shorts ? (T.shortsHip ?? 0) : (T.pantsHip ?? 0)), zb = (legR * (O.shorts ? (T.shortsD ?? 1) : (T.pantsD ?? 0.85)) + 6) / rB;   // 下は脚の筒の奥行きに合わせる（横から見て後ろに出っぱらない）
+      P.setZ(i, P.getZ(i) * (zt * (T.bodyD ?? 1) * (1 - k) + zb * k)); }
+    g.computeVertexNormals(); const hp = mesh(g, O.shorts ? 'shorts' : ID.pants != null ? 'pants' : 'suit'); hp.name = 'pantsHip'; hp.userData.top = top; hp.userData.bot = bot; J.hips.add(hp); J.pantsHip = hp;
   }
   if (SHIA) dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T });
   // --- ふわふわの毛束（狐っ娘の髪）：頭のまわりに、外向き・少し下向きのとがった束を生やす ---
@@ -573,16 +653,17 @@ export function buildELGirl(opt = {}) {
   // --- しっぽ（ふさふさ、先はクリーム色）---
   if (O.tail) {
     const L = T.tailLen, sd = T.tailSide, ou = T.tailOut, dr = T.tailDrop;
-    const curve = new THREE.CatmullRomCurve3([[0, 40, -36], [sd * 6, 18, -62 * ou], [sd * 26, -40 * dr, -92 * ou], [sd * 46, -120 * dr, -96 * ou], [sd * 44, -200 * dr, -72 * ou], [sd * 26, -250 * dr, -48 * ou]]
+    const curve = new THREE.CatmullRomCurve3((Array.isArray(T.tailPts) && T.tailPts.length >= 3 ? T.tailPts.map(([x, y, z]) => [x * sd, y, z]) : [[0, 40, -36], [sd * 6, 18, -62 * ou], [sd * 26, -40 * dr, -92 * ou], [sd * 46, -120 * dr, -96 * ou], [sd * 44, -200 * dr, -72 * ou], [sd * 26, -250 * dr, -48 * ou]])
       .map(([x, y, z], k) => new THREE.Vector3(x * L, 40 + (y - 40) * L, -36 + (z + 36) * L)));
     const NS = 90, NR = 28, pos = [], tt = [], ang = [], idx = [];
     const frames = curve.computeFrenetFrames(NS, false);
     for (let i = 0; i <= NS; i++) {
       const t = i / NS, c = curve.getPointAt(t), n = frames.normals[i], b = frames.binormals[i];
-      const base = T.tailR * (0.22 + 0.78 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.05) * 0.5 + (t > 0.5 ? 0 : 0)), 0.6)) * (t > 0.55 ? Math.pow(Math.max(0, 1 - (t - 0.55) / 0.45), 0.7) : 1);
+      const base = T.tailCat ? T.tailR * (t > 0.9 ? Math.sqrt(Math.max(0, 1 - ((t - 0.9) / 0.1) ** 2)) : 1) * (1 - 0.12 * t)   // 猫しっぽ：ほぼ同じ太さで、先は丸く閉じる
+        : T.tailR * (0.22 + 0.78 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.05) * 0.5 + (t > 0.5 ? 0 : 0)), 0.6)) * (t > 0.55 ? Math.pow(Math.max(0, 1 - (t - 0.55) / 0.45), 0.7) : 1);
       for (let j = 0; j <= NR; j++) {
         const a = (j / NR) * Math.PI * 2;
-        const fluff = t > 0.45 ? 1 + 0.22 * Math.pow(Math.abs(Math.sin(a * 3.5 + t * 9)), 4) * Math.min(1, (t - 0.45) * 4) : 1;   // 毛先のギザギザ
+        const fluff = !T.tailCat && t > 0.45 ? 1 + 0.22 * Math.pow(Math.abs(Math.sin(a * 3.5 + t * 9)), 4) * Math.min(1, (t - 0.45) * 4) : 1;   // 毛先のギザギザ
         const r = base * fluff;
         pos.push(c.x + r * (Math.cos(a) * n.x + Math.sin(a) * b.x), c.y + r * (Math.cos(a) * n.y + Math.sin(a) * b.y), c.z + r * (Math.cos(a) * n.z + Math.sin(a) * b.z));
         tt.push(t); ang.push(a);
@@ -595,7 +676,27 @@ export function buildELGirl(opt = {}) {
       sh.vertexShader = 'attribute float aT; attribute float aA; varying float vT; varying float vA;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vT = aT; vA = aA;');
       sh.fragmentShader = 'varying float vT; varying float vA; uniform float uTip; uniform vec3 uTipC;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n if (vT > uTip + 0.035 * abs(sin(vA * 3.5)) - 0.02) diffuseColor.rgb = uTipC;'); };
     tm.customProgramCacheKey = () => 'tail';
-    const tail = mesh(g, tm); tail.name = 'tail'; J.hips.add(tail); J.tail = tail;
+    const tail = mesh(g, tm); tail.name = 'tail'; tail.userData.curve = curve; tail.userData.fox = true; tail.position.set(0, T.tailRootY ?? 0, -(T.tailRootZ ?? 0)); J.hips.add(tail); J.tail = tail;   // tailRootY：付け根の高さ、tailRootZ：後ろへ
+  }
+  // --- サイドポニー（ねあねあ）：きあきあの狐しっぽの形をそのまま髪の色で作り、頭の横に結ぶ。T.pony* で位置・長さ・太さ ---
+  if (O.sidePony) {
+    const sd = O.sidePony === 'right' ? -1 : 1, L = T.ponyLen ?? 0.62, ou = T.ponyOut ?? 0.55, dr = T.ponyDrop ?? 1.15, cr = T.ponyCurl ?? 1;
+    // しっぽの芯（うしろ＝−z へ伸びて下へ垂れる）を、横（±x）へ伸びて下へ垂れる向きに置きかえる
+    const P0 = [[0, 0, 0], [6 * cr, -14, -22 * ou], [24 * cr, -70 * dr, -46 * ou], [40 * cr, -150 * dr, -52 * ou], [36 * cr, -230 * dr, -36 * ou], [18 * cr, -285 * dr, -16 * ou]];
+    const curve = new THREE.CatmullRomCurve3(P0.map(([x, y, z]) => new THREE.Vector3(sd * (-z * 0.9 + 0.15 * x) * L, y * L, (-x * (T.ponyBack ?? 0.55)) * L)));
+    const NS = 80, NR = 24, pos = [], tt = [], idx = [], frames = curve.computeFrenetFrames(NS, false), PR = T.ponyR ?? 46;
+    for (let i = 0; i <= NS; i++) { const t = i / NS, c = curve.getPointAt(t), n = frames.normals[i], b = frames.binormals[i];
+      const base = PR * (0.2 + 0.8 * Math.pow(Math.sin(Math.PI * Math.min(1, t * 1.05) * 0.5), 0.6)) * (t > 0.5 ? Math.pow(Math.max(0, 1 - (t - 0.5) / 0.5), 0.75) : 1);
+      for (let j = 0; j <= NR; j++) { const a = (j / NR) * Math.PI * 2, fl = t > 0.45 ? 1 + 0.2 * Math.pow(Math.abs(Math.sin(a * 3.5 + t * 9)), 4) * Math.min(1, (t - 0.45) * 4) : 1, r = base * fl;
+        pos.push(c.x + r * (Math.cos(a) * n.x + Math.sin(a) * b.x), c.y + r * (Math.cos(a) * n.y + Math.sin(a) * b.y), c.z + r * (Math.cos(a) * n.z + Math.sin(a) * b.z)); tt.push(t); } }
+    for (let i = 0; i < NS; i++) for (let j = 0; j < NR; j++) { const a0 = i * (NR + 1) + j, b0 = a0 + NR + 1; idx.push(a0, a0 + 1, b0, a0 + 1, b0 + 1, b0); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aT', new THREE.Float32BufferAttribute(tt, 1)); g.setIndex(idx); g.computeVertexNormals();
+    const pm = new THREE.MeshBasicMaterial({ color: ID.hair, side: THREE.DoubleSide });
+    if (ID.hairIn != null) { const hc = new THREE.Color(ID.hairIn); pm.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>\n if (!gl_FrontFacing) diffuseColor.rgb = vec3(${hc.r.toFixed(4)}, ${hc.g.toFixed(4)}, ${hc.b.toFixed(4)});`); }; pm.customProgramCacheKey = () => 'pony-' + hc.getHexString(); }
+    const pony = new THREE.Mesh(g, pm); pony.name = 'pony'; pony.userData.curve = curve; pony.userData.fox = true;
+    pony.position.set(HC.x + sd * (T.ponyX ?? 70), HC.y + (T.ponyY ?? 10), HC.z + (T.ponyZ ?? -26)); pony.rotation.set(T.ponyTilt ?? 0, 0, sd * (T.ponyRoll ?? 0.25)); head.add(pony); J.pony = pony;
+    // 結び目（ヘアゴム）
+    const tie = mesh(new THREE.SphereGeometry(1, 20, 14), ID.tie != null ? 'tie' : 'line'); tie.scale.set(T.tieR ?? 13, (T.tieR ?? 13) * 1.15, (T.tieR ?? 13) * 1.1); tie.position.copy(pony.position); head.add(tie); J.tie = tie;
   }
   // --- ワークベンチ製パーツ：元絵のシルエットからふくらませた形。色は元絵から投影したラベル（1 髪, 2 明るい色, 3 濃い色, 4 影）---
   const attachPart = (name, data, parent, light) => {
@@ -643,10 +744,12 @@ export function buildELGirl(opt = {}) {
     sm.onBeforeCompile = (sh) => {
       sh.vertexShader = 'attribute vec3 aRest;\nvarying vec3 vSw;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vSw = aRest;');   // 物理で動いても、色分けは元の形の位置で決める
       sh.fragmentShader = 'varying vec3 vSw;\n' + sh.fragmentShader.replace('void main() {', `void main() {
-      { float ax = abs(vSw.x), dd = vSw.z > ${f(S.swZ)} ? ${f(S.swDip)} : ${f(S.swDipB)};
-        if (dd > 0.0 && ax < ${f(S.swNeckW)} && vSw.y > ${f(top)} - dd * sqrt(max(0.0, 1.0 - pow(ax / ${f(S.swNeckW)}, 2.0)))) discard; }`)
+      { float sx = vSw.x - ${f(T.swNeckShift ?? 0)}, side = sx * ${f(T.swOffSide ?? 1)} > 0.0 ? 1.0 : 0.0;
+        float W = ${f(S.swNeckW)} * (1.0 + side * ${f(T.swNeckOff ?? 0)}), ax = abs(sx), dd = (vSw.z > ${f(S.swZ)} ? ${f(S.swDip)} : ${f(S.swDipB)}) + side * ${f(T.swNeckOffD ?? 0)};
+        float tl = ${f(T.swNeckTilt ?? 0)} * vSw.x * ${f(T.swOffSide ?? 1)};
+        if (dd > 0.0 && ax < W && vSw.y > ${f(top)} - tl - dd * sqrt(max(0.0, 1.0 - pow(ax / W, 2.0)))) discard; }`)
         .replace('#include <color_fragment>', `#include <color_fragment>\n if (!gl_FrontFacing && vSw.y > ${f(yEq)}) diffuseColor.rgb = vec3(${f(inC.r)}, ${f(inC.g)}, ${f(inC.b)});`); };
-    sm.customProgramCacheKey = () => ['sweaterU3', inC.getHexString(), S.swZ, S.swDip, S.swDipB, S.swNeckW, top, yEq].join('-');
+    sm.customProgramCacheKey = () => ['sweaterU4', inC.getHexString(), S.swZ, S.swDip, S.swDipB, S.swNeckW, top, yEq, T.swNeckShift ?? 0, T.swOffSide ?? 1, T.swNeckOff ?? 0, T.swNeckOffD ?? 0, T.swNeckTilt ?? 0].join('-');
     // すそを後ろだけめくり上げる（しっぽのところ。下着がのぞく）：T.hemLift だけ上へ、T.hemLiftOut だけ外へ。
     //   横の広がりは T.hemLiftW（度）、めくれが上へ続く長さは T.hemLiftH、中心の向きは T.hemLiftA（度、0＝真後ろ）
     if (T.hemLift > 0) {
@@ -657,6 +760,13 @@ export function buildELGirl(opt = {}) {
         if (k <= 0) continue;
         const r = Math.hypot(x, z) || 1; pa.setXYZ(i, x + x / r * T.hemLiftOut * k, y + T.hemLift * k, z + z / r * T.hemLiftOut * k + S.swZ);
       }
+      pa.needsUpdate = true; g.computeVertexNormals();
+    }
+    if ((T.swSlide ?? 0) > 0) {   // 肩を片方出す：その側の肩から胸の上を、下へずり落とす（T.swSlide＝ずり落ちる量）
+      const pa = g.attributes.position, sd = T.swOffSide ?? 1, Hs = T.swSlideH ?? 90;
+      for (let i = 0; i < pa.count; i++) { const x = pa.getX(i) * sd, y = pa.getY(i); if (x <= 0) continue;
+        const wx = Math.min(1, x / (T.swSlideW ?? 60)), ex = wx * wx * (3 - 2 * wx), wy = Math.max(0, Math.min(1, (y - (top - Hs)) / Hs)), ey = wy * wy * (3 - 2 * wy);
+        pa.setY(i, y - T.swSlide * ex * ey); }
       pa.needsUpdate = true; g.computeVertexNormals();
     }
     g.setAttribute('aRest', new THREE.BufferAttribute(Float32Array.from(g.attributes.position.array), 3));
@@ -675,11 +785,12 @@ export function buildELGirl(opt = {}) {
       for (const S2 of ['L', 'R']) {
         const ua = J['upperArm' + S2], el = J['elbow' + S2], hd = J['hand' + S2];
         ua.traverse((c) => { if (c.isMesh && c.name !== 'sleeve') c.visible = !!T.swArms; });   // 素肌の腕と手はそでの中
-        const a = new THREE.Mesh(seg(0, L1 / LT, L1), sm); a.name = 'sleeve'; ua.add(a);
-        const b = new THREE.Mesh(seg(L1 / LT, 1, L2), sm); b.name = 'sleeve'; el.add(b);
-        { const ej = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), sm); ej.name = 'sleeve'; ej.scale.setScalar(Math.max(1, rAt(L1 / LT)) * (T.slvElbow ?? 1)); el.add(ej); }   // ひじの玉：曲げてもそでの切れ目が空洞に見えない
-        if (T.slvCuff > 0) { const cf = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), new THREE.MeshBasicMaterial({ color: ID.sweater ?? 0xbe80fc })); cf.name = 'sleeve';
-          cf.scale.set(T.slvCuff, T.slvCuff * T.slvCuffH, T.slvCuff); cf.position.y = T.slvCuffY; hd.add(cf); }
+        const kE = L1 / LT, sL = Math.min(1, T.slvLen ?? 1), u0 = (S2 === ((T.swOffSide ?? 1) > 0 ? 'L' : 'R') ? Math.max(0, T.slvDrop ?? 0) : 0);   // 半袖・肩を出す側のそでは少し下から
+        if (u0 < Math.min(sL, kE)) { const a = new THREE.Mesh(seg(u0, Math.min(sL, kE), L1), sm); a.name = 'sleeve'; a.position.y = -u0 * LT; ua.add(a); }
+        if (sL > kE + 0.01) { const b = new THREE.Mesh(seg(kE, sL, L2), sm); b.name = 'sleeve'; el.add(b);
+          const ej = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), sm); ej.name = 'sleeve'; ej.scale.setScalar(Math.max(1, rAt(kE)) * (T.slvElbow ?? 1)); el.add(ej); }   // ひじの玉：曲げてもそでの切れ目が空洞に見えない
+        if (T.slvCuff > 0 && sL >= 0.99) { const cf = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), new THREE.MeshBasicMaterial({ color: ID.sweater ?? 0xbe80fc })); cf.name = 'sleeve';
+          const hs = hd.scale.x || 1; cf.scale.set(T.slvCuff * hs, T.slvCuff * T.slvCuffH * hs, T.slvCuff * hs); cf.position.set(hd.position.x, hd.position.y + T.slvCuffY * hs, hd.position.z); el.add(cf); }   // そで口の玉は前腕の先に固定（手首を回しても玉だけ動いて、そでの中が見えないように）
       }
     }
     // 4) そで口のふくらみ（正面で裾の左右に出る丸い玉）
@@ -744,8 +855,8 @@ export function buildELGirl(opt = {}) {
     const th = J['thigh' + S]; th.position.x *= T.hipW;
     const sg = S === 'L' ? 1 : -1; th.userData.rest = [0, sg * T.legToe, sg * T.legSpread];   // 立ち姿の脚の開き・つま先の向き（ポーズの土台）
     th.rotation.set(...th.userData.rest);
-    J['upperArm' + S].scale.set(T.armW, T.armL, T.armW);
-    J['hand' + S].scale.set(T.handS / T.armW, T.handS / T.armL, T.handS / T.armW);
+    // 腕の太さ・長さ：関節に倍率をかけると、ひじを曲げたときに前腕がゆがんで細くなる。脚と同じく、形と関節の位置にだけかける
+
   }
   // 水着のすそ（短いスカート状）：胴の殻の腰から下へ広がる筒。skirtLen = 0 ならなし
   if (T.skirtLen > 0.5) {
@@ -764,7 +875,7 @@ export function buildELGirl(opt = {}) {
   // まばたき（0〜1）。閉じきったら弧の目に切り替える
   const setBlink = (v) => { for (const e of J.eyes) { const shut = v > 0.85; e.scale.y = T.eyeScale * (shut ? 1 : Math.max(0.08, 1 - v)); e.children.forEach((c) => { c.visible = c.name === 'closed' ? shut : !shut; }); } };
   const hairR = (yl) => { for (let k = 0; k < profS.length - 1; k++) { const p0 = profS[k], p1 = profS[k + 1]; if ((yl - p0.y) * (yl - p1.y) <= 0 && p0.y !== p1.y) return p0.x + (p1.x - p0.x) * (yl - p0.y) / (p1.y - p0.y); } return 0; };
-  root.userData = { J, live, setBlink, head, ears: head.userData.ears || [], HC: HC.clone(), hairR, T, skirt, strands: STRANDS, bangLine: (Array.isArray(O.bangLine) && O.bangLine.length >= 2 ? O.bangLine : defaultBangLine(O.win)) };
+  root.userData = { bodyA, depth, depthB, J, live, setBlink, head, ears: head.userData.ears || [], HC: HC.clone(), hairR, T, skirt, strands: STRANDS, bangLine: (Array.isArray(O.bangLine) && O.bangLine.length >= 2 ? O.bangLine : defaultBangLine(O.win)) };
   // 服の軽い物理：セーターの下のほうの点をばねでゆらし、脚（もも・すね）に当たったら外へ押し出す。
   //   root.userData.cloth(dt)：dt 秒すすめる（アニメ中は毎コマ）。dt なし／0 なら、ゆれを止めて当たりだけ解く（止め絵用）
   if (J.sweater && J.sweater.userData.grid && T.clothOn !== 0) {
@@ -904,6 +1015,237 @@ export function buildELGirl(opt = {}) {
       write();
     };
   }
+  // ズボンの腰まわり：上のふちは胴（タンクトップ）に、下はももについていく（スキニング）。間は軽いばねでゆれる
+  if (J.pantsHip && T.pantsFx !== 0) {
+    const hp = J.pantsHip, geo = hp.geometry, pa = geo.attributes.position, N = pa.count, base = Float32Array.from(pa.array), top = hp.userData.top, bot = hp.userData.bot;
+    root.updateMatrixWorld(true);
+    const R0 = { spine: J.spine.matrix.clone().invert(), L: J.thighL.matrix.clone().invert(), R: J.thighR.matrix.clone().invert() };
+    const xL = J.thighL.position.x, wS = new Float32Array(N), wT = new Float32Array(N), sd = new Float32Array(N), wJ = new Float32Array(N);
+    const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    for (let i = 0; i < N; i++) { const x = base[i * 3], y = base[i * 3 + 1], u = (top - y) / Math.max(1, top - bot);
+      const zb = base[i * 3 + 2] < 0 ? Math.min(1, -base[i * 3 + 2] / 30) : 0;   // 後ろ（お尻側）ほど早くももについていく（ももを上げたときにお尻で突き出ない）
+      wS[i] = 1 - ss(0.15, 0.6 - 0.3 * zb, u); wT[i] = ss(0.45 - 0.3 * zb, 1 - 0.35 * zb, u); sd[i] = 0.5 + 0.5 * Math.max(-1, Math.min(1, x / Math.max(8, Math.abs(xL) * 0.6))) * Math.sign(xL || 1); wJ[i] = Math.sin(Math.PI * Math.max(0, Math.min(1, u))); }
+    const P = new Float32Array(N * 3), Q = new Float32Array(N * 3), tg = new Float32Array(N * 3);
+    const dS = new THREE.Matrix4(), dL = new THREE.Matrix4(), dR = new THREE.Matrix4(), v = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    let has = false;
+    const pantsFx = (dt) => {
+      dS.multiplyMatrices(J.spine.matrix, R0.spine); dL.multiplyMatrices(J.thighL.matrix, R0.L); dR.multiplyMatrices(J.thighR.matrix, R0.R);
+      const fS = T.pantsFollow ?? 1, fT = T.pantsLegFollow ?? 1;
+      for (let i = 0; i < N; i++) { v.fromArray(base, i * 3);
+        a.copy(v).applyMatrix4(dS); b.copy(v).applyMatrix4(dL); c.copy(v).applyMatrix4(dR); b.multiplyScalar(sd[i]).addScaledVector(c, 1 - sd[i]);
+        const ws = wS[i] * fS, wt = wT[i] * fT, wh = Math.max(0, 1 - ws - wt), sum = ws + wt + wh;
+        v.multiplyScalar(wh / sum).addScaledVector(a, ws / sum).addScaledVector(b, wt / sum); v.toArray(tg, i * 3); }
+      if (!dt || !has) { P.set(tg); Q.set(tg); has = !!dt; }
+      else { const n = Math.max(1, Math.min(4, Math.round(dt * 60))), jg = T.pantsJiggle ?? 0.5, damp = Math.pow(T.pantsDamp ?? 0.65, n), k = 1 - Math.pow(1 - (T.pantsStiff ?? 0.3), n);
+        for (let i = 0; i < N; i++) { const w = wJ[i] * jg; for (let q = 0; q < 3; q++) { const j = i * 3 + q, p = P[j] + (P[j] - Q[j]) * damp, np = p + (tg[j] - p) * k; Q[j] = P[j]; P[j] = tg[j] + (np - tg[j]) * w; } } }
+      for (let i = 0; i < N; i++) pa.setXYZ(i, P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
+      pa.needsUpdate = true; geo.computeBoundingSphere(); };
+    const prev = root.userData.cloth;
+    root.userData.cloth = (dt) => { prev?.(dt); pantsFx(dt); };
+  }
+  // 狐しっぽの物理：しっぽの芯を数個の節に分けて、ばね＋慣性でゆらす（先ほどやわらかく、大きく遅れてついてくる）
+  // ───────── ダボT（ねあねあ）：胴と両そでを 1 枚の布として作り、体と腕に追従させる ─────────
+  //  ・形：首の楕円 → 落ちた肩 → まっすぐなすそ。横幅（teeW）と奥行き（teeD/teeDB）は別々に決める（横から見てもダボっと）
+  //  ・ふち：襟ぐり・そで口・すそは内側へ折り返して厚みを見せる（内側の色）
+  //  ・追従：胴は胸・背骨、肩まわりは腕との距離で腕にも混ぜる（腕を上げると脇がのびる）。そでの付け根は胴に混ぜる
+  //  ・布：すそとそで口だけ、ばね＋長さの拘束で動かし、もも・すねのカプセルから押し出す（脚が突き抜けない）
+  if (BUNNY && O.outfit === 'tee') {
+    const P = Object.assign({ teeTop: 196, teeHem: -30, teeNeckW: 26, teeNeckD: 20, teeW: 76, teeD: 54, teeDB: 48, teeFlare: 1.06, teeSq: 2.6, teeShH: 22, teeGap: 4,
+      teeSlvLen: 0.42, teeSlvR0: 30, teeSlvR1: 33, teeSlvIn: 18, teeBindArm: 30, teeArmBlend: 30, teeRim: 4,
+      teeOff: 0, teeOffSide: 1, teeSlide: 0, teeSlideW: 55, teeSlideH: 70, teeSlvDrop: 0,
+      teeLift: 0, teeLiftW: 80, teeLiftH: 50, teeLiftOut: 8,
+      teePhys: 1, teeFree: 70, teeStiff: 0.35, teeDamp: 5, teeGrav: 0.5, teePad: 6, teeSlvFree: 0.45, teeIter: 3 }, T);
+    const sm3 = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const LTa = (D.upperArm + D.foreArm) * (T.armL ?? 1);
+    // バインド姿勢（腕を teeBindArm 度ひらく）
+    const saveRot = {}; for (const k of ['upperArmL', 'upperArmR', 'elbowL', 'elbowR']) if (J[k]) saveRot[k] = J[k].rotation.clone();
+    const ba = THREE.MathUtils.degToRad(P.teeBindArm); J.upperArmL.rotation.set(0, 0, ba, 'ZXY'); J.upperArmR.rotation.set(0, 0, -ba, 'ZXY'); J.elbowL.rotation.set(0, 0, 0); J.elbowR.rotation.set(0, 0, 0);
+    root.updateMatrixWorld(true);
+    const rootInv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+    const BONES = [J.spine, J.chest || J.spine, J.upperArmL, J.upperArmR];
+    const BIND = BONES.map((b) => new THREE.Matrix4().multiplyMatrices(rootInv, b.matrixWorld));
+    const BINV = BIND.map((m) => m.clone().invert());
+    const vpos = [], W4 = [], INN = [], SH = [], MOB = [], idx = [], edges = [];
+    const v3 = new THREE.Vector3();
+    const shL = new THREE.Vector3().setFromMatrixPosition(BIND[2]), shR = new THREE.Vector3().setFromMatrixPosition(BIND[3]);
+    const elL = new THREE.Vector3(0, -D.upperArm * (T.armL ?? 1), 0).applyMatrix4(BIND[2]), elR = new THREE.Vector3(0, -D.upperArm * (T.armL ?? 1), 0).applyMatrix4(BIND[3]);
+    const segD = (p, a, b) => { const ab = v3.copy(b).sub(a), t = Math.max(-0.5, Math.min(1, p.clone().sub(a).dot(ab) / ab.lengthSq())); return [p.distanceTo(a.clone().addScaledVector(ab, Math.max(0, t))), t]; };
+    const addGrid = (rows, cols, ring, base) => { for (let i = 0; i < rows - 1; i++) for (let j = 0; j < cols; j++) { const j2 = ring ? (j + 1) % cols : j + 1; if (!ring && j === cols - 1) continue;
+        const a = base + i * cols + j, b = base + i * cols + j2, c = base + (i + 1) * cols + j, d = base + (i + 1) * cols + j2; idx.push(a, c, b, b, c, d); edges.push([a, b], [a, c]); if (i === rows - 2) edges.push([c, d]); } return base; };
+    // 1) 胴
+    const NA = 84, top = P.teeTop, hem = P.teeHem, NYm = 50, side = P.teeOffSide >= 0 ? 1 : -1;
+    const shS = shL.clone().applyMatrix4(BINV[0]), Xs = Math.abs(shS.x) + (P.teeShOut ?? 8), ya = shS.y - (P.teeArmpit ?? 34), yg = ya - (P.teeArmGrow ?? 36);   // 肩先の幅・脇の下の高さ（背骨の座標）
+    // 肩を出す側：シャツのその側が、腕にそってずり落ちる（胴の肩まわりとそで全体を、腕の向きに teeOffDist だけ動かす）
+    const shO = side > 0 ? shL : shR, elO = side > 0 ? elL : elR, offDir = elO.clone().sub(shO).normalize(), OD = P.teeOffDist ?? 0, armRO = D.armR0 * (T.armW ?? 1) + 3;
+    const pin = (pts, y, def) => { if (!Array.isArray(pts) || pts.length < 2) return def; const S2 = pts.slice().sort((a, b) => b[1] - a[1]);   // 点の線形補間（上→下）。範囲外は端の値
+      if (y >= S2[0][1]) return S2[0][0]; for (let i = 0; i < S2.length - 1; i++) { const a = S2[i], b = S2[i + 1]; if (y >= b[1]) { const k = (y - a[1]) / (b[1] - a[1] || 1), e3 = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e3; } } return S2[S2.length - 1][0]; };
+    if (UND_U && UND_U.uTY && (P.teeSideFill ?? 1) > 0) { UND_U.uTY.value = ya + (P.teeSideFillY ?? 8); UND_U.uTH.value = hem + 2; UND_U.uTC.value.set(ID.sweater ?? ID.hair); }   // 脇の下から下の体は服の色（肩は肌）
+    root.userData.teeInfo = { top, hem, ya, yg, Xs, side, nW: P.teeNeckW, offDir: offDir.clone(), armLen: D.upperArm * (T.armL ?? 1), LTa };
+    const fold = (th, yy) => 0.62 * Math.sin(4 * th + 1.3 + 0.004 * yy) + 0.38 * Math.sin(7 * th + 0.4 - 0.006 * yy);   // 布のしわ（縦のひだ）
+    const rowsY = []; for (let i = 0; i <= NYm; i++) rowsY.push(top - (top - hem) * Math.pow(i / NYm, 1.15));
+    const torsoRows = [];   // [y, inner]
+    torsoRows.push([top - P.teeRim * 0.9, 1, P.teeRim]); for (const y of rowsY) torsoRows.push([y, 0, 0]); torsoRows.push([hem + P.teeRim, 1, P.teeRim]);
+    const tBase = vpos.length / 3;
+    for (let r = 0; r < torsoRows.length; r++) { const [yRow, inner, rim] = torsoRows[r]; const yy = inner ? (r === 0 ? top : hem) : yRow;
+      const t = Math.max(0, Math.min(1, (top - yy) / P.teeShH)), e = 1 - (1 - t) * (1 - t), e2 = 1 - Math.pow(1 - Math.min(1, t / 1.6), 2);
+      const sL = Math.max(0, Math.min(1, (ya - yy) / Math.max(1, ya - hem)));   // 0＝脇の下 → 1＝すそ
+      const mW = 1 + ((P.teeWaist ?? 1) - 1) * Math.sin(Math.PI * Math.min(1, sL / 0.95)) + (P.teeFlare - 1) * sL * sL;   // シルエット：胸 → 少しくびれ → すそへ広がる
+      const fa = (P.teeFold ?? 0) * sm3(ya + 10, hem, yy) * (0.6 + 0.6 * sL);   // しわの深さ（下ほど深い）
+      for (let j = 0; j < NA; j++) { const th = (j / NA) * Math.PI * 2, s = Math.sin(th), c = Math.cos(th), onOff = s * side > 0 ? Math.pow(Math.abs(s), 0.8) : 0;
+        const nW = P.teeNeckW * (1 + P.teeOff * onOff), Xu = nW + (Xs - nW) * e, usePts = Array.isArray(P.teePts) && P.teePts.length >= 2;
+        const X = usePts ? Xu + (pin(P.teePts, yy, P.teeW) - Xu) * sm3(ya, yg, yy) : (Xu + (Math.max(Xs, P.teeW) - Xu) * sm3(ya, yg, yy)) * mW;
+        const Zt = c > 0 ? (P.teeNeckD + (P.teeD - P.teeNeckD) * e2) : (P.teeNeckD * 0.9 + (P.teeDB - P.teeNeckD * 0.9) * e2), dP = c > 0 ? P.teeDPts : P.teeBPts;
+        const Z = Array.isArray(dP) && dP.length >= 2 ? Zt + (pin(dP, yy, Zt) - Zt) * sm3(top - P.teeShH * 0.6, top - P.teeShH * 1.6, yy) : Zt * (1 + (mW - 1) * 0.7);
+        const q = 2 / P.teeSq; let x = X * Math.sign(s) * Math.pow(Math.abs(s), q), z = Z * Math.sign(c) * Math.pow(Math.abs(c), q), y = yRow;
+        const fv = fold(th, yy); let shade = 0;
+        if (fa > 0) { const rr = Math.hypot(x, z) || 1; x += x / rr * fa * fv; z += z / rr * fa * fv; const ramp = sm3(ya - 10, hem + 6, yy); shade = (-fv) * ramp > 0.42 ? 1 : 0; }   // しわのへこみは影色
+        if (Math.abs(s) > 0.8 && yy < ya + 6 && yy > yg - 40) shade = Math.max(shade, sm3(0.8, 0.97, Math.abs(s)) * sm3(yg - 40, yg, yy) * (1 - sm3(ya - 6, ya + 6, yy)));   // わきの下の影
+        const A = yy > -14 && yy < 236 ? bodyA(yy) : 0; if (A > 0) { const B = depth(yy, A), k = Math.hypot(x / (A + P.teeGap), z / (B + P.teeGap)); if (k < 1 && k > 1e-4) { x /= k; z /= k; } }   // 体より内側に入らない
+        if (inner) { const rr = Math.hypot(x, z) || 1, sh = Math.max(0.6, 1 - rim / rr); x *= sh; z *= sh; shade = 0; }
+        if (c > 0 && (P.teeDip ?? 0) > 0) y -= P.teeDip * Math.pow(c, 3) * sm3(top - P.teeShH * 0.9, top, yy);   // 前の襟ぐりを少し下げる（クルーネックの U）
+        if (c < 0 && (P.teeDipB ?? 0) > 0) y -= P.teeDipB * Math.pow(-c, 3) * sm3(top - P.teeShH * 0.9, top, yy);
+        if ((P.teeHemWave ?? 0) > 0) y += P.teeHemWave * fv * sm3(hem + 24, hem, yy);   // すそのゆらぎ（まっすぐすぎない）
+        if (P.teeLift > 0 && c < 0) { let d = Math.atan2(s, -c); const Wl = P.teeLiftW * Math.PI / 180, wa = Math.abs(d) >= Wl ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * d / Wl), u = sm3(hem + P.teeLiftH, hem, yy), k2 = wa * u;   // 後ろのすそをしっぽの所でめくる
+          if (k2 > 0) { const rr = Math.hypot(x, z) || 1; y += P.teeLift * k2; x += x / rr * P.teeLiftOut * k2; z += z / rr * P.teeLiftOut * k2; } }
+        const p = new THREE.Vector3(x, y, z).applyMatrix4(BIND[0]);
+        if (OD > 0 && x * side > 0) { const f = sm3(P.teeNeckW * 0.25, Xs * 0.95, x * side) * sm3(yg - 30, ya + 24, yy); if (f > 0) { p.addScaledVector(offDir, OD * f);   // ずり落ち
+            const [d, tt] = segD(p, shO, elO); if (d < armRO && tt > (P.teeOffCap ?? 0.15)) { const ab = elO.clone().sub(shO), cp = shO.clone().addScaledVector(ab, Math.max(0, Math.min(1, tt))), dv = p.clone().sub(cp); if (dv.lengthSq() > 1e-6) p.copy(cp.addScaledVector(dv.normalize(), armRO)); } } }   // 二の腕にめりこまない
+        vpos.push(p.x, p.y, p.z); INN.push(inner); SH.push(P.teeShade ? shade : 0);
+        // 重み：腕の近くは腕へ、上のほうは胸へ
+        let wArm = [0, 0]; for (const [k, a, b] of [[0, shL, elL], [1, shR, elR]]) { const [d, tt] = segD(p, a, b); wArm[k] = (1 - sm3(P.teeSlvR0 * 0.7, P.teeSlvR0 * 0.7 + P.teeArmBlend, d)) * sm3(-0.45, -0.1, tt) * sm3(P.teeNeckW * 0.8, P.teeNeckW * 1.8, Math.abs(x)) * sm3(yg, ya + 10, yy) * (P.teeArmMax ?? 0.9); }
+        const wc = sm3(80, 150, yy), rest = 1 - Math.min(1, wArm[0] + wArm[1]); W4.push(rest * (1 - wc), rest * wc, wArm[0], wArm[1]);
+        MOB.push(sm3(hem + P.teeFree, hem, yy)); }
+    }
+    addGrid(torsoRows.length, NA, true, tBase);
+    // 2) そで（腕の向きにのびる筒。付け根は胴の中から始める。肩を出す側はそでごと腕にそって下へずれる）
+    for (const [bi, S2] of [[2, 'L'], [3, 'R']]) {
+      const off = (S2 === 'L' ? 1 : -1) === side ? OD : 0, a0 = P.teeSlvIn - off, L = P.teeSlvLen * LTa + off, NS = 24, NC = 44;
+      const sBase = vpos.length / 3, rows = []; rows.push([a0 - P.teeRim, 1]); for (let i = 0; i <= NS; i++) rows.push([a0 + (-L - a0) * i / NS, 0]); rows.push([-L + P.teeRim, 1]);
+      for (const [a, inner] of rows) { const u = Math.max(0, Math.min(1, -(a + off) / (L - off))), R = (P.teeSlvR0 + (P.teeSlvR1 - P.teeSlvR0) * u) - (inner ? P.teeRim : 0);
+        for (let j = 0; j < NC; j++) { const th = (j / NC) * Math.PI * 2, fv = 0.6 * Math.sin(3 * th + 0.7 + a * 0.05) + 0.4 * Math.sin(5 * th + 2.0), amp = inner ? 0 : (P.teeFold ?? 0) * 0.45 * u, RR = R + amp * fv;
+          const yA = a + (inner ? 0 : (P.teeHemWave ?? 0) * 0.4 * fv * sm3(-L + 14, -L, a)), p = new THREE.Vector3(RR * Math.cos(th), yA, -RR * Math.sin(th)).applyMatrix4(BIND[bi]); vpos.push(p.x, p.y, p.z); INN.push(inner);
+          SH.push(inner || !P.teeShade ? 0 : sm3(0.2, 0.6, -fv) * sm3(0.1, 0.5, u) * ((P.teeFold ?? 0) > 0 ? 1 : 0));
+          const w = sm3(6 - off, -22 - off, a); W4.push(0, 1 - w, bi === 2 ? w : 0, bi === 3 ? w : 0); MOB.push(sm3(-L * 0.45, -L, a) * P.teeSlvFree); } }
+      addGrid(rows.length, NC, true, sBase);
+    }
+    for (const k in saveRot) J[k].rotation.copy(saveRot[k]); root.updateMatrixWorld(true);
+    const N = vpos.length / 3, bindP = Float32Array.from(vpos);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(Float32Array.from(vpos), 3)); g.setAttribute('aIn', new THREE.Float32BufferAttribute(INN, 1)); g.setAttribute('aSh', new THREE.Float32BufferAttribute(SH, 1)); g.setIndex(idx);
+    const inC = new THREE.Color(ID.sweaterIn ?? 0x5cbf9d), f = (v) => Number(v).toFixed(4);
+    const tm = new THREE.MeshBasicMaterial({ color: ID.sweater ?? ID.hair, side: THREE.DoubleSide });
+    const shC = ID.sweaterSh != null ? new THREE.Color(ID.sweaterSh) : new THREE.Color(ID.sweater ?? ID.hair).lerp(inC, 0.55);   // しわ・わきの影の色
+    tm.onBeforeCompile = (sh) => { sh.vertexShader = 'attribute float aIn; attribute float aSh; varying float vIn; varying float vSh;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vIn = aIn; vSh = aSh;');
+      sh.fragmentShader = 'varying float vIn; varying float vSh;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>\n if (vSh > 0.5) diffuseColor.rgb = vec3(${f(shC.r)}, ${f(shC.g)}, ${f(shC.b)});\n if (vIn > 0.5 || !gl_FrontFacing) diffuseColor.rgb = vec3(${f(inC.r)}, ${f(inC.g)}, ${f(inC.b)});`); };
+    tm.customProgramCacheKey = () => 'tee2-' + inC.getHexString() + shC.getHexString();
+    const tee = new THREE.Mesh(g, tm); tee.name = 'tee'; tee.frustumCulled = false; root.add(tee); J.tee = tee;
+    // 首元の大きなジッパー：服の前のまん中の列（j＝0）にそって、テープ・歯・引き手を貼る。毎フレーム服の形に合わせる
+    let zipUpdate = null;
+    if ((P.teeZip ?? 0) > 0) {
+      const zr = []; for (let r = 1; r < torsoRows.length - 1; r++) { if (torsoRows[r][0] < top - (P.teeZipLen ?? 70)) break; zr.push(tBase + r * NA); }
+      const zm = (c) => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
+      const tapeG = new THREE.BufferGeometry(), nT = zr.length; tapeG.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(nT * 2 * 3), 3));
+      const ti = []; for (let i = 0; i < nT - 1; i++) { const a = i * 2; ti.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } tapeG.setIndex(ti);
+      const teethG = new THREE.BufferGeometry(); teethG.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(nT * 4 * 3), 3));
+      const tti = []; for (let i = 0; i < nT; i++) { const a = i * 4; tti.push(a, a + 1, a + 2, a, a + 2, a + 3); } teethG.setIndex(tti);
+      const quad = () => { const q = new THREE.BufferGeometry(); q.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(12), 3)); q.setIndex([0, 1, 2, 0, 2, 3]); return q; };
+      const slB = quad(), slG = quad(), puB = quad(), puG = quad(), hoG = quad(), metal = ID.zip ?? 0xd9dee4, teethC = ID.zipTeeth ?? new THREE.Color(metal).multiplyScalar(0.82).getHex(), dark = ID.zipTape ?? ID.tie ?? 0x262b3a;
+      const parts = [[tapeG, dark], [teethG, teethC], [slB, dark], [slG, metal], [puB, dark], [puG, metal], [hoG, dark]].map(([gg, c], k) => { const m = new THREE.Mesh(gg, zm(c)); m.frustumCulled = false; m.renderOrder = 2 + k; root.add(m); return m; });
+      J.zip = parts;
+      const A = new THREE.Vector3(), Vd = new THREE.Vector3(), Nn = new THREE.Vector3(), C0 = new THREE.Vector3(), tmp = new THREE.Vector3();
+      const at = (i) => tmp.set(X[i * 3], X[i * 3 + 1], X[i * 3 + 2]);
+      const frame = (k) => { const i = zr[k]; C0.copy(at(i)); A.copy(at(i + 1)).sub(at(i + NA - 1)).normalize(); const up = zr[Math.max(0, k - 1)], dn = zr[Math.min(nT - 1, k + 1)]; Vd.copy(at(dn)).sub(at(up)); if (Vd.lengthSq() < 1e-6) Vd.set(0, -1, 0); Vd.normalize(); Nn.crossVectors(Vd, A).normalize(); };
+      const put = (arr, o, c, ax, ay, off) => { arr[o] = c.x + A.x * ax + Vd.x * ay + Nn.x * off; arr[o + 1] = c.y + A.y * ax + Vd.y * ay + Nn.y * off; arr[o + 2] = c.z + A.z * ax + Vd.z * ay + Nn.z * off; };
+      const s0 = P.teeZipScale ?? 1;
+      const rect = (gg, c, x0, x1, y0, y1, off) => { const p = gg.attributes.position.array; put(p, 0, c, x0, y0, off); put(p, 3, c, x1, y0, off); put(p, 6, c, x1, y1, off); put(p, 9, c, x0, y1, off); gg.attributes.position.needsUpdate = true; };
+      zipUpdate = () => { const tp = tapeG.attributes.position.array, th2 = teethG.attributes.position.array, w = 4.2 * s0;
+        for (let k = 0; k < nT; k++) { frame(k); const c = C0.clone();
+          put(tp, k * 6, c, -w, 0, 0.9); put(tp, k * 6 + 3, c, w, 0, 0.9);
+          const sg = k % 2 ? 1 : -1, o = k * 12; put(th2, o, c, sg * 0.2 - 1.9 * s0, -1.1 * s0, 1.5); put(th2, o + 3, c, sg * 0.2 + 1.9 * s0, -1.1 * s0, 1.5); put(th2, o + 6, c, sg * 0.2 + 1.9 * s0, 1.1 * s0, 1.5); put(th2, o + 9, c, sg * 0.2 - 1.9 * s0, 1.1 * s0, 1.5); }
+        tapeG.attributes.position.needsUpdate = true; teethG.attributes.position.needsUpdate = true;
+        const kz = Math.min(nT - 1, Math.max(0, Math.round((P.teeZipPull ?? 0) * (nT - 1)))); frame(kz); const c = C0.clone();   // 引き手の位置（0＝上 〜 1＝下）
+        const b = 1.1;   // 縁どり（濃い色）で引き手を目立たせる
+        rect(slB, c, -5.4 * s0 - b, 5.4 * s0 + b, -2.4 * s0 - b, 6.4 * s0 + b, 2.0); rect(slG, c, -5.4 * s0, 5.4 * s0, -2.4 * s0, 6.4 * s0, 2.3);
+        rect(puB, c, -4 * s0 - b, 4 * s0 + b, 4.6 * s0, 22 * s0 + b, 2.6); rect(puG, c, -4 * s0, 4 * s0, 5.2 * s0, 22 * s0, 2.9); rect(hoG, c, -1.4 * s0, 1.4 * s0, 15 * s0, 19.5 * s0, 3.2); };
+    }
+    // 毎フレーム：スキニング → 布
+    const K = BONES.map(() => new THREE.Matrix4()), gInv = new THREE.Matrix4(), S = new Float32Array(N * 3), X = new Float32Array(N * 3), V = new Float32Array(N * 3), pa = g.attributes.position;
+    const EL = edges.map(([a, b]) => [a, b]), q = new THREE.Vector3(); let has = false;
+    const skin = () => { root.updateMatrixWorld(true); gInv.copy(root.matrixWorld).invert(); BONES.forEach((b, i) => K[i].multiplyMatrices(gInv, b.matrixWorld).multiply(BINV[i]));
+      const e = K.map((m) => m.elements);
+      for (let i = 0; i < N; i++) { const x = bindP[i * 3], y = bindP[i * 3 + 1], z = bindP[i * 3 + 2]; let ox = 0, oy = 0, oz = 0;
+        for (let k = 0; k < 4; k++) { const w = W4[i * 4 + k]; if (!w) continue; const m = e[k]; ox += w * (m[0] * x + m[4] * y + m[8] * z + m[12]); oy += w * (m[1] * x + m[5] * y + m[9] * z + m[13]); oz += w * (m[2] * x + m[6] * y + m[10] * z + m[14]); }
+        S[i * 3] = ox; S[i * 3 + 1] = oy; S[i * 3 + 2] = oz; } };
+    const caps = () => { const out = []; const w = (o) => new THREE.Vector3().setFromMatrixPosition(o.matrixWorld).applyMatrix4(gInv);
+      for (const s2 of ['L', 'R']) { const a = w(J['thigh' + s2]), b = w(J['knee' + s2]), c2 = w(J['foot' + s2]); out.push([a, b, D.legR0 * (T.legW ?? 1) + P.teePad], [b, c2, D.legR1 * (T.legW ?? 1) + P.teePad]); } return out; };
+    const pushOut = (i, C) => { for (const [a, b, r] of C) { const abx = b.x - a.x, aby = b.y - a.y, abz = b.z - a.z, L2 = abx * abx + aby * aby + abz * abz || 1;
+        const px = X[i * 3] - a.x, py = X[i * 3 + 1] - a.y, pz = X[i * 3 + 2] - a.z, t = Math.max(0, Math.min(1, (px * abx + py * aby + pz * abz) / L2));
+        const dx = px - abx * t, dy = py - aby * t, dz = pz - abz * t, d = Math.hypot(dx, dy, dz); if (d < r && d > 1e-4) { const k = r / d; X[i * 3] = a.x + abx * t + dx * k; X[i * 3 + 1] = a.y + aby * t + dy * k; X[i * 3 + 2] = a.z + abz * t + dz * k; } } };
+    const step = (dt) => {
+      skin();
+      if (!dt || !has || !P.teePhys) { X.set(S); V.fill(0); has = !!dt; }
+      else { const C = caps(), n = Math.max(1, Math.ceil(Math.min(0.1, dt) / (1 / 120))), h = Math.min(0.1, dt) / n;
+        for (let st = 0; st < n; st++) {
+          for (let i = 0; i < N; i++) { const m = MOB[i]; if (m <= 0.001) { X[i * 3] = S[i * 3]; X[i * 3 + 1] = S[i * 3 + 1]; X[i * 3 + 2] = S[i * 3 + 2]; V[i * 3] = V[i * 3 + 1] = V[i * 3 + 2] = 0; continue; }
+            const kS = (1 - m) * 400 + m * 400 * P.teeStiff * P.teeStiff, dmp = P.teeDamp;
+            for (let a = 0; a < 3; a++) { const j = i * 3 + a; V[j] += ((S[j] - X[j]) * kS - V[j] * dmp) * h; } V[i * 3 + 1] -= P.teeGrav * 600 * m * h;
+            X[i * 3] += V[i * 3] * h; X[i * 3 + 1] += V[i * 3 + 1] * h; X[i * 3 + 2] += V[i * 3 + 2] * h; }
+          for (let it = 0; it < P.teeIter; it++) for (const [a, b] of EL) { const ma = MOB[a], mb = MOB[b]; if (ma <= 0.001 && mb <= 0.001) continue;   // 布の長さを保つ（のびすぎない）
+            const rx = S[b * 3] - S[a * 3], ry = S[b * 3 + 1] - S[a * 3 + 1], rz = S[b * 3 + 2] - S[a * 3 + 2], rl = Math.hypot(rx, ry, rz);
+            const dx = X[b * 3] - X[a * 3], dy = X[b * 3 + 1] - X[a * 3 + 1], dz = X[b * 3 + 2] - X[a * 3 + 2], dl = Math.hypot(dx, dy, dz) || 1, wa = ma, wb = mb, ws = wa + wb; if (ws <= 0) continue;
+            const c = (dl - rl) / dl / ws; X[a * 3] += dx * c * wa; X[a * 3 + 1] += dy * c * wa; X[a * 3 + 2] += dz * c * wa; X[b * 3] -= dx * c * wb; X[b * 3 + 1] -= dy * c * wb; X[b * 3 + 2] -= dz * c * wb; }
+          for (let i = 0; i < N; i++) if (MOB[i] > 0.001) pushOut(i, C);   // もも・すねから押し出す
+        } }
+      pa.array.set(X); pa.needsUpdate = true; zipUpdate?.(); };
+    step(0);
+    const prevT = root.userData.cloth; root.userData.cloth = (dt) => { prevT?.(dt); step(dt || 0); };
+    root.userData.teeStep = step;
+  }
+  const foxFx = (tl, TT) => {
+    const T = TT, geo0 = null;
+    const geo = tl.geometry, pa = geo.attributes.position, N = pa.count, base = Float32Array.from(pa.array), at = geo.attributes.aT.array, crv = tl.userData.curve;
+    // しっぽの動き（アニメの「フォロースルー／オーバーラップ」の考え方）：
+    //  ・付け根は動かさない。節ごとに少しずつ曲げ、先へいくほど大きく・遅れて動く（波が根元→先へ伝わる）
+    //  ・振り：左右に S 字の波、上下に小さく 8 の字。体の動きには、ばねの遅れで先ほど大きく後からついてくる
+    const K = 10, C = [], DIR = [], AX = [], X = [], V = [], RW = [];
+    for (let k = 0; k <= K; k++) { C.push(crv.getPointAt(k / K)); X.push(new THREE.Vector3()); V.push(new THREE.Vector3()); RW.push(new THREE.Vector3()); }
+    const LAT = new THREE.Vector3(1, 0, 0);
+    for (let k = 0; k < K; k++) { const d = C[k + 1].clone().sub(C[k]); DIR.push(d); AX.push(new THREE.Vector3().crossVectors(d, LAT).normalize()); }
+    const PW = [], RQ = []; for (let k = 0; k <= K; k++) { PW.push(new THREE.Vector3()); RQ.push(new THREE.Quaternion()); }
+    const qa = new THREE.Quaternion(), qb = new THREE.Quaternion(), inv = new THREE.Matrix4(), off = [], sm = []; for (let k = 0; k <= K; k++) { off.push(new THREE.Vector3()); sm.push(new THREE.Vector3()); }
+    const g0 = new THREE.Vector3(), g1 = new THREE.Vector3(), acc = new THREE.Vector3(); let has = false, clock = 0;
+    const tailFx = (dt) => {
+      if (dt) clock += Math.min(0.1, dt);
+      // 1) 振り（付け根は 0。先の節ほど大きく、位相が遅れる）
+      const A = (T.tailWag ?? 0.6) * 1.1 / K, ph = 2 * Math.PI * (T.tailWagHz ?? 0.8) * clock, lag = T.tailWagLag ?? 2.4, upA = (T.tailWagUp ?? 0.25) * A, on = dt ? 1 : 0;
+      PW[0].copy(C[0]); RQ[0].identity();
+      for (let k = 0; k < K; k++) { const u = (k + 0.5) / K, amp = A * on * Math.pow(u, 0.6) * 1.6;
+        const th = amp * Math.sin(ph - lag * u), ps = upA * on * Math.pow(u, 0.6) * Math.sin(2 * ph - lag * u * 1.3 + 0.9);
+        qa.setFromAxisAngle(AX[k], th); qb.setFromAxisAngle(LAT, ps); RQ[k + 1].copy(RQ[k]).multiply(qa).multiply(qb);
+        PW[k + 1].copy(DIR[k]).applyQuaternion(RQ[k + 1]).add(PW[k]); }
+      // 2) 体の動きへの遅れ（ばね）。目標は振ったあとの形
+      tl.updateMatrixWorld(true); for (let k = 0; k <= K; k++) RW[k].copy(PW[k]).applyMatrix4(tl.matrixWorld);
+      if (!dt || !has) { for (let k = 0; k <= K; k++) { X[k].copy(RW[k]); V[k].set(0, 0, 0); } has = !!dt; }
+      else if (T.tailFx !== 0) {
+        const f0 = T.tailFreq ?? 2.2, z = Math.max(0.05, Math.min(1.2, T.tailZeta ?? 0.35)), grav = T.tailGrav ?? 0.6, steps = Math.max(1, Math.ceil(Math.min(0.1, dt) / (1 / 120))), h = Math.min(0.1, dt) / steps;
+        for (let st = 0; st < steps; st++) for (let k = 1; k <= K; k++) { const u = k / K, w = 2 * Math.PI * f0 * (1.5 - 0.8 * u);
+          acc.subVectors(RW[k], X[k]).multiplyScalar(w * w).addScaledVector(V[k], -2 * z * w); acc.y -= grav * 60 * u;
+          V[k].addScaledVector(acc, h); X[k].addScaledVector(V[k], h); }
+      }
+      inv.copy(tl.matrixWorld).invert(); const amp2 = T.tailSwing ?? 1.6;
+      for (let k = 0; k <= K; k++) off[k].copy(X[k]).applyMatrix4(inv).sub(PW[k]).multiplyScalar(amp2 * Math.pow(k / K, 1.5));   // 付け根の近くはほとんど動かない
+      for (let k = 0; k <= K; k++) { sm[k].copy(off[k]); if (k > 0 && k < K) sm[k].multiplyScalar(0.5).addScaledVector(off[k - 1], 0.25).addScaledVector(off[k + 1], 0.25); }
+      const lim = (T.tailMax ?? 140); for (let k = 0; k <= K; k++) if (sm[k].length() > lim) sm[k].setLength(lim);
+      // 3) 頂点：節の回転で断面ごと回して、遅れのずれを足す
+      for (let i = 0; i < N; i++) { const f = Math.min(K - 1e-4, at[i] * K), k = Math.floor(f), w = f - k, e = w * w * (3 - 2 * w);
+        g0.fromArray(base, i * 3).sub(C[k]).applyQuaternion(RQ[k]).add(PW[k]).add(sm[k]);
+        g1.fromArray(base, i * 3).sub(C[k + 1]).applyQuaternion(RQ[k + 1]).add(PW[k + 1]).add(sm[k + 1]);
+        g0.lerp(g1, e); pa.setXYZ(i, g0.x, g0.y, g0.z); }
+      pa.needsUpdate = true; geo.computeBoundingSphere(); };
+    const prev2 = root.userData.cloth;
+    root.userData.cloth = (dt) => { prev2?.(dt); tailFx(dt); };
+  };
+  if (J.tail && J.tail.userData.fox) foxFx(J.tail, T);
+  if (J.pony) foxFx(J.pony, { tailWag: 0, tailFreq: T.ponyFreq ?? 1.9, tailZeta: T.ponyZeta ?? 0.32, tailGrav: T.ponyGrav ?? 0.5, tailSwing: T.ponySwing ?? 1.3, tailMax: T.ponyMax ?? 70 });
   return root;
 }
 
@@ -1054,7 +1396,7 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
     else ear.absarc(0, 66, 10.5, Math.PI, 0, true);                                   // 先は丸く
     if (!FOX && O.earTip !== 'oval') { ear.bezierCurveTo(13, 50, 14, 25, 11, 0); ear.closePath(); }
     // 形を細かく：半幅を「根元→いちばん太い所→先の近く→先」でつないだ外形（長さ 96）。先のとがり・先の左右ずれ・全体の反り
-    if (T.earShapeOn && !FOX) {
+    if (T.earShapeOn) {   // 狐耳（FOX）でも点の形を使える
       const H = 96, b0 = T.earBaseW ?? 11, mW = T.earMaxW ?? 15, mY = Math.min(0.8, Math.max(0.1, T.earMaxY ?? 0.45)), tW = T.earTopW ?? 10, tY = 0.86, p = 0.5 + 0.5 * (T.earTipSharp ?? 0);
       const cs = (a, b, k) => a + (b - a) * (0.5 - 0.5 * Math.cos(Math.PI * Math.max(0, Math.min(1, k))));
       const hw = (u) => u <= mY ? cs(b0, mW, u / mY) : u <= tY ? cs(mW, tW, (u - mY) / (tY - mY)) : tW * Math.pow(Math.max(0, (1 - u) / (1 - tY)), p);
@@ -1104,13 +1446,13 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
       const e = new THREE.Group(); (head.userData.ears ??= []).push(e); e.userData.side = s; e.position.set(HC.x + s * T.earX, earY - (T.earX - 26) * 0.45 + (T.earRootY ?? 0), HC.z - 6 + (T.earRootZ ?? 0)); /* earRootZ：根元の前後（＋で前）、earRootY：根元の高さ */ e.rotation.set(-T.earBack, s * T.earYaw, -s * T.earSpread); e.scale.set(O.earScale * T.earW, T.earLen, 1); head.add(e);
       let eMat = earOut;
       if (FOX && ID.earTip != null) {   // 先だけ濃い色
-        eMat = new THREE.MeshBasicMaterial({ color: ID[earOut], side: THREE.DoubleSide }); const U = { uTY: { value: 57 * (1 - T.earTipLen) }, uTC: { value: new THREE.Color(ID.earTip) } };
+        eMat = new THREE.MeshBasicMaterial({ color: ID[earOut], side: THREE.DoubleSide }); const EYM = Math.max(...ear.getPoints(24).map((p) => p.y)); const U = { uTY: { value: EYM * (1 - T.earTipLen) }, uTC: { value: new THREE.Color(ID.earTip) } };
         eMat.onBeforeCompile = (sh) => { Object.assign(sh.uniforms, U);
           sh.vertexShader = 'varying vec3 vE;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vE = position;');
           sh.fragmentShader = 'varying vec3 vE; uniform float uTY; uniform vec3 uTC;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n if (vE.y > uTY - 0.25 * abs(vE.x)) diffuseColor.rgb = uTC;'); };
         eMat.customProgramCacheKey = () => 'earTip';
       }
-      if (T.earCup > 0 && !FOX) {   // 丸めた耳（T.earCup>0）：幅方向に「とい」のように曲げた殻。横・斜めから見ても幅と白い内側が見える
+      if (T.earCup > 0 && (!FOX || T.earShapeOn)) {   // 丸めた耳（T.earCup>0）：幅方向に「とい」のように曲げた殻。横・斜めから見ても幅と白い内側が見える
         const earS = T.earShapeOn && s < 0 ? new THREE.Shape(ear.getPoints(1).map((p) => new THREE.Vector2(-p.x, p.y)).reverse()) : ear;   // 左の耳は左右反転（先のずれが外向きになるように）
         e.add(mesh(earShell(earS, 1, 0, T.earThick, s, false), eMat));
         if (O.earColor !== 'hair' || O.earInner) e.add(mesh(earShell(earS, 0.62 * T.earInW, 1.2, 0, s, true), mats.earInCup ??= new THREE.MeshBasicMaterial({ color: ID[O.earInner ? 'earIn' : 'peach'], side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4 })));
@@ -1128,8 +1470,6 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
   { // 口：主線なしの小さな「D」形（上はゆるいカーブ、下は丸い）。頂点ひとつずつを顔の表面に貼りつけるので、横から見ても浮かない
     const my = T.mouthY, SX = 4.3 * T.mouthS, SY = 5.2 * T.mouthS;
     const mo = new THREE.Group(); mo.visible = false; head.add(mo); J.mouth = mo;
-    // 口の開き具合（sx・sy＝ふつうを 1 とした倍率）。口のまん中を中心に大きくする（Shiashia3D・ShiashiaSeated が使う）
-    mo.userData.open = (sx = 1, sy = 1) => { mo.scale.set(sx, sy, 1); mo.position.set(0, my * (1 - sy), 0); };
     const dShape = (k) => { const sh = new THREE.Shape(); sh.moveTo(-k, 0.28 * k); sh.quadraticCurveTo(0, 0.42 * k, k, 0.28 * k); sh.bezierCurveTo(k, -0.55 * k, 0.55 * k, -1.0 * k, 0, -1.0 * k); sh.bezierCurveTo(-0.55 * k, -1.0 * k, -k, -0.55 * k, -k, 0.28 * k); return new THREE.ShapeGeometry(sh, 20); };
     const onFace = (g, lift) => { const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i) * SX, y = my + p.getY(i) * SY; p.setXYZ(i, x, y, fz(x, y) + lift); } p.needsUpdate = true; g.computeBoundingSphere(); return g; };
     const inC = new THREE.Color(ID.mouthIn ?? ID.mouth ?? 0xe58a96);

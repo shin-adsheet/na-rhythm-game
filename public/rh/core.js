@@ -142,7 +142,7 @@ export function applyPose(c, Pz, t) {
   c.shadow.position.set(0, -c.g.position.y * 0 + 1, 0); c.shadow.parent === c.root || c.root.add(c.shadow);
   c.earAdd = Pz.ear || 0; earTwitch(c, t);
   c.g.userData.setBlink?.(Pz.eyes != null ? Pz.eyes : blinkAt(c, t));
-  if (J.mouth) J.mouth.visible = !!Pz.mouth;
+  if (J.mouth) J.mouth.visible = c.name !== 'shia' && !!Pz.mouth;   // しあしあは口を出さない
   const dt = c.lastT != null && t - c.lastT > 0 && t - c.lastT < 0.2 ? t - c.lastT : 0; c.lastT = t;
   // 服・髪・しっぽのゆれ（重い）。CLOTH.mode：'full'＝ゆらす／'thin'＝主役だけ、ときどき／'off'＝ゆらさない
   // 'thin'：主役（しあしあ・きあきあ）は every コマに 1 回だけ（たまった時間ぶんまとめて）ゆらす。ちびキャラ・脇役はゆらさない

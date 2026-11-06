@@ -1,7 +1,7 @@
 import { pixelRatioCap } from '../utils/perf';
 import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { makeRig, restAll } from './Shiashia3D';
+import { makeRig, restAll, fixArms } from './Shiashia3D';
 
 /**
  * タイトル画面のしあしあ：シャギーの丸いラグの上で、座り方を変えながら約 39 秒の「お話」を演じる（くり返し）
@@ -562,6 +562,7 @@ const ShiashiaSeated: React.FC<Props> = ({ size = 260, onPoke, onBeat, onGrab, o
       J.upperArmR?.rotation.set(D2(-pose.armR[0] - twArmR * 30), 0, D2(-pose.armR[1] + waveZ * kickOn + shrug - twArmR * 20), 'ZXY');
       if (J.elbowL) J.elbowL.rotation.x += D2(pose.elbowL - Math.max(0, twArmL) * 40);
       if (J.elbowR) J.elbowR.rotation.x += D2(pose.elbowR + (cur.pose === 'wave' ? waveZ * 0.6 * kickOn : 0) - Math.max(0, twArmR) * 40);
+      fixArms(rig);
       if (J.spine) { J.spine.rotation.x += D2(pose.spine[0] + breathe * 1.2 - twBody * 8 + curious * 6 * (1 - lying)); J.spine.rotation.y += D2(pose.spine[1]); J.spine.rotation.z += D2(pose.spine[2] + shake); }
       if (J.head) {
         const free = 1 - H;          // つままれている間は、首の細かい動きを止める

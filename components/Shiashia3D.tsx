@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { buildELGirl } from './shia/model.js';
 import { SHIA_CONFIG } from './shia/shia-config';
+import { measure, naturalArms } from './shia/joints.js';
 import { buildELGirl as buildKia } from './kia/model.js';
 import { KIA_CONFIG } from './kia/kia-config';
 
@@ -64,6 +65,8 @@ export interface Rig {
   baseY: number;
   mouthS: number;
   side: number;            // 1 = しあしあ、-1 = コラボ相手（動きを左右反転）
+  /** ひじの向きを直すための体の寸法（joints.js。しあしあだけ） */
+  jc?: any;
 }
 
 export function makeRig(colors?: Record<string, number>, side = 1, character: Character = 'shia'): Rig {
@@ -74,6 +77,15 @@ export function makeRig(colors?: Record<string, number>, side = 1, character: Ch
   if (character === 'kia') g.scale.setScalar(0.86);
   const J: Record<string, any> = g.userData.J || {};
   const rig: Rig = { g, J, setBlink: g.userData.setBlink, baseY: 0, mouthS: cfg.t?.mouthS ?? 1, side };
+  if (character !== 'kia' && J.shoulderL && J.elbowL && J.handL && J.chest) {
+    // MV と同じ「関節の直し」：手の位置はそのままで、ひじを外・下・少しうしろへ（袖が丸いかたまりに見えないように）
+    try {
+      rig.jc = { J, g, root: g, name: 'shia' };
+      measure(rig.jc, () => { restAll(rig); J.upperArmL.rotation.set(0, 0, D2(22), 'ZXY'); J.upperArmR?.rotation.set(0, 0, D2(-22), 'ZXY'); });
+    } catch { rig.jc = undefined; }
+  }
+  // しあしあは口を出さない（顔は目だけ）
+  if (character !== 'kia' && J.mouth) { J.mouth.parent?.remove(J.mouth); delete J.mouth; }
   restAll(rig);
   J.upperArmL?.rotation.set(0, 0, D2(22), 'ZXY');
   J.upperArmR?.rotation.set(0, 0, D2(-22), 'ZXY');
@@ -81,6 +93,25 @@ export function makeRig(colors?: Record<string, number>, side = 1, character: Ch
   rig.baseY = -new THREE.Box3().setFromObject(g).min.y;
   g.position.y = rig.baseY;
   return rig;
+}
+const R2D = 180 / Math.PI;
+/** 今の腕の角度を、ひじが自然な向きになるように直す（手の位置は変えない）。腕の角度を決めたあと、描く前に呼ぶ */
+export function fixArms(r: Rig) {
+  const c = r.jc; if (!c) return;
+  const J = r.J, P: Record<string, number[]> = {};
+  for (const s of ['L', 'R']) {
+    const u = J['upperArm' + s], e = J['elbow' + s]; if (!u || !e) return;
+    const e0 = (e.userData.rest as number[] | undefined) || [0, 0, 0];
+    P['upperArm' + s] = [u.rotation.x * R2D, u.rotation.y * R2D, u.rotation.z * R2D];
+    P['elbow' + s] = [(e.rotation.x - e0[0]) * R2D, (e.rotation.y - e0[1]) * R2D, (e.rotation.z - e0[2]) * R2D];
+  }
+  naturalArms(c, P);
+  for (const s of ['L', 'R']) {
+    const u = J['upperArm' + s], e = J['elbow' + s], a = P['upperArm' + s], b = P['elbow' + s];
+    const e0 = (e.userData.rest as number[] | undefined) || [0, 0, 0];
+    u.rotation.set(D2(a[0]), D2(a[1]), D2(a[2]), 'ZXY');
+    e.rotation.set(e0[0] + D2(b[0]), e0[1] + D2(b[1]), e0[2] + D2(b[2]));
+  }
 }
 export function restAll(r: Rig) {
   for (const k in r.J) { const o = r.J[k]; if (o?.isObject3D) o.rotation.set(...((o.userData.rest as [number, number, number]) || [0, 0, 0])); }
@@ -391,6 +422,7 @@ const Shiashia3D: React.FC<Props> = ({
       rigs.forEach((r, i) => {
         if (i > 0 && !r.g.visible) return;
         const { spinY, tiltZ } = pose(r, time, beat, i === 0 ? hitPulse : hitPulse * 0.6, i === 0 ? pokePulse : 0);
+        fixArms(r);
         r.g.rotation.set(0, D2(spinY * r.side + (i > 0 ? -12 : wantPair ? 12 : 0)), D2(tiltZ * r.side));
         r.g.updateMatrixWorld(true);
         r.g.userData.cloth?.(dt);

@@ -9,13 +9,15 @@ const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const _eu = new THREE.Euler(), _mx = new THREE.Matrix4(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new V3();
 export const JOINTS = { get on() { return (typeof window === 'undefined' || window.RH_JOINTFIX !== false); } };
 
+// 口の位置：口の形は頂点を顔に貼ってあり、グループの原点は頭の中心なので、形の中心で測る
+function mouthAt(mo, loc, inv) { const bb = new THREE.Box3().setFromObject(mo); return bb.isEmpty() ? loc(mo) : bb.getCenter(new V3()).applyMatrix4(inv); }
 // ── 体の目じるし（胸のローカル座標）。キャラごとに一度だけ、休みのポーズで測る ──
 export function measure(c, rawApply) {
   if (c._lm) return c._lm;
   const J = c.J; rawApply(c); c.root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(J.chest.matrixWorld).invert(), loc = (o) => new V3().setFromMatrixPosition(o.matrixWorld).applyMatrix4(inv);
   const eyes = []; c.g.traverse((o) => { if (o.userData.isEye && o.visible) eyes.push(loc(o)); }); eyes.sort((a, b) => a.y - b.y);
-  const e0 = eyes[0] || new V3(30, 150, 60), mo = J.mouth ? loc(J.mouth) : new V3(0, e0.y - 45, e0.z), sh = J.shoulderL.position;
+  const e0 = eyes[0] || new V3(30, 150, 60), mo = J.mouth ? mouthAt(J.mouth, loc, inv) : new V3(0, e0.y - 45, e0.z), sh = J.shoulderL.position;
   const ms = []; J.head.traverse((o) => { if (o.isMesh && o.visible) ms.push(o); });
   const cw = J.chest.matrixWorld, ctr = new V3(0, e0.y + 10, e0.z - 45), rc = new THREE.Raycaster();
   const ray = (d, off = new V3()) => { const o = ctr.clone().add(off).addScaledVector(d, 700).applyMatrix4(cw); rc.set(o, d.clone().negate().transformDirection(cw)); const h = rc.intersectObjects(ms, false)[0]; return h ? h.point.clone().applyMatrix4(inv).sub(ctr.clone().add(off)).dot(d) : 80; };
