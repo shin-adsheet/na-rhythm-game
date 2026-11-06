@@ -5,6 +5,8 @@ import { fmtSubs } from '../utils/economy';
 import { achievementById } from '../utils/achievements';
 import { ENDINGS } from '../utils/endings';
 import ShareBox from './ShareBox';
+import { rankOf } from '../utils/shareCard';
+import { Challenge } from '../utils/challenge';
 
 interface Props {
   run: RunStats;
@@ -20,18 +22,21 @@ interface Props {
   /** このプレイのズレ（中央値・ms。プラス＝遅い）。8 回以上ヒットしたときだけ */
   timing?: { ms: number; n: number } | null;
   onApplyTiming?: (ms: number) => void;
+  /** エンディングを何個見たか（シェア画像に出す） */
+  endSeen: number;
+  endTotal: number;
+  /** 受け取った挑戦状 */
+  vs?: Challenge | null;
 }
 
 /** 結果画面（登録者のカウントアップ・ランク・実績・ランキング・共有） */
-const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNewRecord, newlyIds, highScores, onTitle, onRetry, onBook, timing, onApplyTiming }) => {
+const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNewRecord, newlyIds, highScores, onTitle, onRetry, onBook, timing, onApplyTiming, endSeen, endTotal, vs }) => {
     const [applied, setApplied] = React.useState(false);
     const show = (ms: number) => revealT >= ms;
     const countK = Math.min(1, Math.max(0, (revealT - 900) / 1500));
     const shownSubs = Math.round(run.subs * (1 - Math.pow(1 - countK, 3)));
     const ratio = run.subs / run.quota;
-    const pRate = run.hits > 0 ? run.perfect / run.hits : 0;
-    const bad = run.ban || run.cutoff;
-    const rank = bad ? 'D' : ratio >= 2 && pRate >= 0.7 ? 'S' : ratio >= 1 ? 'A' : ratio >= 0.6 ? 'B' : ratio >= 0.3 ? 'C' : 'D';
+    const rank = rankOf(run);
     const rankColor = rank === 'S' ? 'text-amber-400' : rank === 'A' ? 'text-pink-500' : rank === 'B' ? 'text-sky-500' : 'text-slate-500';
     const newly = newlyIds.map((id) => achievementById(id)).filter(Boolean);
     const Row = ({ k, v, at }: { k: string; v: React.ReactNode; at: number }) => (
@@ -62,6 +67,25 @@ const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNe
               <p className="text-sm md:text-xl font-black text-red-500 bg-yellow-200 px-5 py-2 rounded-full border-4 border-white shadow-lg">{ending.oneLiner}</p>
             </div>
           )}
+
+          {show(2400) && (
+            <button onClick={() => document.getElementById('na-share')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+              className="animate-[pop_0.3s] mb-4 px-5 py-2 rounded-full bg-slate-900 text-white font-black text-sm border-4 border-white shadow-lg active:scale-95 transition-transform">
+              結果を画像つきでシェアする ↓
+            </button>
+          )}
+          {vs && show(2500) && (() => {
+            const win = run.subs > vs.s, draw = run.subs === vs.s, same = vs.m === run.mode && vs.d === run.difficulty;
+            return (
+              <div className={`animate-[pop_0.3s] mb-8 w-full max-w-md rounded-2xl border-4 border-white shadow-lg px-4 py-3 text-white ${win ? 'bg-red-500' : draw ? 'bg-amber-500' : 'bg-slate-600'}`}>
+                <div className="text-[11px] font-bold text-white/80">{vs.n || 'だれか'}からの挑戦状（登録者 {fmtSubs(vs.s)}人・ランク{vs.r}）</div>
+                <div className="font-black text-2xl md:text-3xl leading-tight">{win ? '勝利！' : draw ? '引き分け' : '敗北…'}
+                  <span className="text-base md:text-lg ml-2">{win ? `+${fmtSubs(run.subs - vs.s)}人` : draw ? 'まったく同じ！' : `あと${fmtSubs(vs.s - run.subs)}人`}</span></div>
+                {!same && <div className="text-[10px] font-bold text-white/80 mt-0.5">相手は{MODE_LABEL[vs.m]}・{DIFF_LABEL[vs.d]}なので参考記録</div>}
+                <div className="text-[11px] font-bold text-white/90 mt-1">{win ? '勝ったことを伝えて、次の挑戦状を送り返そう' : 'もういちどで、リベンジしよう'}</div>
+              </div>
+            );
+          })()}
 
           <div className="flex flex-col md:flex-row gap-5 items-center md:items-start w-full justify-center">
             <div className="relative bg-white/85 backdrop-blur-md p-5 md:p-7 rounded-[2.5rem] border-8 border-yellow-300 shadow-xl flex flex-col items-center gap-1.5 w-full max-w-sm">
@@ -135,7 +159,7 @@ const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNe
               {Math.abs(timing.ms) > 15 && <div className="text-[11px] text-slate-500 mt-1 leading-snug">いつも同じ向きにズレるなら、補正すると判定が音楽に合います（設定の「タイミング補正」でも直せます）。</div>}
             </div>
           )}
-          {show(2400) && <ShareBox run={run} ending={ending} rank={rank} />}
+          {show(2400) && <ShareBox run={run} ending={ending} rank={rank} endSeen={endSeen} endTotal={endTotal} vs={vs} />}
 
           <div className="mt-7 flex flex-col sm:flex-row gap-3 items-center">
             <button onClick={onTitle} className="bg-white text-slate-600 font-black px-7 py-3 rounded-full border-4 border-slate-200 shadow">タイトルへ</button>

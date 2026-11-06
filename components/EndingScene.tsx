@@ -3,6 +3,7 @@ import { Ending } from '../types';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import { RARITY_LABEL } from '../utils/naEffects';
 import { startEndingSfx, EndingSfx } from '../utils/endingSfx';
+import { requestShot } from '../utils/shareShot';
 
 interface Props {
   ending: Ending;
@@ -347,8 +348,9 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
     const t0 = Date.now();
     const iv = setInterval(() => setElapsed(Date.now() - t0), 80);
     const done = setTimeout(onDone, ending.durationMs + 1200);
+    const snap = setTimeout(() => requestShot('ending'), Math.min(4200, Math.max(1600, ending.durationMs * 0.45)));   // シェア画像用の名場面
     sfxRef.current = startEndingSfx(ending.scene, ending.durationMs, volume, audioCtx);
-    return () => { clearInterval(iv); clearTimeout(done); sfxRef.current?.stop(); sfxRef.current = null; };
+    return () => { clearInterval(iv); clearTimeout(done); clearTimeout(snap); sfxRef.current?.stop(); sfxRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ending.id]);
 
@@ -904,11 +906,11 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
       {ending.short ? (
         <div className="absolute left-0 right-0 bottom-[9%] flex items-end justify-center gap-1 sm:gap-6 px-2 pointer-events-none">
           <div className="shrink-0 flex justify-center items-end" style={{ width: propW, minHeight: 10 }}>{prop}</div>
-          <div className="shrink-0"><Shiashia3D mood={mood} intensity={0.4} size={smallChar} /></div>
+          <div className="shrink-0"><Shiashia3D mood={mood} intensity={0.4} size={smallChar} snap="ending" /></div>
         </div>
       ) : ending.scene === 'mirror' ? (
         <div className="absolute left-0 right-0 bottom-[6%] flex items-end justify-center pointer-events-none">
-          <Shiashia3D mood="dance" intensity={0.6} size={mirrorSize} />
+          <Shiashia3D mood="dance" intensity={0.6} size={mirrorSize} snap="ending" />
           <div style={{ transform: 'scaleX(-1)' }}>
             <Shiashia3D mood="dance" intensity={0.5} size={mirrorSize} colors={{ hair: 0x94a3b8, hairIn: 0x64748b, sweater: 0xcbd5e1, sweaterIn: 0x94a3b8, tail: 0x94a3b8 }} />
           </div>
@@ -916,7 +918,7 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
       ) : (
         <div className="absolute left-0 right-0 bottom-[6%] flex justify-center pointer-events-none">
           <div className={charClass} style={charStyle}>
-            <Shiashia3D mood={mood} intensity={0.6} size={charSize} />
+            <Shiashia3D mood={mood} intensity={0.6} size={charSize} snap="ending" />
           </div>
         </div>
       )}

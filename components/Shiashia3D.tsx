@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { buildELGirl } from './shia/model.js';
 import { SHIA_CONFIG } from './shia/shia-config';
 import { measure, naturalArms } from './shia/joints.js';
+import { ShotKind, takeShot } from '../utils/shareShot';
 import { buildELGirl as buildKia } from './kia/model.js';
 import { KIA_CONFIG } from './kia/kia-config';
 
@@ -43,6 +44,8 @@ interface Props {
   character?: Character;
   /** 見えていない間は動かさない（描かないので軽い） */
   paused?: boolean;
+  /** シェア画像用に、頼まれたらこの画面を撮る */
+  snap?: ShotKind;
 }
 
 /** 昔の「しあしあの色違い」きあきあの色（今は本物のきあきあモデルを使う。e2e のスタブ用に残す） */
@@ -118,13 +121,14 @@ export function restAll(r: Rig) {
 }
 
 const Shiashia3D: React.FC<Props> = ({
-  getBeat, hitRef, mood = 'dance', intensity = 0, size = 260, className = '', onPoke, colors, partner = false, withPartner = false, character = 'shia', paused = false,
+  getBeat, hitRef, mood = 'dance', intensity = 0, size = 260, className = '', onPoke, colors, partner = false, withPartner = false, character = 'shia', paused = false, snap,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const moodRef = useRef<ShiashiaMood>(mood as ShiashiaMood);
   const intensityRef = useRef(intensity);
   const partnerRef = useRef(partner);
   const pausedRef = useRef(paused); pausedRef.current = paused;
+  const snapRef = useRef(snap); snapRef.current = snap;
   const getBeatRef = useRef(getBeat);
   const pokeTimeRef = useRef(0);
   const moodSince = useRef(performance.now());
@@ -182,6 +186,12 @@ const Shiashia3D: React.FC<Props> = ({
         J.upperArmL?.rotation.set(D2(-fwdL), 0, D2(spread), 'ZXY');
         J.upperArmR?.rotation.set(D2(-fwdR), 0, D2(-spread), 'ZXY');
       };
+      /** 腕を向き（外・上・前、肩から見た向き）で決める。ZXY の角度に直す */
+      const armDir = (k: 'L' | 'R', dx: number, dy: number, dz: number) => {
+        const l = Math.hypot(dx, dy, dz) || 1; dx /= l; dy /= l; dz /= l;
+        const f = Math.asin(Math.max(-1, Math.min(1, dz))), b = Math.atan2(dx, -dy);
+        J['upperArm' + k]?.rotation.set(-f, 0, k === 'L' ? b : -b, 'ZXY');
+      };
       const inten = intensityRef.current;
       const m = moodRef.current;
       const mt = (performance.now() - moodSince.current) / 1000;     // この動きになってからの秒
@@ -205,7 +215,13 @@ const Shiashia3D: React.FC<Props> = ({
           }
           const e = easeOutBack(tIn8);
           const fL = lerp(armState.fromL, armState.toL, e), fR = lerp(armState.fromR, armState.toR, e);
-          if (s === 1) armsFwd(fL, fR, 10 + 4 * Math.sin(time * 3)); else armsFwd(fR, fL, 10 + 4 * Math.sin(time * 3));
+          // 前へ伸ばした手を交互に上下。上の手は「前・上・外」へ（そで口の玉が顔の前に来ないように）
+          const upK = (f: number) => clamp01((f - 90 + swing) / (2 * swing));
+          const dirAt = (k: number): [number, number, number] => [lerp(0.28, 0.62, k), lerp(-0.72, 0.5, k), lerp(0.62, 0.6, k)];
+          const wob = 0.04 * Math.sin(time * 3);
+          const [aL, aR] = s === 1 ? [fL, fR] : [fR, fL];
+          const dL = dirAt(upK(aL)), dR = dirAt(upK(aR));
+          armDir('L', dL[0] + wob, dL[1], dL[2]); armDir('R', dR[0] + wob, dR[1], dR[2]);
           add('elbowL', -8); add('elbowR', -8);
           add('hips', 8); add('spine', 14 + 5 * (1 - bounce) * (1 + inten)); add('chest', 4);
           add('head', -12 + 6 * (1 - bounce), 0, (idx % 2 ? -1 : 1) * 5 * s);
@@ -428,6 +444,7 @@ const Shiashia3D: React.FC<Props> = ({
         r.g.userData.cloth?.(dt);
       });
       renderer.render(scene, camera);
+      if (snapRef.current) takeShot(snapRef.current, renderer.domElement);     // 描いた直後でないと中身が読めない
     };
     animate();
 

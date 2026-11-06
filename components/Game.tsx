@@ -35,6 +35,8 @@ import AchievementToasts, { ToastItem } from './AchievementToast';
 import EndingScene from './EndingScene';
 import { loadRH } from '../utils/rhLoader';
 import ResultScreen from './ResultScreen';
+import { Challenge, readChallengeFromUrl } from '../utils/challenge';
+import { clearShots, requestShot } from '../utils/shareShot';
 import CollectionBook from './CollectionBook';
 
 /* ============================================================
@@ -160,6 +162,8 @@ const Game: React.FC = () => {
   const gameStateRef = useRef<GameState>('READY');
   gameStateRef.current = gameState;
   const [mode, setMode] = useState<GameMode>('30s');
+  /** シェアされたリンクから届いた挑戦状 */
+  const [vsChal, setVsChal] = useState<Challenge | null>(() => readChallengeFromUrl());
   const [settings, setSettingsState] = useState<Settings>(() => loadJSON(LS_KEYS.settings, DEFAULT_SETTINGS));
   const setSettings = (p: Partial<Settings>) => setSettingsState((s) => { const n = { ...s, ...p }; saveJSON(LS_KEYS.settings, n); return n; });
   const [offsets, setOffsetsState] = useState<Offsets>(() => loadJSON(LS_KEYS.offsets, { mic: null, tap: null } as Offsets));
@@ -536,6 +540,7 @@ const Game: React.FC = () => {
     buzzUntilRef.current = t + BUZZ_EIGHTHS * EIGHTH;
     flagsRef.current.buzz = true;
     setBuzz(true);
+    requestShot('play');      // シェア画像用：バズった瞬間のしあしあ
     runRef.current.buzzes++;
     setViewersV(VIEWERS.buzzReset);
     showJudge('バズった！ 登録者2倍', 'text-amber-500');
@@ -813,6 +818,7 @@ const Game: React.FC = () => {
     if (!p) return;
     const ch = buildChart(mode, settingsRef.current.difficulty || 'normal');
     chartRef.current = ch;
+    clearShots(); window.setTimeout(() => { if (gameStateRef.current === 'PLAYING') requestShot('play'); }, 7000);
     // 10 秒は入門なので画面チェンジなし
     scheduleRef.current = buildStyleSchedule(ch.endT, settingsRef.current.arcade !== false && mode !== '10s');
     const forcedStyle = (window as any).__forceStyle as TrackStyle | undefined;      // テスト用：画面を固定
@@ -1371,6 +1377,27 @@ const Game: React.FC = () => {
     const sceneSize = isMobile ? Math.round(Math.min(330, vp.w - 40, vp.h * 0.3)) : 340;
     return (
       <div className="w-full h-full overflow-y-auto overflow-x-hidden relative z-10" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        {vsChal && (
+          <div className="px-4">
+          <div className="relative w-full max-w-md mx-auto mt-4 md:mt-6 bg-slate-900 text-white rounded-2xl p-3 border-4 border-white shadow-[0_4px_0_rgba(0,0,0,0.12)] -rotate-1">
+            <div className="absolute -top-3 left-3 bg-red-500 text-white text-[11px] font-black px-3 py-0.5 rounded-full border-2 border-white rotate-[-3deg]">挑戦状が届いています</div>
+            <div className="mt-1 text-sm font-black">{vsChal.n || 'だれか'}からの挑戦状</div>
+            <div className="flex items-end gap-2 mt-0.5">
+              <span className="text-3xl font-black text-yellow-300 leading-none">{fmtSubs(vsChal.s)}<span className="text-base">人</span></span>
+              <span className="text-xs font-bold text-white/70 pb-0.5">ランク{vsChal.r}・{MODE_LABEL[vsChal.m]}・{DIFF_LABEL[vsChal.d]}</span>
+            </div>
+            <div className="text-xs font-bold text-white/85 mt-1">この記録を超えろ！ 結果画面で勝ち負けが出ます</div>
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => { setMode(vsChal.m); setSettings({ difficulty: vsChal.d }); }}
+                className={`flex-1 py-1.5 rounded-xl font-black text-sm transition-all ${mode === vsChal.m && difficulty === vsChal.d ? 'bg-emerald-400 text-slate-900' : 'bg-yellow-300 text-slate-900 shadow-[0_3px_0_#ca8a04] active:translate-y-0.5 active:shadow-none'}`}>
+                {mode === vsChal.m && difficulty === vsChal.d ? '同じ条件になっています' : '同じ条件にする'}
+              </button>
+              <button onClick={() => { setVsChal(null); try { const u = new URL(window.location.href); u.searchParams.delete('vs'); window.history.replaceState(null, '', u.toString()); } catch { /* noop */ } }}
+                className="shrink-0 px-3 py-1.5 rounded-xl font-bold text-xs bg-white/15 text-white/80">とじる</button>
+            </div>
+          </div>
+          </div>
+        )}
         <div className="min-h-full w-full max-w-5xl mx-auto px-4 py-5 md:py-8 grid md:grid-cols-2 gap-4 md:gap-8 items-center">
           {/* 左：タイトルと、椅子のしあしあ */}
           <div className="flex flex-col items-center text-center min-w-0">
@@ -1755,7 +1782,8 @@ const Game: React.FC = () => {
             onApplyTiming={(ms) => { const k = runRef.current.input; setOffset(k, Math.round((effOffset(k) + ms / 1000) * 1000) / 1000); dtsRef.current = []; }}
             onTitle={() => setGameState('READY')}
             onRetry={async () => { prepareSong(); if (input === 'mic' && !(await ensureMic())) return; setGameState('RULES'); }}
-            onBook={() => setShowBook(true)} />
+            onBook={() => setShowBook(true)}
+            endSeen={countSeen(seenEndings)} endTotal={TOTAL_ENDINGS} vs={vsChal} />
         );
     }
   };
@@ -1795,7 +1823,7 @@ const Game: React.FC = () => {
             visibility: playing && trackStyle === 'heaven' && !atCut ? 'hidden' : undefined,
           }}>
           <Shiashia3D getBeat={getBeat} hitRef={hitRef} mood={stageMood} intensity={Math.min(1, combo / 40)} size={stageSize}
-            onPoke={handlePoke} withPartner partner={atCut && cutIn?.event === 'collab'} paused={playing && trackStyle === 'heaven' && !atCut} />
+            onPoke={handlePoke} withPartner partner={atCut && cutIn?.event === 'collab'} paused={playing && trackStyle === 'heaven' && !atCut} snap="play" />
         </div>
       )}
 
