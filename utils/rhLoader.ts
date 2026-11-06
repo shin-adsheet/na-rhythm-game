@@ -13,7 +13,7 @@ export interface RHEngine {
   canvas: HTMLCanvasElement;
   SIZE: { W: number; H: number };
   TITLES: Record<string, string>;
-  drawGame: (name: string, b: number, t: number, opt?: { into?: number; fail?: number; failWho?: 'shia' | 'kia'; failAge?: number; keep?: number; punch?: number; shake?: number }) => void;
+  drawGame: (name: string, b: number, t: number, opt?: { into?: number; fail?: number; failWho?: 'shia' | 'kia'; failAge?: number; keep?: number; simple?: boolean; punch?: number; shake?: number }) => void;
   hideAll: () => void;
   warm?: (name: string) => void;
 }

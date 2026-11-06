@@ -43,6 +43,11 @@ function solid3D(col) { X.drawImage(silOf(R.domElement, col), 0, 0, W, H); }
 function pass([layer, k], col) { cam.layers.set(layer); R.render(scene, cam); if (k > 0) outlined(col, k); else drawTinted(); cam.layers.set(0); }
 
 let last = null;
+// かんたん背景の色（空・床）。ゲームごとの元の雰囲気に合わせた 2 色
+const SIMPLE_BG = {
+  milk: ['#ffe9c9', '#e8c39a'], click: ['#3b3f8f', '#2a2d66'], juggle: ['#ffc9a3', '#9fd47e'], count: ['#d9f6e6', '#e2b07c'],
+  band: ['#2a2160', '#4745b4'], puddle: ['#9fb3d9', '#5d6a86'], march: ['#bfe6ff', '#9be08a'], plane: ['#7fd0ff', '#86d08a'], flame: ['#1e2660', '#2d3a5a'], night: ['#4b4f9a', '#6b5a8a'],
+};
 // まねできなかったとき：まねする役が「がくっ」（前に崩れて、ひざが落ちて、首をふる）。ゲームのポーズの上にかぶせる
 const FAIL = { spine: [38, 0, -6], head: [30, 0, 10], thighL: [-30, 0, 0], thighR: [-30, 0, 0], kneeL: [60, 0, 0], kneeR: [60, 0, 0],
   upperArmL: [-10, 0, 12], upperArmR: [-10, 0, -12], elbowL: [-20, 0, 0], elbowR: [-20, 0, 0], eyes: 1, mouth: 1, sq: 0.1, lift: 0 };
@@ -51,6 +56,7 @@ const headW = new THREE.Vector3();
  * ゲーム name を、そのゲームの中の拍 b・時刻 t（秒）で 1 コマ描く。
  * opt.into：このゲームが始まってからの秒（入りのズームと白い光）。opt.fail：まちがえたときの「ズッ」とした色
  * opt.failWho：失敗したときに「がくっ」とする役（'shia'／'kia'）。opt.failAge：失敗してからの拍
+ * opt.simple：かんたん背景（空と床の 2 色だけ。軽い）
  * opt.keep：縦長の画面で、横の見える幅をどれだけ残すか（1＝16:9 と同じ。ないときはおまかせ）
  */
 export function drawGame(name, b, t, opt = {}) {
@@ -77,7 +83,17 @@ export function drawGame(name, b, t, opt = {}) {
   const S = styleFor(seg, b, b, t, g);
   g.silFg = S.sil ? S.sil.fg : null;
   const line = (g.bg && g.bg.line) || '#1b1830';
-  if (S.sil) {   // シルエット：背景はベタのグラデ、3D と生きものは 1 色
+  if (opt.simple) {
+    // かんたん背景（軽い）：背景の絵・家具・生きもの・手前の飾り・画面の加工は描かない。空と床の 2 色だけ＋キャラと小物
+    const [sky, floor] = SIMPLE_BG[name] || ['#e9e4ff', '#cfc6f5'];
+    const gy = clamp(FX.project([0, 0, 0])[1], -H, H * 2);
+    X.fillStyle = sky; X.fillRect(-100, -100, W + 200, H + 200);
+    if (gy < H + 100) { X.fillStyle = floor; X.fillRect(-100, gy, W + 200, H - gy + 200); X.fillStyle = 'rgba(27,24,48,0.18)'; X.fillRect(-100, gy - 2, W + 200, 4); }
+    TINT3 = null;
+    cam.layers.set(0); R.render(scene, cam);
+    { const s = silOf(R.domElement, line); for (const [dx, dy] of DIRS) X.drawImage(s, dx, dy, W, H); X.drawImage(R.domElement, 0, 0, W, H); }
+    if (g.fx) FX.drawFxList(X, g.fx);
+  } else if (S.sil) {   // シルエット：背景はベタのグラデ、3D と生きものは 1 色
     const gr = X.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, S.sil.bg[0]); gr.addColorStop(1, S.sil.bg[1]); X.fillStyle = gr; X.fillRect(-100, -100, W + 200, H + 200);
     if (g.speed) FX.speedLines(X, g.speed.k, S.sil.fg + '66', g.speed.dir, Math.floor(t * 12));
     TINT3 = null; cam.layers.set(0); R.render(scene, cam); solid3D(S.sil.fg); if (g.frontPass) { cam.layers.set(g.frontPass[0]); R.render(scene, cam); solid3D(S.sil.fg); cam.layers.set(0); }
@@ -97,12 +113,12 @@ export function drawGame(name, b, t, opt = {}) {
     if (g.fx) FX.drawFxList(X, g.fx);
   }
   X.restore();
-  applyPost(X, S, t, b);
+  if (!opt.simple) applyPost(X, S, t, b);
   if (opt.fail > 0) { X.save(); X.globalCompositeOperation = 'multiply'; X.globalAlpha = 0.35 * opt.fail; X.fillStyle = '#7a86b8'; X.fillRect(0, 0, W, H); X.restore(); }
   // 切り替えの光
   if (into >= 0 && into < 0.12) { X.fillStyle = `rgba(255,255,255,${0.55 * (1 - into / 0.12)})`; X.fillRect(0, 0, W, H); }
 }
 export function hideAll() { activate('__none__'); last = null; }
 /** 前もって 1 回ずつ描いておく（はじめて出たときの 3D の準備で止まらないように）。手があいているときに 1 ゲームずつ呼ぶ */
-export function warm(name) { try { drawGame(name, 0.5, 0.5, { into: 9 }); } catch (e) { console.warn(e); } hideAll(); }
+export function warm(name) { try { drawGame(name, 0.5, 0.5, { into: 9, simple: true }); } catch (e) { console.warn(e); } hideAll(); }
 

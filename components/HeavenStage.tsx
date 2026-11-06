@@ -115,7 +115,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
         const interval = Math.min(66, Math.max(32, drawCost * 2.4));
         if (now - lastDraw > interval) {
           lastDraw = now;
-          try { E.drawGame(win.game, Math.max(0, lb) * def.spd + def.off, t, { into, fail, failWho: def.who, failAge: ago / BEAT * def.spd, keep: def.keep }); } catch (e) { console.warn(e); }
+          try { E.drawGame(win.game, Math.max(0, lb) * def.spd + def.off, t, { into, fail, failWho: def.who, failAge: ago / BEAT * def.spd, keep: def.keep, simple: true }); } catch (e) { console.warn(e); }
           drawCost = drawCost * 0.85 + (performance.now() - now) * 0.15;
         }
       } else {
