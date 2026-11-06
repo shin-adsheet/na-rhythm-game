@@ -124,6 +124,7 @@ export function keys(K, b) {
   for (let i = 0; i < K.length - 1; i++) { const [b0, p0] = K[i], [b1, p1, e] = K[i + 1]; if (b <= b1) return mix(p0, p1, (E[e] || E.io)((b - b0) / (b1 - b0))); }
   return K[K.length - 1][1];
 }
+export const CLOTH = { mode: 'full', every: 1 };
 export function applyPose(c, Pz, t) {
   const J = c.J, fix = JOINTS.on && !Pz._raw;
   if (fix) { if (!c._lm) measure(c, (cc) => applyPose(cc, { ...base(cc), _raw: 1 }, cc.lastT ?? 0)); Pz = naturalArms(c, { ...Pz }); }   // ひじの向き・頭よけ（joints.js）
@@ -143,7 +144,10 @@ export function applyPose(c, Pz, t) {
   c.g.userData.setBlink?.(Pz.eyes != null ? Pz.eyes : blinkAt(c, t));
   if (J.mouth) J.mouth.visible = !!Pz.mouth;
   const dt = c.lastT != null && t - c.lastT > 0 && t - c.lastT < 0.2 ? t - c.lastT : 0; c.lastT = t;
-  c.g.userData.cloth?.(dt);
+  // 服・髪・しっぽのゆれ（重い）。CLOTH.mode：'full'＝ゆらす／'thin'＝主役だけ、ときどき／'off'＝ゆらさない
+  // 'thin'：主役（しあしあ・きあきあ）は every コマに 1 回だけ（たまった時間ぶんまとめて）ゆらす。ちびキャラ・脇役はゆらさない
+  if (CLOTH.mode === 'full') c.g.userData.cloth?.(dt);
+  else if (CLOTH.mode === 'thin' && c.isMain) { c._clothN = (c._clothN || 0) + 1; c._clothDt = (c._clothDt || 0) + dt; if (c._clothN % CLOTH.every === 0) { c.g.userData.cloth?.(Math.min(0.1, c._clothDt)); c._clothDt = 0; } }
 }
 // 手に小物を持たせる（手のローカル座標。腕を下ろした状態で −y が指先側）
 export function hold(c, side, obj, pos = [0, -40, 10], rot = [0, 0, 0]) {

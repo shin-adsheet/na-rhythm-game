@@ -3,6 +3,10 @@
 // 使い方：window.__RH = { W, H, beat } を決めてから import する → drawGame(name, b, t)
 import { R, scene, cam, W, H, SC, PW, PHt, clamp, VIEW, base, mix, add, THREE } from './core.js';
 import { G, activate, evWindow, SH, KI } from './games.js';
+import { CLOTH } from './core.js';
+export { CLOTH };
+// ゲームの中では、服・髪・しっぽのゆれの計算をしない（いちばん重い所。止めても見た目はほとんど変わらない）
+CLOTH.mode = 'off';
 import * as FX from './fx2d.js';
 import { styleFor, applyPost } from './post.js';
 import { drawCritters } from './critters.js';
@@ -25,7 +29,8 @@ function drawFx(g, t) {
 // ───────── ふちどり（3D のまわりに太い線）─────────
 // OC（ふちどり用）は実際のピクセルの大きさ。中では拡大縮小せずに描き、X へは W×H として貼る
 const OC = document.createElement('canvas'); OC.width = PW; OC.height = PHt; const OX = OC.getContext('2d');
-const DIRS = [[3, 0], [-3, 0], [0, 3], [0, -3], [2, 2], [-2, 2], [2, -2], [-2, -2], [4, 1], [-4, 1], [1, 4], [1, -4]];
+// ふちどりを重ねる向き（8 方向。12 方向から減らして軽く。見た目はほぼ同じ）
+const DIRS = [[3, 0], [-3, 0], [0, 3], [0, -3], [2, 2], [-2, 2], [2, -2], [-2, -2]];
 let TINT3 = null;
 function drawTinted() {
   if (!TINT3 || !(TINT3[1] > 0)) { X.drawImage(R.domElement, 0, 0, W, H); return; }
