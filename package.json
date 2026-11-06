@@ -11,7 +11,8 @@
   "dependencies": {
     "react-dom": "^19.2.0",
     "react": "^19.2.0",
-    "three": "^0.170.0"
+    "three": "^0.170.0",
+    "html-to-image": "^1.11.13"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

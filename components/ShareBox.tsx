@@ -3,7 +3,7 @@ import { Ending, RunStats } from '../types';
 import { fmtSubs } from '../utils/economy';
 import { Challenge, challengeUrl, cleanName, loadShareName, saveShareName, xWeight } from '../utils/challenge';
 import { drawShareCard, canvasToBlob, shareTitle } from '../utils/shareCard';
-import { getShot } from '../utils/shareShot';
+import { getShot, getScene } from '../utils/shareShot';
 
 interface Props {
   run: RunStats;
@@ -63,7 +63,7 @@ const ShareBox: React.FC<Props> = ({ run, ending, rank, endSeen, endTotal, vs })
     const id = window.setTimeout(async () => {
       try {
         const c = await drawShareCard({
-          run, ending, rank, title: shareTitle(run), name: nm, endSeen, endTotal, shot: getShot(),
+          run, ending, rank, title: shareTitle(run), name: nm, endSeen, endTotal, shot: getShot(), scene: getScene(),
           vs: vs ? { name: vs.n, subs: vs.s, same: vs.m === run.mode && vs.d === run.difficulty } : null,
         });
         const b = await canvasToBlob(c);

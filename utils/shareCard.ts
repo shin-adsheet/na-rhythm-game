@@ -2,6 +2,7 @@ import { Ending, RunStats } from '../types';
 import { MODE_LABEL, DIFF_LABEL } from '../constants';
 import { fmtSubs } from './economy';
 import { RARITY_LABEL } from './naEffects';
+import type { SceneShot } from './shareShot';
 
 /** 結果のランク（結果画面とシェア画像で同じものを使う） */
 export function rankOf(run: RunStats) {
@@ -46,6 +47,8 @@ export interface CardData {
   endTotal: number;
   vs?: VsInfo | null;
   shot: HTMLCanvasElement | null;
+  /** エンディング画面を切り抜いた写真（あればこちらを大きく使う） */
+  scene?: SceneShot | null;
 }
 
 export const CARD_W = 1200, CARD_H = 675;
@@ -104,29 +107,58 @@ export async function drawShareCard(d: CardData): Promise<HTMLCanvasElement> {
     x.beginPath(); x.arc(col * 100 + (row % 2) * 50, row * 50, 11, 0, Math.PI * 2); x.fill();
   }
 
-  // 左：しあしあの丸い部屋
-  const cx = 300, cy = 408, R = 212;
-  x.save();
-  x.shadowColor = 'rgba(236,72,153,0.25)'; x.shadowOffsetY = 10; x.shadowBlur = 0;
-  const g = x.createRadialGradient(cx, cy - 70, 10, cx, cy, R);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, '#fdf4ff'); g.addColorStop(0.75, '#fce7f3'); g.addColorStop(1, '#fbcfe8');
-  x.fillStyle = g; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.fill();
-  x.restore();
-  x.lineWidth = 10; x.strokeStyle = '#fff'; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.stroke();
-  // 床の影
-  x.fillStyle = 'rgba(190,24,93,0.12)'; x.beginPath(); x.ellipse(cx, cy + R * 0.78, 130, 26, 0, 0, Math.PI * 2); x.fill();
-  if (d.shot) {
-    // 撮った画面は正方形で、キャラはまん中。足もとが床の影にくるように置く
-    const S = 440, sw = d.shot.width, sh = d.shot.height, k = S / Math.max(sw, sh);
-    x.drawImage(d.shot, cx - (sw * k) / 2, cy + R * 0.84 - sh * k * 0.97, sw * k, sh * k);
+  // 左：エンディングの名場面を切り抜いた写真（なければ、しあしあの丸い部屋）
+  let cx = 300, cy = 408, R = 212;
+  if (d.scene) {
+    const { canvas: sc, focus: f } = d.scene;
+    const W = sc.width, H = sc.height, portrait = W / H < 0.8;
+    // 縦長の画面（スマホ）は縦長の写真にして、まわりの小物やセリフも入るようにする
+    const fw = portrait ? 380 : 548, fh = portrait ? 440 : 432, A = fw / fh;
+    let ch = Math.min(H, f.h * (portrait ? 2.6 : 1.35)), cw = ch * A;
+    if (cw > W) { cw = W; ch = cw / A; }
+    if (ch > H) { ch = H; cw = ch * A; }
+    const bottom = Math.min(H, f.y + f.h * (portrait ? 1.1 : 1.04));
+    const top = Math.max(0, Math.min(H - ch, bottom - ch));
+    const left = Math.max(0, Math.min(W - cw, f.x + f.w / 2 - cw / 2));
+    const px = 312, py = 380;
+    x.save(); x.translate(px, py); x.rotate(-0.035);
+    // 写真のふち（白）と影
+    x.save(); x.shadowColor = 'rgba(15,23,42,0.28)'; x.shadowBlur = 24; x.shadowOffsetY = 12;
+    x.fillStyle = '#fff'; rr(x, -fw / 2 - 12, -fh / 2 - 12, fw + 24, fh + 24, 22); x.fill(); x.restore();
+    x.save(); rr(x, -fw / 2, -fh / 2, fw, fh, 14); x.clip();
+    x.fillStyle = '#e2e8f0'; x.fillRect(-fw / 2, -fh / 2, fw, fh);
+    x.drawImage(sc, left, top, cw, ch, -fw / 2, -fh / 2, fw, fh);
+    x.restore();
+    // マスキングテープ
+    x.save(); x.translate(-fw / 2 + 40, -fh / 2 - 8); x.rotate(-0.3);
+    x.fillStyle = 'rgba(253,224,71,0.88)'; x.fillRect(-56, -16, 112, 32); x.restore();
+    x.save(); x.translate(fw / 2 - 40, -fh / 2 - 8); x.rotate(0.3);
+    x.fillStyle = 'rgba(244,114,182,0.82)'; x.fillRect(-56, -16, 112, 32); x.restore();
+    x.restore();
+    cx = 300; cy = 410; R = 210;
   } else {
-    x.textAlign = 'center'; x.font = `260px ${FONT}`;
-    outlined(x, 'な', cx, cy + 90, '#ec4899', '#fff', 18);
-    x.textAlign = 'left';
+    x.save();
+    x.shadowColor = 'rgba(236,72,153,0.25)'; x.shadowOffsetY = 10; x.shadowBlur = 0;
+    const g = x.createRadialGradient(cx, cy - 70, 10, cx, cy, R);
+    g.addColorStop(0, '#ffffff'); g.addColorStop(0.4, '#fdf4ff'); g.addColorStop(0.75, '#fce7f3'); g.addColorStop(1, '#fbcfe8');
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.fill();
+    x.restore();
+    x.lineWidth = 10; x.strokeStyle = '#fff'; x.beginPath(); x.arc(cx, cy, R, 0, Math.PI * 2); x.stroke();
+    // 床の影
+    x.fillStyle = 'rgba(190,24,93,0.12)'; x.beginPath(); x.ellipse(cx, cy + R * 0.78, 130, 26, 0, 0, Math.PI * 2); x.fill();
+    if (d.shot) {
+      // 撮った画面は正方形で、キャラはまん中。足もとが床の影にくるように置く
+      const S = 440, sw = d.shot.width, sh = d.shot.height, k = S / Math.max(sw, sh);
+      x.drawImage(d.shot, cx - (sw * k) / 2, cy + R * 0.84 - sh * k * 0.97, sw * k, sh * k);
+    } else {
+      x.textAlign = 'center'; x.font = `260px ${FONT}`;
+      outlined(x, 'な', cx, cy + 90, '#ec4899', '#fff', 18);
+      x.textAlign = 'left';
+    }
   }
   // ふきだし
   {
-    x.font = `40px ${FONT}`; const bw = x.measureText(bubble).width + 44, bx = cx + 128, by = cy - R + 30;
+    x.font = `40px ${FONT}`; const bw = x.measureText(bubble).width + 44, bx = d.scene ? (d.scene.canvas.width / d.scene.canvas.height < 0.8 ? 430 : 470) : cx + 128, by = d.scene ? 136 : cy - R + 30;
     x.fillStyle = '#fff'; x.strokeStyle = '#1e293b'; x.lineWidth = 6;
     rr(x, bx, by, bw, 66, 22); x.fill(); x.stroke();
     x.beginPath(); x.moveTo(bx + 26, by + 63); x.lineTo(bx + 10, by + 92); x.lineTo(bx + 52, by + 63); x.closePath(); x.fill(); x.stroke();

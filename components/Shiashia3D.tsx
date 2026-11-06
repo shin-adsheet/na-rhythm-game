@@ -147,7 +147,8 @@ const Shiashia3D: React.FC<Props> = ({
     camera.position.set(0, 440, 1640);
     camera.lookAt(0, 380, 0);
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance' });
+    // エンディングは画面ごと撮る（シェア画像）ので、描いた絵をあとから読めるようにしておく
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: snap === 'ending' });
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     renderer.setPixelRatio(pixelRatioCap(1.5));
     renderer.setSize(size, size);
@@ -466,6 +467,7 @@ const Shiashia3D: React.FC<Props> = ({
   return (
     <div
       ref={mountRef}
+      data-snap={snap}
       className={`select-none ${onPoke ? 'cursor-pointer' : ''} ${className}`}
       style={{ width: size, height: size }}
       aria-label="しあしあ"

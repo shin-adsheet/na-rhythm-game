@@ -3,7 +3,7 @@ import { Ending } from '../types';
 import Shiashia3D, { ShiashiaMood } from './Shiashia3D';
 import { RARITY_LABEL } from '../utils/naEffects';
 import { startEndingSfx, EndingSfx } from '../utils/endingSfx';
-import { requestShot } from '../utils/shareShot';
+import { requestShot, captureScene } from '../utils/shareShot';
 
 interface Props {
   ending: Ending;
@@ -339,6 +339,7 @@ const Cabinet: React.FC<{ kind: number; w: number; hue: number }> = ({ kind, w, 
 const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, audioCtx = null, notFull = false }) => {
   const [elapsed, setElapsed] = useState(0);
   const sfxRef = useRef<EndingSfx | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   // しょぼいエンディングは短いので、文字も速めに出す
   const lines = useTypewriter(ending.lines, () => sfxRef.current?.blip(), ending.short ? 45 : 55, ending.short ? 380 : 500, ending.short ? 600 : 900);
   const progress = Math.min(1, elapsed / ending.durationMs);
@@ -349,8 +350,11 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
     const iv = setInterval(() => setElapsed(Date.now() - t0), 80);
     const done = setTimeout(onDone, ending.durationMs + 1200);
     const snap = setTimeout(() => requestShot('ending'), Math.min(4200, Math.max(1600, ending.durationMs * 0.45)));   // シェア画像用の名場面
+    // シェア画像用に、エンディング画面そのものを撮る（途中で飛ばされてもいいように 2 回。あとの方を使う）
+    const cap = (k: number, lo: number, hi: number) => setTimeout(() => { if (rootRef.current) captureScene(rootRef.current); }, Math.min(hi, Math.max(lo, ending.durationMs * k)));
+    const cap1 = cap(0.32, 1800, 3200), cap2 = cap(0.68, 3600, 8000);
     sfxRef.current = startEndingSfx(ending.scene, ending.durationMs, volume, audioCtx);
-    return () => { clearInterval(iv); clearTimeout(done); clearTimeout(snap); sfxRef.current?.stop(); sfxRef.current = null; };
+    return () => { clearInterval(iv); clearTimeout(done); clearTimeout(snap); clearTimeout(cap1); clearTimeout(cap2); sfxRef.current?.stop(); sfxRef.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ending.id]);
 
@@ -899,7 +903,7 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
   }
 
   return (
-    <div className={`absolute inset-0 z-[70] ${bg} ending-fade overflow-hidden select-none ${wrapperClass}`} onClick={onDone}>
+    <div ref={rootRef} className={`absolute inset-0 z-[70] ${bg} ending-fade overflow-hidden select-none ${wrapperClass}`} onClick={onDone}>
       {extra}
 
       {/* キャラ（中央寄せは外側の flex でする：中のアニメーションが transform を使っても崩れない） */}
@@ -932,7 +936,7 @@ const EndingScene: React.FC<Props> = ({ ending, isNew, onDone, volume = 0.6, aud
           {notFull && <div className="mt-1 text-[10px] font-bold text-yellow-200">フルで遊ぶと、エンディングが変わるかも</div>}
           {isNew && <div className="absolute -top-2 -right-3 bg-yellow-300 text-slate-800 font-black px-2.5 py-0.5 rounded-full text-xs border-2 border-white rotate-12 animate-bounce">NEW!</div>}
         </div>
-        <div className="shrink-0 text-white/90 text-[11px] sm:text-xs font-bold bg-black/40 px-3 py-1 rounded-full">タップでスキップ</div>
+        <div data-noshot className="shrink-0 text-white/90 text-[11px] sm:text-xs font-bold bg-black/40 px-3 py-1 rounded-full">タップでスキップ</div>
       </div>
 
       {/* セリフ */}
