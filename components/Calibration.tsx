@@ -28,10 +28,12 @@ const Calibration: React.FC<Props> = ({ input, mic, volume, onDone, onCancel }) 
   const samplesRef = useRef<number[]>([]);
   const rafRef = useRef(0);
 
-  const record = () => {
+  /** evT：押した瞬間（イベントの timeStamp）。処理が遅れたぶんをさかのぼる（ゲームの判定と同じ） */
+  const record = (evT?: number) => {
     const ctx = ctxRef.current;
     if (!ctx || phase !== 'run') return;
-    const t = ctx.currentTime;
+    const lag = evT != null && evT > 0 ? (performance.now() - evT) / 1000 : 0;
+    const t = ctx.currentTime - (lag > 0 && lag < 0.3 ? lag : 0);
     const clicks = clicksRef.current.slice(COUNT_IN);
     let best = Infinity, bd = 0;
     for (const c of clicks) { const d = t - c; if (Math.abs(d) < Math.abs(best)) { best = d; bd = d; } }
@@ -51,7 +53,7 @@ const Calibration: React.FC<Props> = ({ input, mic, volume, onDone, onCancel }) 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      if (['Space', 'Enter', 'KeyN', 'KeyF', 'KeyJ', 'KeyD', 'KeyK'].includes(e.code)) { e.preventDefault(); recordRef.current(); }
+      if (['Space', 'Enter', 'KeyN', 'KeyF', 'KeyJ', 'KeyD', 'KeyK'].includes(e.code)) { e.preventDefault(); recordRef.current(e.timeStamp); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -99,7 +101,7 @@ const Calibration: React.FC<Props> = ({ input, mic, volume, onDone, onCancel }) 
   const pulse = performance.now() - flash < 140;
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 relative z-30" onPointerDown={input === 'tap' && phase === 'run' ? (e) => { e.preventDefault(); record(); } : undefined}>
+    <div className="w-full h-full flex items-center justify-center p-4 relative z-30" onPointerDown={input === 'tap' && phase === 'run' ? (e) => { e.preventDefault(); record(e.timeStamp); } : undefined}>
       <div className="bg-white/95 rounded-[2rem] border-8 border-sky-300 shadow-2xl w-full max-w-md p-6 flex flex-col items-center gap-4 text-center">
         <div className="text-sky-500 font-black text-sm tracking-widest">タイミング合わせ</div>
         <h2 className="text-2xl md:text-3xl font-black text-slate-800 leading-snug whitespace-pre-line">
@@ -107,7 +109,8 @@ const Calibration: React.FC<Props> = ({ input, mic, volume, onDone, onCancel }) 
         </h2>
         <p className="text-xs text-slate-500 leading-relaxed">
           最初の 4 回は数えるだけ。高い音になったら 8 回、音とぴったり同じ瞬間に。<br />
-          イヤホンやスピーカーの遅れも、ここで自動で補正します。
+          イヤホンやスピーカーの遅れも、ここで自動で補正します。<br />
+          押したときの音は鳴りません。クリック音だけを聞いて、手ごたえは気にせずに。
         </p>
 
         <div className={`w-40 h-40 rounded-full border-8 flex items-center justify-center transition-transform duration-75 ${measuring ? 'border-pink-400 bg-pink-50' : 'border-slate-200 bg-slate-50'} ${pulse ? 'scale-110' : 'scale-100'}`}>

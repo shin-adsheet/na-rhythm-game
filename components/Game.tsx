@@ -59,8 +59,16 @@ const MENU_BGMS: { id: MenuBgm; label: string; file: string }[] = [
   { id: 'original', label: '原曲', file: 'bgm/top.mp3' },
 ];
 
-interface Settings { volume: number; input: 'mic' | 'tap'; tapMode: 'easy' | 'normal'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean; hitSound: boolean; voice: boolean }
+interface Settings { volume: number; input: 'mic' | 'tap'; tapMode: 'easy' | 'normal'; deviceId: string; threshold: number; clicks: boolean; menuBgm: MenuBgm; arcade: boolean; difficulty: Difficulty; lite: boolean; hitSound: boolean; voice: boolean; tapSound?: TapSound; vibe?: boolean; autoOffset?: boolean }
 const DEFAULT_SETTINGS: Settings = { volume: 0.6, input: 'tap', tapMode: 'easy', deviceId: '', threshold: 30, clicks: true, menuBgm: 'chip', arcade: true, difficulty: 'normal', lite: guessLite(), hitSound: true, voice: true };
+/**
+ * タップ音の鳴らし方。
+ * beat：音符のタイミングで前もって鳴らす（曲と同じ時計で予約するので、スマホやイヤホンの遅れがあっても曲とずれない）
+ * press：押した瞬間に鳴らす（スマホやワイヤレスイヤホンだと、その遅れのぶん遅れて聞こえる）
+ */
+type TapSound = 'beat' | 'press' | 'off';
+const tapSoundOf = (s: { tapSound?: TapSound; hitSound?: boolean }): TapSound => s.tapSound ?? (s.hitSound === false ? 'off' : 'beat');
+const canVibrate = typeof navigator !== 'undefined' && typeof (navigator as any).vibrate === 'function';
 const loadJSON = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? { ...d, ...JSON.parse(v) } : d; } catch { return d; } };
 const saveJSON = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* noop */ } };
 type Offsets = { mic: number | null; tap: number | null };
@@ -563,6 +571,8 @@ const Game: React.FC = () => {
   };
   /** 1 プレイのズレ（押した時刻 − 音符の時刻）。結果画面で「早い／遅い」と補正のおすすめを出す */
   const dtsRef = useRef<number[]>([]);
+  /** タップ音「曲に合わせる」で予約した音符 */
+  const tickedRef = useRef<Set<number>>(new Set());
 
   /** 強弱のボーナス（合っていたら登録者を上乗せ） */
   const curMul = () => {
@@ -608,7 +618,9 @@ const Game: React.FC = () => {
     const p = playerRef.current, e = engineRef.current;
     if (!p || !e) return;
     // 押した瞬間の手ごたえ（キーボード・タップのとき。当たっても外れても鳴らす）
-    if (src === 'tap' && settingsRef.current.hitSound !== false) { const pc = p.ctx; playTap({ volume: settingsRef.current.volume, ctx: pc && pc.state === 'running' ? pc : null, pitch: 0.95 + Math.random() * 0.1 }); }
+    if (src === 'tap' && tapSoundOf(settingsRef.current) === 'press') { const pc = p.ctx; playTap({ volume: settingsRef.current.volume, ctx: pc && pc.state === 'running' ? pc : null, pitch: 0.95 + Math.random() * 0.1 }); }
+    // 押した手ごたえは振動で（音とちがって、すぐ届く。対応しているスマホだけ）
+    if (src === 'tap' && canVibrate && settingsRef.current.vibe !== false) { try { (navigator as any).vibrate(10); } catch { /* noop */ } }
     // 伸ばし中は、ほかの入力を数えない（空振りにしない）
     if (activeHoldRef.current) return;
     // 大きい「な」の 2 つ目のキー（同時押し）・2 本目の指
@@ -666,7 +678,7 @@ const Game: React.FC = () => {
         else se(sx.id, { rate: sx.rate, gain: 0.95 }, true);
       }
       // してみた動画は、ゲームの音（お手本と同じ音）だけにする（音が重なってずれて聞こえないように）
-      if (src === 'tap' && settingsRef.current.hitSound !== false && segsStyleAt(n.t) !== 'heaven') se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
+      if (src === 'tap' && tapSoundOf(settingsRef.current) === 'press' && segsStyleAt(n.t) !== 'heaven') se('hit', { rate: j === 'perfect' ? 1.12 : j === 'great' ? 1 : 0.88, gain: n.vel ? Math.min(1.3, n.vel) : 1 }, true);
       // コンボの声（「コンボ！」）は、プレイの途中で耳に残って気になるので鳴らさない（文字の COMBO だけ）
       if (Math.random() < 0.18 + chaos * 0.6) spawnBackgroundNa();
       checkViewers(t);
@@ -861,6 +873,7 @@ const Game: React.FC = () => {
     await p.start(0);
     // カウントダウンの声「3・2・1」を、曲の拍ぴったりに予約する（声で遊ぶときはマイクが拾うので鳴らさない）
     cancelPendingSfx();
+    tickedRef.current = new Set();
     if (voiceOn() && (TAP_ONLY || settingsRef.current.input === 'tap')) {
       // 曲のイントロの「カッ」と同じタイミングで鳴らす
       // 声の「聞こえる拍の位置」は音の頭ではなく母音の立ち上がりなので、声ごとに測った分だけ早めに鳴らす（sfx.ts の ONSET）
@@ -999,6 +1012,18 @@ const Game: React.FC = () => {
       if (!p || !e || finishingRef.current) return;
       const t = p.time();
       p.scheduleClicks();
+      // タップ音「曲に合わせる」：音符の時刻に前もって予約して鳴らす（押してから鳴らすと、スマホの音の遅れのぶん遅れて聞こえるため）
+      if ((TAP_ONLY || settingsRef.current.input === 'tap') && tapSoundOf(settingsRef.current) === 'beat') {
+        const done = tickedRef.current;
+        for (const n of e.notes) {
+          if (n.t > t + 0.3 * p.getRate()) break;
+          if (n.t < t - 0.02 || done.has(n.t) || n.res) continue;
+          done.add(n.t);
+          if (segsStyleAt(n.t) === 'heaven') continue;      // してみた動画はお手本の音があるので鳴らさない
+          const when = p.ctxTimeOf(n.t);
+          if (when != null) playSfxAt(n.power === 'big' ? 'hit_big' : 'hit', when, { ctx: p.ctx, volume: settingsRef.current.volume, gain: (n.vel ? Math.min(1.3, n.vel) : 1) * 0.85, onBeat: true });
+        }
+      }
       const off = effOffset(TAP_ONLY ? 'tap' : settingsRef.current.input);
       const tc = t - off * p.getRate();
       const ch = chartRef.current;
@@ -1299,9 +1324,31 @@ const Game: React.FC = () => {
         <label className="flex items-center gap-2 mt-2 text-xs font-bold text-sky-700" htmlFor="clicks">
           <input id="clicks" type="checkbox" checked={settings.clicks} onChange={(e) => setSettings({ clicks: e.target.checked })} /> 拍にクリック音を入れる
         </label>
-        <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="hitsnd">
-          <input id="hitsnd" type="checkbox" checked={settings.hitSound !== false} onChange={(e) => setSettings({ hitSound: e.target.checked })} /> タップ音（キーボード・タップで遊ぶとき）
+        <div className="mt-2 bg-white/70 rounded-lg p-2">
+          <div className="text-xs font-black text-sky-700 mb-1">タップ音（キーボード・タップで遊ぶとき）</div>
+          <div className="grid grid-cols-3 gap-1">
+            {([['beat', '曲に合わせる'], ['press', '押したとき'], ['off', 'なし']] as [TapSound, string][]).map(([k, label]) => (
+              <button key={k} onClick={() => setSettings({ tapSound: k, hitSound: k !== 'off' })}
+                className={`py-1.5 rounded-lg text-[11px] font-black transition-all ${tapSoundOf(settings) === k ? 'bg-sky-500 text-white shadow-[0_2px_0_#0369a1]' : 'bg-slate-100 text-slate-500'}`}>
+                {label}{k === 'beat' ? <span className="block text-[9px] font-bold opacity-80">おすすめ</span> : null}
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] text-slate-500 mt-1 leading-snug">
+            {tapSoundOf(settings) === 'beat' ? '音符のタイミングで鳴ります。スマホやイヤホンでも音が遅れません（外したときも鳴ります）。'
+              : tapSoundOf(settings) === 'press' ? '押した瞬間に鳴ります。スマホやワイヤレスイヤホンだと、少し遅れて聞こえます。'
+              : '押しても音は鳴りません。'}
+          </div>
+        </div>
+        {canVibrate && (
+          <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="vibe">
+            <input id="vibe" type="checkbox" checked={settings.vibe !== false} onChange={(e) => setSettings({ vibe: e.target.checked })} /> 押したときに振動する（音より早く手ごたえが分かる）
+          </label>
+        )}
+        <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="autooff">
+          <input id="autooff" type="checkbox" checked={settings.autoOffset !== false} onChange={(e) => setSettings({ autoOffset: e.target.checked })} /> 遊び終わるたびに、タイミングのズレを自動で直す
         </label>
+        <div className="text-[10px] text-slate-500 mt-1 leading-snug">ワイヤレスイヤホンは音が 0.1〜0.3 秒遅れます。スピーカーか有線イヤホンだと合わせやすくなります。</div>
         <label className="flex items-center gap-2 mt-1.5 text-xs font-bold text-sky-700" htmlFor="voice">
           <input id="voice" type="checkbox" checked={settings.voice !== false} onChange={(e) => setSettings({ voice: e.target.checked })} /> アナウンスの声（3・2・1、COMBO、WINNER など）
         </label>
@@ -1783,6 +1830,7 @@ const Game: React.FC = () => {
             onTitle={() => setGameState('READY')}
             onRetry={async () => { prepareSong(); if (input === 'mic' && !(await ensureMic())) return; setGameState('RULES'); }}
             onBook={() => setShowBook(true)}
+            autoTiming={settings.autoOffset !== false}
             endSeen={countSeen(seenEndings)} endTotal={TOTAL_ENDINGS} vs={vsChal} />
         );
     }

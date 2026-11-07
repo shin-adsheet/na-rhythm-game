@@ -22,6 +22,8 @@ interface Props {
   /** このプレイのズレ（中央値・ms。プラス＝遅い）。8 回以上ヒットしたときだけ */
   timing?: { ms: number; n: number } | null;
   onApplyTiming?: (ms: number) => void;
+  /** ズレを自動で直す（設定）。直したぶんを結果に出す */
+  autoTiming?: boolean;
   /** エンディングを何個見たか（シェア画像に出す） */
   endSeen: number;
   endTotal: number;
@@ -30,8 +32,18 @@ interface Props {
 }
 
 /** 結果画面（登録者のカウントアップ・ランク・実績・ランキング・共有） */
-const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNewRecord, newlyIds, highScores, onTitle, onRetry, onBook, timing, onApplyTiming, endSeen, endTotal, vs }) => {
+const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNewRecord, newlyIds, highScores, onTitle, onRetry, onBook, timing: timingNow, onApplyTiming, autoTiming, endSeen, endTotal, vs }) => {
     const [applied, setApplied] = React.useState(false);
+    // 補正するとズレの記録が消えるので、最初の値を覚えておく
+    const [timing] = React.useState(timingNow);
+    const [autoMs, setAutoMs] = React.useState(0);
+    React.useEffect(() => {
+      // 自動で直す：12 回以上当てて 15ms 以上ずれていたら、ずれの 7 割を次から補正（いっぺんに直しすぎない）
+      if (!autoTiming || !timing || !onApplyTiming || timing.n < 12 || Math.abs(timing.ms) <= 15) return;
+      const ms = Math.round(timing.ms * 0.7);
+      onApplyTiming(ms); setApplied(true); setAutoMs(ms);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
     const show = (ms: number) => revealT >= ms;
     const countK = Math.min(1, Math.max(0, (revealT - 900) / 1500));
     const shownSubs = Math.round(run.subs * (1 - Math.pow(1 - countK, 3)));
@@ -152,11 +164,12 @@ const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNe
                 {Math.abs(timing.ms) > 15 && onApplyTiming && (
                   <button disabled={applied} onClick={() => { onApplyTiming(timing.ms); setApplied(true); }}
                     className="shrink-0 px-3 py-2 rounded-xl bg-sky-500 text-white text-xs font-black disabled:bg-emerald-500 active:scale-95 transition-transform">
-                    {applied ? '補正しました' : '次からこのズレを補正'}
+                    {autoMs ? `自動で ${Math.abs(autoMs)}ms 補正` : applied ? '補正しました' : '次からこのズレを補正'}
                   </button>
                 )}
               </div>
-              {Math.abs(timing.ms) > 15 && <div className="text-[11px] text-slate-500 mt-1 leading-snug">いつも同じ向きにズレるなら、補正すると判定が音楽に合います（設定の「タイミング補正」でも直せます）。</div>}
+              {autoMs !== 0 && <div className="text-[11px] text-emerald-600 font-bold mt-1 leading-snug">次のプレイから、判定を {Math.abs(autoMs)}ms {autoMs > 0 ? '遅め' : '早め'}に合わせます（設定で止められます）。</div>}
+              {Math.abs(timing.ms) > 15 && !autoMs && <div className="text-[11px] text-slate-500 mt-1 leading-snug">いつも同じ向きにズレるなら、補正すると判定が音楽に合います（設定の「タイミング補正」でも直せます）。</div>}
             </div>
           )}
           {show(2400) && <ShareBox run={run} ending={ending} rank={rank} endSeen={endSeen} endTotal={endTotal} vs={vs} />}
