@@ -17,6 +17,18 @@ interface Props {
   onInputChange?: (m: 'mic' | 'tap') => void;   // あそびかたの切り替え（なければ出さない）
 }
 
+/** 説明の 1 枚（左に絵、右にタイトルと 1 行） */
+const Tile: React.FC<{ no: string; color: string; title: string; line: string; wide?: boolean; children: React.ReactNode }> = ({ no, color, title, line, wide, children }) => (
+  <div className={`relative flex items-center gap-3 bg-slate-50 rounded-2xl pl-2 pr-3 py-2 border-2 border-white shadow-[0_2px_0_rgba(15,23,42,0.06)] ${wide ? 'sm:col-span-2' : ''}`}>
+    <span className={`absolute -top-1.5 -left-1.5 w-6 h-6 rounded-full ${color} text-white text-xs font-black flex items-center justify-center border-2 border-white`}>{no}</span>
+    <div className="shrink-0 w-16 h-14 rounded-xl bg-white flex items-center justify-center">{children}</div>
+    <div className="min-w-0">
+      <div className="font-black text-slate-800 text-sm leading-snug">{title}</div>
+      <div className="text-[11px] text-slate-500 leading-snug mt-0.5">{line}</div>
+    </div>
+  </div>
+);
+
 /** ゲーム開始前の説明（視聴者ゲージ・炎上・ノルマ） */
 const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, skip, onSkipChange, onStart, onCalibrate, onBack, onInputChange }) => {
   const quota = QUOTA[mode];
@@ -33,57 +45,33 @@ const RulesCard: React.FC<Props> = ({ mode, difficulty, input, ready, offsetMs, 
             {ms && <div className="text-xs font-bold text-slate-500 mt-1">{ms.sub.replace(/^登録者 [^　]+　?/, '')}を目指せ</div>}
           </div>
 
-          <ol className="flex flex-col gap-3">
-            <li className="flex gap-3 items-start">
-              <span className="shrink-0 w-8 h-8 rounded-full bg-pink-500 text-white font-black flex items-center justify-center">1</span>
-              <div className="min-w-0">
-                <div className="font-black text-slate-800">「な」が「な！」の円に重なったら{input === 'mic' ? '「な」と言う' : 'キーを押す / タップ'}</div>
-                <div className="text-xs text-slate-500 leading-relaxed">1 つの丸に 1 回だけ。ズレが小さいほど PERFECT で登録者が多く増える。連打すると空振りで損。曲の途中で画面がいろんな音ゲー風に変わる（MODE CHANGE）けど、やることは同じ。どの画面でも、次の「な」の場所に<b className="text-slate-700">白い輪</b>が出て縮んでいくので、輪が「な」に重なった瞬間に打つ。</div>
-                <div className="mt-1.5 flex items-center gap-1.5">
-                  <span className="w-9 h-9 rounded-full bg-pink-500 border-4 border-white shadow text-white text-xs font-black flex items-center justify-center">な！</span>
-                  <span className="text-slate-300 font-black">←</span>
-                  <span className="w-6 h-6 rounded-full bg-white border-4 border-pink-400" />
-                  <span className="w-4 h-4 rounded-full bg-white border-[3px] border-pink-400" />
-                  <span className="w-6 h-6 rounded-full bg-white border-4 border-pink-400" />
-                </div>
-              </div>
-            </li>
-            <li className="flex gap-3 items-start">
-              <span className="shrink-0 w-8 h-8 rounded-full bg-orange-500 text-white font-black flex items-center justify-center">!</span>
-              <div className="min-w-0">
-                <div className="font-black text-slate-800">特殊な「な」</div>
-                <div className="text-xs text-slate-500 leading-relaxed">
-                  <b className="text-orange-500">大きい「な」</b>（ギザギザ付き）は{input === 'mic' ? '大声で' : 'キー 2 つ同時押し（スマホは 2 本指）で'}、
-                  {input === 'mic' && <><b className="text-violet-500">小さい「な」</b>は小声で、</>}
-                  <b className="text-emerald-600">しっぽ付きの「な」</b>は{input === 'mic' ? '「なーー」としっぽの終わりまで伸ばす' : 'しっぽの終わりまで押し続ける'}。
-                  「な」がだんだん大きく／小さくなる所もある。うまくいくと登録者ボーナス（失敗してもMISSにはならない）。
-                </div>
-              </div>
-            </li>
-            <li className="flex gap-3 items-start">
-              <span className="shrink-0 w-8 h-8 rounded-full bg-red-600 text-white font-black flex items-center justify-center">2</span>
-              <div className="min-w-0">
-                <div className="font-black text-slate-800">「炎上した！黙れ！」が来たら、黙る{mode === '10s' ? '（10秒モードにはない）' : ''}</div>
-                <div className="text-xs text-slate-500 leading-relaxed">赤い帯の間に声を出すと「火に油」。登録者が減って、警告が 1 つ。警告 {BAN_STRIKES} つで BAN（強制終了）。黙りきると鎮火して視聴者が戻る。</div>
-                <div className="mt-1.5 inline-flex items-center bg-red-600 text-white text-xs font-black px-3 py-1 rounded-lg">炎上 黙れ！</div>
-              </div>
-            </li>
-            <li className="flex gap-3 items-start">
-              <span className="shrink-0 w-8 h-8 rounded-full bg-slate-700 text-white font-black flex items-center justify-center">3</span>
-              <div className="min-w-0">
-                <div className="font-black text-slate-800">視聴者ゲージを切らさない</div>
-                <div className="text-xs text-slate-500 leading-relaxed">ヒットで増え、MISS や空振りで減る。<b className="text-red-500">0 になると配信終了</b>。満員にすると<b className="text-amber-500">バズって登録者 2 倍</b>。ゲージが多いほど登録者の増え方も大きい。</div>
-                <div className="mt-1.5 w-40 h-3 rounded-full bg-slate-100 border border-slate-200 overflow-hidden"><div className="h-full w-3/5 bg-slate-500" /></div>
-              </div>
-            </li>
-            <li className="flex gap-3 items-start">
-              <span className="shrink-0 w-8 h-8 rounded-full bg-violet-500 text-white font-black flex items-center justify-center">+</span>
-              <div className="min-w-0">
-                <div className="font-black text-slate-800">ときどき飛んでくる special「な」をクリック</div>
-                <div className="text-xs text-slate-500 leading-relaxed">登録者が増えたり、BPM が変わったり、「ぬ」しか言えなくなったり。何が起きるかはお楽しみ。</div>
-              </div>
-            </li>
-          </ol>
+          {/* あそびかた：1 つずつ、左に絵・右に短い説明（読まなくても絵で分かるように） */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <Tile no="1" color="bg-pink-500" title={`輪が「な！」に重なったら${input === 'mic' ? '「な」と言う' : '押す（キー・タップ）'}`} line="ぴったりほど PERFECT。連打すると空振りで損" wide>
+              <span className="relative w-12 h-12 flex items-center justify-center">
+                <span className="absolute inset-0 rounded-full border-[3px] border-white shadow-[0_0_0_2px_#f472b6] rules-ring" />
+                <span className="w-9 h-9 rounded-full bg-pink-500 border-[3px] border-white text-white text-[11px] font-black flex items-center justify-center shadow">な！</span>
+              </span>
+            </Tile>
+            <Tile no="!" color="bg-orange-500" title="特殊な「な」" line={input === 'mic' ? '大きい＝大声、小さい＝小声、しっぽ＝「なーー」と伸ばす' : '大きい＝2 つ同時押し（2 本指）、しっぽ＝押し続ける'}>
+              <span className="flex items-center gap-0.5">
+                <span className="w-7 h-7 rounded-full bg-orange-500 border-2 border-white text-white text-[10px] font-black flex items-center justify-center shadow-[0_0_0_2px_#fdba74]">な</span>
+                <span className="flex items-center"><span className="w-5 h-5 rounded-full bg-emerald-500 border-2 border-white text-white text-[8px] font-black flex items-center justify-center">な</span><span className="w-4 h-1.5 rounded-r-full bg-emerald-300 -ml-0.5" /></span>
+              </span>
+            </Tile>
+            {mode !== '10s' && (
+              <Tile no="2" color="bg-red-600" title="炎上したら、黙る" line={`赤い帯の間は何もしない。打つと警告、${BAN_STRIKES} つで BAN`}>
+                <span className="bg-red-600 text-white text-[10px] font-black px-1.5 py-1 rounded-md leading-none text-center">炎上<br />黙れ！</span>
+              </Tile>
+            )}
+            <Tile no={mode !== '10s' ? '3' : '2'} color="bg-slate-700" title="視聴者ゲージを切らさない" line="0 で配信終了。満タンでバズって登録者 2 倍">
+              <span className="w-11 h-3 rounded-full bg-white border border-slate-200 overflow-hidden"><span className="block h-full w-3/4 bg-gradient-to-r from-slate-500 to-amber-400" /></span>
+            </Tile>
+            <Tile no="+" color="bg-violet-500" title="special「な」をタップ" line="ときどき飛んでくる。何が起きるかはお楽しみ">
+              <span className="w-10 h-10 rounded-full p-[3px] shadow" style={{ background: 'conic-gradient(#f472b6, #fde047, #4ade80, #38bdf8, #a78bfa, #f472b6)' }}><span className="w-full h-full rounded-full bg-white flex flex-col items-center justify-center leading-none"><span className="text-sm font-black text-slate-800">な</span><span className="text-[6px] font-black text-slate-500">special</span></span></span>
+            </Tile>
+          </div>
+          <div className="text-[11px] font-bold text-slate-500 text-center -mt-1">途中で画面が別の音ゲー風に変わっても（MODE CHANGE）、やることは同じ</div>
 
           {onInputChange && (
             <div className="flex items-center gap-2 bg-violet-50 rounded-xl px-3 py-2">

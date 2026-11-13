@@ -33,6 +33,7 @@ import Calibration from './Calibration';
 import RulesCard from './RulesCard';
 import AchievementToasts, { ToastItem } from './AchievementToast';
 import EndingScene from './EndingScene';
+import StageBackdrop from './StageBackdrop';
 import { loadRH } from '../utils/rhLoader';
 import ResultScreen from './ResultScreen';
 import { Challenge, readChallengeFromUrl } from '../utils/challenge';
@@ -146,15 +147,21 @@ const LevelMeter: React.FC<{ mic: MicDetector; threshold: number }> = ({ mic, th
 };
 
 /** 観客（登録者が増えるほど増える） */
+const PEN = ['#f472b6', '#67e8f9', '#fde047', '#a78bfa', '#4ade80'];
+/** 観客（登録者が増えると列が増える）。ペンライトを拍に合わせて振る */
 const Crowd: React.FC<{ subs: number; buzz: boolean }> = ({ subs, buzz }) => {
   const rows = [subs >= 1e3, subs >= 1e5, subs >= 1e7];
-  const col = buzz ? ['bg-pink-200', 'bg-pink-300', 'bg-pink-400'] : ['bg-gray-200', 'bg-gray-300', 'bg-gray-400'];
+  // 奥の列ほど薄く小さく
+  const col = ['rgba(167,139,250,0.42)', 'rgba(139,92,246,0.5)', 'rgba(109,40,217,0.55)'];
   return (
-    <div className="absolute bottom-0 left-0 w-full h-1/2 pointer-events-none z-[1] overflow-hidden">
-      {[8, 7, 6].map((n, r) => (
-        <div key={r} className={`absolute left-[-10%] w-[120%] h-full flex justify-around items-end transition-transform duration-700 ${rows[r] ? 'translate-y-0' : 'translate-y-full'}`} style={{ bottom: -50 + r * 20 }}>
+    <div className={`absolute bottom-0 left-0 w-full h-1/2 pointer-events-none z-[1] overflow-hidden ${buzz ? 'crowd-buzz' : ''}`}>
+      {[9, 8, 7].map((n, r) => (
+        <div key={r} className={`absolute left-[-6%] w-[112%] flex justify-around items-end transition-transform duration-700 ${rows[r] ? 'translate-y-0' : 'translate-y-[140%]'}`} style={{ bottom: -34 + r * 18, height: 150 + r * 34 }}>
           {Array.from({ length: n }).map((_, i) => (
-            <div key={i} className={`${col[r]} rounded-t-full mx-1 origin-bottom`} style={{ width: 96 + r * 32, height: 128 + r * 32, animation: rows[r] ? `crowd-jump ${0.6 - r * 0.1}s infinite` : 'none', animationDelay: `${i * 0.1}s` }} />
+            <div key={i} className="crowd-p" style={{ width: 70 + r * 22, height: 104 + r * 30, ['--cc' as any]: col[r], animation: rows[r] ? `crowd-jump ${0.686}s ${(i % 3) * 0.114}s infinite` : 'none' }}>
+              <div className="crowd-head" /><div className="crowd-body" />
+              {(i + r) % 3 !== 1 && <div className="crowd-stick" style={{ ['--pc' as any]: PEN[(i * 3 + r) % PEN.length], animationDelay: `${-(i % 2) * 0.343}s` }} />}
+            </div>
           ))}
         </div>
       ))}
@@ -1585,11 +1592,24 @@ const Game: React.FC = () => {
   /**
    * プレイ中の画面の「あいている所」。譜面（押す所）の上と下。カットイン・special「な」・アイテムの文字は、ここに出して譜面と重ねない
    */
+  const hudRef = useRef<HTMLDivElement>(null);
+  const hudBRef = useRef(0);
+  // 上の数字の下の端（大きさが変わったときだけ測る。描くたびに測ると重くなる）
+  useEffect(() => {
+    const el = hudRef.current;
+    if (!el) return;
+    const read = () => { hudBRef.current = el.getBoundingClientRect().bottom; };
+    read();
+    const ro = new ResizeObserver(read); ro.observe(el);
+    return () => ro.disconnect();
+  }, [gameState, isMobile]);
   const playAreas = () => {
     const trackH = Math.round(Math.min(420, vp.h * 0.5));
     const half = trackStyle === 'lane' ? 64 : trackH / 2 + 4;
     const tTop = vp.h * 0.54 - half, tBot = vp.h * 0.54 + half;
-    const safeT = isMobile ? 24 : 8;
+    // お知らせは上の数字（登録者・視聴者など）の下から。数字の上にかぶらないように、実際の高さを測る
+    const hb = hudBRef.current;
+    const safeT = Math.min(tTop - 60, hb && hb > 0 ? hb + 6 : isMobile ? 150 : 112);
     return { tTop, tBot, top: { y: safeT, h: Math.max(0, tTop - safeT - 6) }, bottom: { y: tBot + 6, h: Math.max(0, vp.h - tBot - 14) } };
   };
   const renderPlaying = () => {
@@ -1646,14 +1666,14 @@ const Game: React.FC = () => {
             </div>
           );
           return isMobile ? (
-            <div className="absolute left-0 right-0 z-30 flex flex-col items-stretch gap-1.5 pointer-events-none px-3" style={{ top: 'calc(10px + env(safe-area-inset-top, 0px))' }}>
+            <div ref={hudRef} className="absolute left-0 right-0 z-30 flex flex-col items-stretch gap-1.5 pointer-events-none px-3" style={{ top: 'calc(10px + env(safe-area-inset-top, 0px))' }}>
               <div className="flex items-start justify-center pl-12 pr-12">{subsBox}</div>
               {quotaBar}
               <div className="flex items-center gap-2">{viewersBox}{strikesBox}</div>
             </div>
           ) : (
             <>
-              <div className="absolute top-3 left-0 right-0 z-30 flex flex-col items-center pointer-events-none px-48">
+              <div ref={hudRef} className="absolute top-3 left-0 right-0 z-30 flex flex-col items-center pointer-events-none px-48">
                 {subsBox}
                 <div className="mt-2 w-[min(520px,100%)]">{quotaBar}</div>
               </div>
@@ -1664,7 +1684,7 @@ const Game: React.FC = () => {
 
         {/* アイテム効果 */}
         {itemCard && performance.now() < itemCard.until + 400 && (
-          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: (() => { const A = playAreas(); return A.top.y + 62; })() }}>   {/* お知らせはぜんぶ画面の上（下はゲームの画面にかぶるので）。一時停止ボタンの下から */}
+          <div key={itemCard.id} className="item-in absolute left-1/2 -translate-x-1/2 z-[45] pointer-events-none" style={{ top: playAreas().top.y }}>   {/* お知らせはぜんぶ画面の上（下はゲームの画面にかぶるので）。上の数字の下から */}
             <div className={`bg-gradient-to-r ${ITEM_COLOR[itemCard.def.kind]} text-white rounded-2xl px-4 py-2 border-4 border-white shadow-xl text-center min-w-[220px]`}>
               <div className="text-[10px] font-black tracking-widest opacity-80">special「な」</div>
               <div className="font-black text-lg md:text-2xl leading-tight">{itemCard.def.name}</div>
@@ -1699,7 +1719,7 @@ const Game: React.FC = () => {
         )}
         {/* 画面チェンジのお知らせ（画面の上に出す。下はゲームの画面にかぶるので） */}
         {styleBanner && !burnNotice && (
-          <div key={styleBanner.id} className="absolute left-0 right-0 z-[46] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y + 62 }}>
+          <div key={styleBanner.id} className="absolute left-0 right-0 z-[46] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y }}>
             <div className="mode-change flex items-center gap-3 bg-slate-900/92 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
               <span className="shrink-0 text-[9px] font-black tracking-[0.2em] bg-gradient-to-r from-pink-500 to-violet-500 rounded-md px-1.5 py-1 leading-none">MODE<br />CHANGE</span>
               <span className="flex flex-col leading-tight min-w-0">
@@ -1742,7 +1762,7 @@ const Game: React.FC = () => {
         {burnNotice && !burnNotice.center && (() => {
           const info = BURN_INFO[burnNotice.pattern];
           return (
-            <div className="absolute left-0 right-0 z-[47] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y + 62 }}>
+            <div className="absolute left-0 right-0 z-[47] pointer-events-none flex justify-center px-3" style={{ top: playAreas().top.y }}>
               <div key={burnNotice.id} className="mode-change flex items-center gap-3 bg-red-700/95 text-white rounded-2xl pl-2 pr-4 py-2 border-2 border-yellow-300 shadow-xl max-w-[min(94vw,520px)]">
                 <span className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-white text-red-600 leading-none">
                   <span className="text-[9px] font-black">あと</span>
@@ -1760,7 +1780,7 @@ const Game: React.FC = () => {
 
         {/* カウントダウン（曲のイントロで数える） */}
         {countdown && (
-          <div className="absolute inset-x-0 z-40 pointer-events-none flex justify-center" style={{ top: (() => { const A = playAreas(); return Math.max(A.top.y + 60, A.tTop - 84); })() }}>
+          <div className="absolute inset-x-0 z-40 pointer-events-none flex justify-center" style={{ top: (() => { const A = playAreas(); return Math.max(A.top.y, A.tTop - 84); })() }}>
             <div key={countdown} className="animate-impact font-black text-white text-5xl md:text-7xl" style={{ WebkitTextStroke: '6px #ec4899', paintOrder: 'stroke fill' }}>{countdown}</div>
           </div>
         )}
@@ -1847,6 +1867,7 @@ const Game: React.FC = () => {
     >
       <audio ref={menuBgmRef} loop preload="auto" src={ASSET_BASE + (MENU_BGMS.find((x) => x.id === settings.menuBgm) || MENU_BGMS[0]).file} />
 
+      {(playing || gameState === 'PAUSED' || gameState === 'RULES') && <StageBackdrop getTime={getTime} hitRef={hitRef} combo={combo} buzz={buzz && playing} lite={lite} />}
       {(playing || gameState === 'PAUSED') && trackStyle !== 'heaven' && <Crowd subs={subs} buzz={buzz} />}
       {(playing || gameState === 'PAUSED') && (
         <CommentStream active={playing && trackStyle !== 'heaven'} level={lite ? chaos * 0.5 : chaos} mood={commentMood} sparse={isMobile || lite}
@@ -1860,7 +1881,7 @@ const Game: React.FC = () => {
       {/* しあしあ（説明〜プレイ中は 1 体だけ。カットインのときは画面の左上へ飛んでくる） */}
       {stageVisible && (
         <div data-noinput onPointerDown={(e) => e.stopPropagation()}
-          className="absolute bottom-0 left-0 md:left-6 pointer-events-auto"
+          className="absolute bottom-2 left-1 md:bottom-3 md:left-6 pointer-events-auto"
           style={{
             zIndex: atCut ? 62 : 25,
             transform: stageTransform,
@@ -1870,6 +1891,7 @@ const Game: React.FC = () => {
             // してみた動画のあいだは、ゲーム機の画面の中にキャラがいるので隠す
             visibility: playing && trackStyle === 'heaven' && !atCut ? 'hidden' : undefined,
           }}>
+          {!atCut && <div className="stage-disc" />}
           <Shiashia3D getBeat={getBeat} hitRef={hitRef} mood={stageMood} intensity={Math.min(1, combo / 40)} size={stageSize}
             onPoke={handlePoke} withPartner partner={atCut && cutIn?.event === 'collab'} paused={playing && trackStyle === 'heaven' && !atCut} snap="play" />
         </div>

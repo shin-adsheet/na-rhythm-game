@@ -114,7 +114,15 @@ const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNe
               <p className="text-5xl md:text-6xl font-black text-slate-700 tabular-nums">{fmtSubs(show(900) ? shownSubs : 0)}<span className="text-2xl">人</span></p>
               <p className="text-xs font-bold text-slate-400 tabular-nums">{show(900) ? shownSubs.toLocaleString('ja-JP') : 0}人　/ ノルマ {fmtSubs(run.quota)}人（{ratio >= 1 ? `${ratio.toFixed(1)}倍` : `${Math.floor(ratio * 100)}%`}）</p>
               <div className="w-full flex flex-col gap-1.5 mt-2">
-                <Row at={1300} k="PERFECT / GREAT / GOOD" v={`${run.perfect} / ${run.great} / ${run.good}`} />
+                {/* 判定の数：3 つ並べて色分け（スマホで折り返さないように） */}
+                <div className="grid grid-cols-3 gap-1.5 w-full">
+                  {([['PERFECT', run.perfect, 'text-amber-500'], ['GREAT', run.great, 'text-pink-500'], ['GOOD', run.good, 'text-sky-500']] as [string, number, string][]).map(([k, v, c]) => (
+                    <div key={k} className="bg-gray-100 rounded-xl py-1.5 text-center">
+                      <div className={`text-[10px] font-black tracking-wide ${c}`}>{k}</div>
+                      <div className="font-black text-slate-700 tabular-nums leading-tight">{show(1300) ? v : '-'}</div>
+                    </div>
+                  ))}
+                </div>
                 <Row at={1500} k="MISS / 空振り" v={`${run.misses} / ${run.extras}`} />
                 <Row at={1700} k="最大コンボ" v={run.maxCombo} />
                 <Row at={1900} k="炎上" v={`鎮火 ${run.burnsKept} / ${run.burnsTotal}　火に油 ${run.fuels}`} />
@@ -174,13 +182,17 @@ const ResultScreen: React.FC<Props> = ({ run, revealT, ending, endingIsNew, isNe
           )}
           {show(2400) && <ShareBox run={run} ending={ending} rank={rank} endSeen={endSeen} endTotal={endTotal} vs={vs} />}
 
-          <div className="mt-7 flex flex-col sm:flex-row gap-3 items-center">
-            <button onClick={onTitle} className="bg-white text-slate-600 font-black px-7 py-3 rounded-full border-4 border-slate-200 shadow">タイトルへ</button>
-            <button onClick={onRetry} className="relative">
-              <span className="absolute inset-0 translate-y-2 bg-pink-300 rounded-full" />
-              <span className="relative inline-block border-4 border-white px-10 py-3 text-2xl font-black text-white bg-pink-500 rounded-full shadow-lg">もういちど</span>
-            </button>
-            <button onClick={onBook} className="bg-white text-slate-700 font-black px-7 py-3 rounded-full border-4 border-yellow-300 shadow">ずかん</button>
+          {/* 次へ進むボタン：下にくっつけて、いつでも押せるように（結果が長くてもスクロールしなくていい） */}
+          <div className="sticky bottom-0 z-20 mt-6 w-full max-w-xl pb-[max(12px,env(safe-area-inset-bottom))] pt-3 -mb-6"
+            style={{ background: 'linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0.92) 30%)' }}>
+            <div className="flex items-center justify-center gap-2 sm:gap-3">
+              <button onClick={onTitle} className="shrink-0 bg-white text-slate-600 font-black px-4 sm:px-7 py-3 rounded-full border-4 border-slate-200 shadow text-sm sm:text-base">タイトルへ</button>
+              <button onClick={onRetry} className="relative flex-1 max-w-[260px]">
+                <span className="absolute inset-0 translate-y-1.5 bg-pink-300 rounded-full" />
+                <span className="relative block border-4 border-white px-4 py-3 text-xl sm:text-2xl font-black text-white bg-pink-500 rounded-full shadow-lg">もういちど</span>
+              </button>
+              <button onClick={onBook} className="shrink-0 bg-white text-slate-700 font-black px-4 sm:px-7 py-3 rounded-full border-4 border-yellow-300 shadow text-sm sm:text-base">ずかん</button>
+            </div>
           </div>
         </div>
       </div>
