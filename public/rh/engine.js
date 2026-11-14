@@ -14,6 +14,53 @@ import { setTint } from './kit.js';
 
 export const canvas = document.createElement('canvas'); canvas.width = PW; canvas.height = PHt;
 const X = canvas.getContext('2d');
+/**
+ * かんたん背景（simple）のときは、3D の画面（glCanvas）にそのまま仕上げまで描く。
+ * 背景の 2 色・ふちどり・失敗の色・切り替えの光を GPU の 1 回の描画でまとめてやるので、
+ * 3D の絵を 2D に写したり、ふちどりを 8 回重ねたりしない（スマホでいちばん重かった所）。
+ * canvas（2D）は、その上に重ねる汗などの小さな飾りだけを描く（ふだんは透明）
+ */
+export const glCanvas = R.domElement;
+const GL = { rt: null, mat: null, scene: null, cam: null };
+function glInit() {
+  if (GL.mat) return;
+  const rt = new THREE.WebGLRenderTarget(PW, PHt, { depthBuffer: true });
+  if (R.capabilities.isWebGL2) rt.samples = 4;       // ふちのギザギザをなめらかに
+  GL.rt = rt;
+  GL.mat = new THREE.ShaderMaterial({
+    uniforms: {
+      tS: { value: rt.texture }, uPx: { value: new THREE.Vector2(1 / PW, 1 / PHt) }, uSize: { value: new THREE.Vector2(W, H) },
+      uSky: { value: new THREE.Color() }, uFloor: { value: new THREE.Color() }, uLine: { value: new THREE.Color() },
+      uGy: { value: 0 }, uTh: { value: SC }, uZoom: { value: 1 }, uShake: { value: new THREE.Vector2() }, uFail: { value: 0 }, uFlash: { value: 0 },
+    },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: `
+      uniform sampler2D tS; uniform vec2 uPx, uSize, uShake; uniform vec3 uSky, uFloor, uLine; uniform float uGy, uTh, uZoom, uFail, uFlash;
+      varying vec2 vUv;
+      float A(vec2 uv) { return texture2D(tS, uv).a; }
+      void main() {
+        // 画面の点（W×H・上が 0）→ ズームとゆれを戻した、絵の中の点
+        vec2 p = vec2(vUv.x, 1.0 - vUv.y) * uSize;
+        vec2 q = (p - uShake - uSize * 0.5) / uZoom + uSize * 0.5;
+        vec2 uv = vec2(q.x / uSize.x, 1.0 - q.y / uSize.y);
+        vec3 col = q.y >= uGy ? uFloor : uSky;
+        col = mix(col, vec3(0.106, 0.094, 0.188), 0.18 * step(abs(q.y - uGy), 2.0));    // 床の線
+        vec4 c = texture2D(tS, uv);
+        vec2 d = uPx * uTh;
+        float o = max(max(max(A(uv + vec2(3.0, 0.0) * d), A(uv - vec2(3.0, 0.0) * d)), max(A(uv + vec2(0.0, 3.0) * d), A(uv - vec2(0.0, 3.0) * d))),
+                      max(max(A(uv + vec2(2.0, 2.0) * d), A(uv - vec2(2.0, 2.0) * d)), max(A(uv + vec2(2.0, -2.0) * d), A(uv - vec2(2.0, -2.0) * d))));
+        col = mix(col, uLine, o);                       // ふちどり（キャラのまわりに太い線）
+        col = col * (1.0 - c.a) + c.rgb;                // キャラ・小物
+        col = mix(col, col * vec3(0.478, 0.525, 0.722), 0.35 * uFail);   // まちがえたときの「ズッ」とした色
+        col = mix(col, vec3(1.0), uFlash);              // 切り替えの光
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+    depthTest: false, depthWrite: false,
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), GL.mat); quad.frustumCulled = false;
+  GL.scene = new THREE.Scene(); GL.scene.add(quad);
+  GL.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+}
 export const SIZE = { W, H };
 export const TITLES = Object.fromEntries(Object.entries(G).map(([k, g]) => [k, g.title]));
 
@@ -79,7 +126,8 @@ export function drawGame(name, b, t, opt = {}) {
   X.setTransform(SC, 0, 0, SC, 0, 0); X.clearRect(0, 0, W, H);   // 絵の計算は W×H のまま、実際は SC 倍で描く
   const into = opt.into ?? 9, zoomIn = 1 + 0.03 * Math.exp(-Math.max(0, into) * 10);
   const c2 = g.cam2d || {}; const pz = zoomIn * (1 + (c2.punch || 0)) * (1 + (opt.punch || 0)), sh = Math.max(c2.shake || 0, opt.shake || 0, fail > 0.01 && (opt.failAge ?? 9) < 0.5 ? 9 * (1 - (opt.failAge ?? 0) / 0.5) : 0);
-  X.save(); X.translate(W / 2 + (sh ? Math.sin(t * 87) * sh : 0), H / 2 + (sh ? Math.cos(t * 71) * sh : 0)); X.scale(pz, pz); X.translate(-W / 2, -H / 2);
+  const shx = sh ? Math.sin(t * 87) * sh : 0, shy = sh ? Math.cos(t * 71) * sh : 0;
+  X.save(); X.translate(W / 2 + shx, H / 2 + shy); X.scale(pz, pz); X.translate(-W / 2, -H / 2);
   const S = styleFor(seg, b, b, t, g);
   g.silFg = S.sil ? S.sil.fg : null;
   const line = (g.bg && g.bg.line) || '#1b1830';
@@ -87,6 +135,20 @@ export function drawGame(name, b, t, opt = {}) {
     // かんたん背景（軽い）：背景の絵・家具・生きもの・手前の飾り・画面の加工は描かない。空と床の 2 色だけ＋キャラと小物
     const [sky, floor] = SIMPLE_BG[name] || ['#e9e4ff', '#cfc6f5'];
     const gy = clamp(FX.project([0, 0, 0])[1], -H, H * 2);
+    if (opt.gl !== false) {
+      // GPU だけで仕上げる（glCanvas に描く）。2D の canvas には汗などの飾りだけ
+      glInit(); TINT3 = null;
+      cam.layers.set(0);
+      R.setRenderTarget(GL.rt); R.setClearColor(0x000000, 0); R.clear(); R.render(scene, cam); R.setRenderTarget(null);
+      const U = GL.mat.uniforms;
+      U.uSky.value.set(sky); U.uFloor.value.set(floor); U.uLine.value.set(line); U.uGy.value = gy;
+      U.uZoom.value = pz; U.uShake.value.set(shx, shy); U.uFail.value = Math.max(0, Math.min(1, opt.fail || 0));
+      U.uFlash.value = into >= 0 && into < 0.12 ? 0.55 * (1 - into / 0.12) : 0;
+      R.render(GL.scene, GL.cam);
+      if (g.fx) FX.drawFxList(X, g.fx);
+      X.restore();
+      return;
+    }
     X.fillStyle = sky; X.fillRect(-100, -100, W + 200, H + 200);
     if (gy < H + 100) { X.fillStyle = floor; X.fillRect(-100, gy, W + 200, H - gy + 200); X.fillStyle = 'rgba(27,24,48,0.18)'; X.fillRect(-100, gy - 2, W + 200, 4); }
     TINT3 = null;

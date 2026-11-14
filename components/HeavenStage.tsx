@@ -56,6 +56,8 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
   const mountRef = useRef<HTMLDivElement>(null);
   const bgRef = useRef<HTMLCanvasElement>(null);
   const fgRef = useRef<HTMLCanvasElement>(null);
+  /** 動かない所（本体・枠・十字キーなど）。大きさが変わったときだけ描く（毎コマ写さない） */
+  const statRef = useRef<HTMLCanvasElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const cardTitleRef = useRef<HTMLDivElement>(null);
   const cardHowRef = useRef<HTMLDivElement>(null);
@@ -65,11 +67,10 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
   useEffect(() => { loadRH(); }, []);
 
   useEffect(() => {
-    const root = rootRef.current, mount = mountRef.current, bgc = bgRef.current, fgc = fgRef.current;
-    if (!root || !mount || !bgc || !fgc) return;
+    const root = rootRef.current, mount = mountRef.current, bgc = bgRef.current, fgc = fgRef.current, stat = statRef.current;
+    if (!root || !mount || !bgc || !fgc || !stat) return;
     const bx = bgc.getContext('2d')!, fx = fgc.getContext('2d')!;
     let raf = 0, lastDraw = 0, drawCost = 12, shown = '', lastMiss = -9, attached = false, pressAt = -9, statKey = '', dirty = true;
-    const stat = document.createElement('canvas');
     const seen = new Set<NoteState>();
     const hitAt = new Map<NoteState, number>();
     // 押したら A ボタンがへこむ（キーボード・タップどちらでも）
@@ -85,7 +86,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
       const card = cardRef.current;
       // 出番でないときは何もしない（一度だけ消しておく）
       if (!vis || sg.style !== 'heaven') {
-        if (dirty) { if (card) card.style.opacity = '0'; fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fgc.width, fgc.height); bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, bgc.width, bgc.height); dirty = false; }
+        if (dirty) { if (card) card.style.opacity = '0'; fx.setTransform(1, 0, 0, 1, 0, 0); fx.clearRect(0, 0, fgc.width, fgc.height); bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, bgc.width, bgc.height); stat.getContext('2d')!.clearRect(0, 0, stat.width, stat.height); statKey = ''; dirty = false; }
         return;
       }
       if (W < 2 || H < 2) return;          // まだ大きさがない（画面に出る前）
@@ -109,7 +110,12 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
       bx.setTransform(dpr, 0, 0, dpr, 0, 0);
       if (E) {
         if (bgc.style.display !== 'none') bgc.style.display = 'none';
-        if (!attached) { E.canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block'; mount.appendChild(E.canvas); attached = true; }
+        if (!attached) {
+          // 3D の画面（GPU で仕上げまで描く）と、その上に重ねる飾り用の 2D の画面
+          const css = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block';
+          if (E.glCanvas) { E.glCanvas.style.cssText = css; mount.appendChild(E.glCanvas); }
+          E.canvas.style.cssText = css + ';pointer-events:none'; mount.appendChild(E.canvas); attached = true;
+        }
         const now = performance.now();
         // ミニゲームの絵は 1 秒に 30 回まで。描くのに時間がかかる端末では、自動で回数を減らす（押す処理が遅れないように）
         const interval = Math.min(66, Math.max(32, drawCost * 2.4));
@@ -189,7 +195,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
           for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(x0 + i * 7, y0); c.lineTo(x0 + i * 7 + 12, y0 - 22); c.stroke(); }
           c.lineCap = 'butt'; }
       }
-      fx.setTransform(1, 0, 0, 1, 0, 0); fx.drawImage(stat, 0, 0); fx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      fx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const c = fx, bz = L.bezel;
       c.textAlign = 'center'; c.textBaseline = 'middle';
       // ランプ：お手本の拍でオレンジに光る（ふだんは赤＝電源）
@@ -277,6 +283,7 @@ const HeavenStage: React.FC<Props> = ({ getTime, notesRef, burnsRef, scheduleRef
       style={{ opacity: visible ? 1 : 0, visibility: visible ? 'visible' : 'hidden', transition: visible ? 'opacity 300ms' : 'opacity 300ms, visibility 0s linear 300ms' }}>
       <canvas ref={bgRef} className="absolute inset-0 w-full h-full" />
       <div ref={mountRef} className="absolute overflow-hidden" />
+      <canvas ref={statRef} className="absolute inset-0 w-full h-full" />
       <canvas ref={fgRef} className="absolute inset-0 w-full h-full" />
       <div ref={cardRef} className="absolute left-1/2 opacity-0" style={{ top: 200, transform: 'translate(-50%, -50%)' }}>
         <div className="relative bg-white rounded-2xl border-4 border-red-500 px-5 pt-3 pb-2 shadow-[0_6px_0_rgba(0,0,0,0.15)] text-center">

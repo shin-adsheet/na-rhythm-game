@@ -1867,7 +1867,8 @@ const Game: React.FC = () => {
     >
       <audio ref={menuBgmRef} loop preload="auto" src={ASSET_BASE + (MENU_BGMS.find((x) => x.id === settings.menuBgm) || MENU_BGMS[0]).file} />
 
-      {(playing || gameState === 'PAUSED' || gameState === 'RULES') && <StageBackdrop getTime={getTime} hitRef={hitRef} combo={combo} buzz={buzz && playing} lite={lite} />}
+      {/* してみた動画のあいだは、ゲーム機が画面をおおうので背景は描かない（軽くするため） */}
+      {(playing || gameState === 'PAUSED' || gameState === 'RULES') && trackStyle !== 'heaven' && <StageBackdrop getTime={getTime} hitRef={hitRef} combo={combo} buzz={buzz && playing} lite={lite} />}
       {(playing || gameState === 'PAUSED') && trackStyle !== 'heaven' && <Crowd subs={subs} buzz={buzz} />}
       {(playing || gameState === 'PAUSED') && (
         <CommentStream active={playing && trackStyle !== 'heaven'} level={lite ? chaos * 0.5 : chaos} mood={commentMood} sparse={isMobile || lite}

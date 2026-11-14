@@ -67,7 +67,9 @@ const J = async (n) => (await fetch(new URL('./' + n, import.meta.url))).json();
 const [sOpt, kOpt, nOpt] = await Promise.all([J('shia_opt.json'), J('kia5_opt.json'), J('nea_opt.json')]);   // ねあねあ（きあきあが基準・脚はしあしあ・猫耳＋サイドポニー＋黒タイツ）
 if (!(kOpt.t.tailWag > 0.3)) kOpt.t.tailWag = 0.6;
 export function makeChar(name, scale = 1) {
-  const g = buildELGirl(fix(JSON.parse(JSON.stringify(name === 'kia' ? kOpt : name === 'nea' ? nOpt : sOpt)))), root = new THREE.Group(); root.add(g); root.scale.setScalar(scale); scene.add(root);
+  // ゲームの小さな画面では細かさ（LOD）を下げて軽くする（window.__RH.lod。なければふつう）
+  const o = fix(JSON.parse(JSON.stringify(name === 'kia' ? kOpt : name === 'nea' ? nOpt : sOpt))); if (CFG.lod) o.lod = CFG.lod;
+  const g = buildELGirl(o), root = new THREE.Group(); root.add(g); root.scale.setScalar(scale); scene.add(root);
   const J = g.userData.J;
   for (const k in J) if (J[k]?.isObject3D && !J[k].userData.rest0) J[k].userData.rest0 = J[k].rotation.clone();
   const sh = mesh(new THREE.CircleGeometry(120, 32), 0x000000, 0.16); sh.rotation.x = -Math.PI / 2; sh.position.y = 1; sh.scale.set(1, 0.55, 1); root.add(sh);

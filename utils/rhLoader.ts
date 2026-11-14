@@ -11,9 +11,11 @@ export const HEAVEN_SCREEN_ASPECT = 10 / 9;
 
 export interface RHEngine {
   canvas: HTMLCanvasElement;
+  /** 3D の画面（かんたん背景のときは、ここに仕上げまで描く） */
+  glCanvas?: HTMLCanvasElement;
   SIZE: { W: number; H: number };
   TITLES: Record<string, string>;
-  drawGame: (name: string, b: number, t: number, opt?: { into?: number; fail?: number; failWho?: 'shia' | 'kia'; failAge?: number; keep?: number; simple?: boolean; punch?: number; shake?: number }) => void;
+  drawGame: (name: string, b: number, t: number, opt?: { into?: number; fail?: number; failWho?: 'shia' | 'kia'; failAge?: number; keep?: number; simple?: boolean; punch?: number; shake?: number; gl?: boolean }) => void;
   hideAll: () => void;
   warm?: (name: string) => void;
 }
@@ -31,7 +33,8 @@ export function loadRH(): Promise<RHEngine | null> {
   const W = Math.round(Math.sqrt(1280 * 720 * a)), H = Math.round(W / a);
   const shownW = Math.min(window.innerWidth || 390, 560) * 0.8, dpr = Math.min(1.25, window.devicePixelRatio || 1);
   const scale = Math.max(0.3, Math.min(0.8, (shownW * dpr) / W)) * (perf.lite ? 0.8 : 1);
-  (window as any).__RH = { W, H, beat: BEAT, scale };
+  // lod：キャラの細かさ（面の数）。ゲーム機の小さな画面では 0.38 でも見た目はほぼ同じで、面の数は 1/5 くらいになる
+  (window as any).__RH = { W, H, beat: BEAT, scale, lod: perf.lite ? 0.3 : 0.38 };
   const url = new URL('rh/engine.js', document.baseURI).href;
   p = import(/* @vite-ignore */ url).then((m: any) => {
     const E = m as RHEngine;

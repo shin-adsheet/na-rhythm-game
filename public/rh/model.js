@@ -79,7 +79,14 @@ export function defaultStrands(T) {
   return out;
 }
 
+/**
+ * 細かさ（LOD）。1＝ふつう。ゲームの小さな画面（してみた動画）では 0.3〜0.5 にして、面の数を大きく減らす（見た目の形は同じ）
+ * buildELGirl(opt) の opt.lod で決める
+ */
+export const LOD = { k: 1 };
+const lodN = (n, min = 3) => Math.max(min, Math.round(n * LOD.k));
 export function buildELGirl(opt = {}) {
+  LOD.k = Math.max(0.2, Math.min(1, opt.lod ?? 1));
   for (const k in mats) delete mats[k];          // 色を変えて作り直すときのため、材質の使い回しを捨てる
   for (const k in ID) delete ID[k]; Object.assign(ID, ID0);
   const SHIA = !!opt.shia; if (SHIA) Object.assign(ID, SHIA_ID);
@@ -137,7 +144,8 @@ export function buildELGirl(opt = {}) {
   const bRatio = (y) => { const P = BPB; if (y <= P[0][0]) return P[0][1]; for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1]; if (y <= b[0]) { const k = (y - a[0]) / Math.max(1e-6, b[0] - a[0]), e = k * k * (3 - 2 * k); return a[1] + (b[1] - a[1]) * e; } } return P[P.length - 1][1]; };
   const depthB = (y, a) => BPB ? a * bRatio(y) : depth(y, a);
   function loft(off, seg = 64, pinch = 0) {
-    const ys = []; for (let y = -14; y <= 240; y += 1) ys.push(y);   // 股の下は閉じない（v14 と同じ）
+    seg = lodN(seg, 16);
+    const ys = []; const st = 1 / LOD.k; for (let y = -14; y < 240; y += st) ys.push(y); ys.push(240);   // 股の下は閉じない（v14 と同じ）
     const pos = [], idx = [];
     for (const y of ys) { const k = 1 - pinch * sstep(12, -8, y), A = bodyA(y) * k, Bz = depth(y, A), Bb = depthB(y, A); const a = A > 0 ? A + off : 0, b = A > 0 ? Bz + off * 0.8 : 0, bb = A > 0 ? Bb + off * 0.8 : 0;
       for (let j = 0; j <= seg; j++) { const t = (j / seg) * Math.PI * 2, c = Math.cos(t); pos.push(a * Math.sin(t), y, (c > 0 ? b : bb) * c); } }   // 前（＋z）はおなか側、後ろは背中側の厚み
@@ -243,9 +251,9 @@ export function buildELGirl(opt = {}) {
   const FN = Math.max(1.2, T.faceFlat || 2);   // 顔の前の平らさ（2 = 丸い楕円、大きいほどアニメ顔のように前が平ら）
   const PW = SP && T.profW > 0 ? T.profW : 0;   // 横顔の出っぱり（鼻すじ）を顔の真ん中だけにする幅。0 なら顔全体が出る（目とかぶる）
   const faceGeo = (() => {
-    const ys = []; for (let y = FTOP; y > 704; y -= 2) ys.push(y);
-    const yC = 704 - 53 * T.chinL; for (let y = 704; y > yC; y -= 0.5) ys.push(y); ys.push(yC);
-    const SEG = 72, pos = [], idx = [];
+    const ys = []; for (let y = FTOP; y > 704; y -= 2 / LOD.k) ys.push(y);
+    const yC = 704 - 53 * T.chinL; for (let y = 704; y > yC; y -= 0.5 / Math.max(0.35, LOD.k)) ys.push(y); ys.push(yC);
+    const SEG = lodN(72, 24), pos = [], idx = [];
     ys.forEach((y) => { const w = halfW(y), d = halfD(y), d0 = PW ? halfD0(y) : d;
       for (let j = 0; j <= SEG; j++) { const th = (j / SEG) * Math.PI * 2, sn = Math.sin(th), cs = Math.cos(th), ee = 2 / FN, x = w * Math.sign(sn) * Math.abs(sn) ** ee, c = Math.sign(cs) * Math.abs(cs) ** (cs > 0 ? ee : 1);
         pos.push(x, y, FZ + d0 * c + (PW && c > 0 ? (d - d0) * c * Math.exp(-((x / PW) ** 2)) : 0)); } });
@@ -261,7 +269,7 @@ export function buildELGirl(opt = {}) {
   const fz = (x, y) => { const w = halfW(y), d = halfD(y), c = Math.pow(Math.max(0, 1 - Math.abs(x / Math.max(w, 1e-3)) ** FN), 1 / FN);
     if (!PW) return FZ + d * c; const d0 = halfD0(y); return FZ + d0 * c + (d - d0) * c * Math.exp(-((x / PW) ** 2)); };
   // 頬・耳のあたりの赤み
-  if (T.cheekDot) for (const s of [-1, 1]) { const ck = mesh(new THREE.SphereGeometry(1, 16, 12), 'mouth'); ck.scale.set(5, 9, 9); ck.position.set(s * 50, 680, 4); head.add(ck); }
+  if (T.cheekDot) for (const s of [-1, 1]) { const ck = mesh(new THREE.SphereGeometry(1, lodN(16, 8), lodN(12, 6)), 'mouth'); ck.scale.set(5, 9, 9); ck.position.set(s * 50, 680, 4); head.add(ck); }
 
   // 髪：ヘルメット形（半径 68、頂点 y=780）。顔の窓は原作から測った形でくり抜く
   const HC = new THREE.Vector3(0, 712, -4);
@@ -312,7 +320,7 @@ export function buildELGirl(opt = {}) {
     m.customProgramCacheKey = () => 'hairU15' + !!teeth + SHIA + O.tips + T.hairInY + (T.hairInX < 999 ? 'x' + T.hairInX : '');   // 毛先あり／なしでシェーダーを分ける
     return m;
   };
-  const dome = mesh(new THREE.SphereGeometry(68, 56, 32, 0, Math.PI * 2, 0, Math.PI * 0.5), hairClip(HC.x, HC.y, HC.z));
+  const dome = mesh(new THREE.SphereGeometry(68, lodN(56, 8), lodN(32, 6), 0, Math.PI * 2, 0, Math.PI * 0.5), hairClip(HC.x, HC.y, HC.z));
   dome.position.copy(HC); dome.scale.set(T.hairW, 1, T.hairD); head.add(dome);
   // すそ：まっすぐ（少しだけ裾広がり）に下りて、毛先はとがった束がいくつか並ぶ（原作の横髪の先）
   const prof = [[68, 0], [68.8, -20], [69.4, -45], [70, -64], [70.3, -74], [70.5, -88]].reverse().map(([r, y]) => new THREE.Vector2(r, y));   // 下→上の順（外側が表になる）
@@ -327,7 +335,7 @@ export function buildELGirl(opt = {}) {
   if (BP) { let mi = 0; BP.forEach((p, i) => { if (p[0] > BP[mi][0]) mi = i; }); T.bobMax = BP[mi][0]; T.bobY = BP[mi][1]; T.bobBot = BP[BP.length - 1][1]; T.bobTop = BP[0][1]; }
   const bobPtsProf = () => new THREE.SplineCurve(BP.map(([r, y], i) => new THREE.Vector2(i === 0 ? 0.01 : Math.max(0.01, r), y))).getPoints(48).map((v) => new THREE.Vector2(Math.max(0.01, v.x), v.y)).reverse();
   const profS = O.hairShape === 'bob' ? (BP ? bobPtsProf() : bobProf()) : FLUFF ? [[68, 0], [70, -20], [72.5, -42], [76, -60], [80, -74], [82, -88]].map(([r, y]) => [68 + (r - 68) * T.hairFlare, y < -40 ? y + T.hairLen * (y + 40) / 48 : y]).reverse().map(([r, y]) => new THREE.Vector2(r, y)) : prof;
-  const skirt = mesh(new THREE.LatheGeometry(profS, 96, 0, Math.PI * 2), hairClip(HC.x, HC.y, HC.z, O.hairShape === 'bob' ? { N: Math.round(T.tipN), T: T.tipSize, bot: T.bobBot - 2, phase: 0.1 } : FLUFF ? { N: Math.round(T.tipN), T: T.tipSize, bot: -80 - T.hairLen * 0.83, phase: 0.1 } : { N: 12, T: 13, bot: -74, phase: 0.25 }));
+  const skirt = mesh(new THREE.LatheGeometry(profS, lodN(96, 16), 0, Math.PI * 2), hairClip(HC.x, HC.y, HC.z, O.hairShape === 'bob' ? { N: Math.round(T.tipN), T: T.tipSize, bot: T.bobBot - 2, phase: 0.1 } : FLUFF ? { N: Math.round(T.tipN), T: T.tipSize, bot: -80 - T.hairLen * 0.83, phase: 0.1 } : { N: 12, T: 13, bot: -74, phase: 0.25 }));
   if (O.hairShape === 'bob' && T.flip) { const p = skirt.geometry.attributes.position, y0 = T.bobBot + T.flipH;   // 外はね：すその高さ flipH ぶんを外へはね上げる
     for (let i = 0; i < p.count; i++) { const y = p.getY(i); if (y >= y0) continue; const u = Math.min(1, (y0 - y) / Math.max(1, T.flipH)), k = 1 + T.flip * u * u;
       p.setX(i, p.getX(i) * k); p.setZ(i, p.getZ(i) * (1 + (k - 1) * T.flipBack)); p.setY(i, y + T.flipUp * u * u); }
@@ -339,7 +347,7 @@ export function buildELGirl(opt = {}) {
       sh.fragmentShader = 'varying vec3 vF;\n' + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
         if (vF.z > ${fx(T.foreheadZ)} && vF.y > ${fx(T.foreheadY)} && abs(vF.x) < ${fx(T.foreheadW)}) diffuseColor.rgb = vec3(${fx(skC.r)}, ${fx(skC.g)}, ${fx(skC.b)});`); };
     hfm.customProgramCacheKey = () => ['headFill', T.foreheadZ, T.foreheadY, T.foreheadW, skC.getHexString()].join('-');
-    const hf = new THREE.Mesh(new THREE.SphereGeometry(T.headFill, 40, 28), hfm);
+    const hf = new THREE.Mesh(new THREE.SphereGeometry(T.headFill, lodN(40, 8), lodN(28, 6)), hfm);
     hf.position.set(HC.x, HC.y + T.headFillY, HC.z + T.headFillZ); hf.scale.set(T.headFillW, 1, 1); head.add(hf); }
   if (O.hairShape === 'bob' && T.hairWave) { const p = skirt.geometry.attributes.position, N = T.hairWaveN || Math.round(T.tipN);   // 毛束のふくらみ：毛先と同じ向きに房をふくらませる（かつらっぽい一枚板をやわらげる）
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), th = Math.atan2(x, z) / (2 * Math.PI) * N + 0.1;
@@ -384,7 +392,7 @@ export function buildELGirl(opt = {}) {
         const c1 = b.clone().addScaledVector(d.normalize(), L * 0.25).addScaledVector(inward, CU * L * 0.35).add(new THREE.Vector3(0, CU * L * 0.12, 0));
         const c2 = c1.clone().addScaledVector(inward, CU * L * 0.3).add(new THREE.Vector3(0, CU * L * 0.3, 0));
         P.push(c1, c2); }
-      const curve = new THREE.CatmullRomCurve3(P, false, 'centripetal'), NL = 44, NW = 10, W = S.w ?? 30, TH = S.t ?? 6, tip = S.tip ?? 0.35, cv = S.c ?? 0.5;
+      const curve = new THREE.CatmullRomCurve3(P, false, 'centripetal'), NL = lodN(44, 9), NW = lodN(10, 2), W = S.w ?? 30, TH = S.t ?? 6, tip = S.tip ?? 0.35, cv = S.c ?? 0.5;
       const pos = [], idx = [], T0 = new THREE.Vector3(), N0 = new THREE.Vector3(), B0 = new THREE.Vector3(), Q = new THREE.Vector3();
       for (let i = 0; i <= NL; i++) {
         const u = i / NL; curve.getPointAt(u, Q); curve.getTangentAt(u, T0);
@@ -411,7 +419,7 @@ export function buildELGirl(opt = {}) {
             float front = smoothstep(${fx(T.capSideZ)}, ${fx(T.capSideZ + 12)}, vC.z);
             if (vC.y < mix(${fx(T.capBot)}, lineY, front)) discard; }`); };
       cm.customProgramCacheKey = () => ['cap', crx, cry, crz, T.capLine, T.capJag, T.capJagP, T.capSideZ, T.capBot].join('-');
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 40), cm); cap.name = 'strand'; cap.userData.si = -1; cap.userData.cap = true;
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(1, lodN(64, 8), lodN(40, 6)), cm); cap.name = 'strand'; cap.userData.si = -1; cap.userData.cap = true;
       if (O.dbgColors) cm.color.set(0x5b2fc0); cap.scale.set(crx, cry, crz); cap.position.copy(CC); head.add(cap);
     }
     // ── 前髪シート（キプフェルの Hair_Front の考え方）：おでこの丸みに沿った 1 枚。下のふちは O.bangLine = [[x, y], ...]（左→右）の点で切る ──
@@ -420,7 +428,7 @@ export function buildELGirl(opt = {}) {
       const botY = (x) => { if (x <= BL[0][0]) return BL[0][1]; for (let i = 0; i < BL.length - 1; i++) { const a = BL[i], b = BL[i + 1]; if (x <= b[0]) return a[1] + (b[1] - a[1]) * (x - a[0]) / Math.max(1e-6, b[0] - a[0]); } return BL[BL.length - 1][1]; };
       const crx = T.capR * T.hairW, cry = T.capRy, crz = T.capR * T.capD, cy = HC.y + T.capY, cz = HC.z + T.capZ;
       const capZ = (x, y) => cz + crz * Math.sqrt(Math.max(0, 1 - (x / crx) ** 2 - ((y - cy) / cry) ** 2));
-      const X0 = Math.max(-crx * 0.97, BL[0][0]), X1 = Math.min(crx * 0.97, BL[BL.length - 1][0]), NX = 120, NY = 30, pos = [], idx = [];
+      const X0 = Math.max(-crx * 0.97, BL[0][0]), X1 = Math.min(crx * 0.97, BL[BL.length - 1][0]), NX = lodN(120, 24), NY = lodN(30, 8), pos = [], idx = [];
       // 前髪の厚み（キプフェルの Hair_Front：断面は三日月。根元は上の髪の中に入り、真ん中がいちばん厚く、毛先で薄くなる）
       const ys = BL.map((q) => q[1]), yMin = Math.min(...ys), yMax = Math.max(...ys), lockF = (x) => T.bangLocks ? 1 - T.bangLocks * Math.min(1, Math.max(0, (botY(x) - yMin) / Math.max(1, yMax - yMin))) : 1;
       const thick = (v) => T.bangThick * Math.pow(Math.sin(Math.PI * Math.min(1, v * 0.85 + 0.05)), 0.7) * (v > 0.85 ? Math.max(0.15, (1 - v) / 0.15) : 1);
@@ -448,7 +456,7 @@ export function buildELGirl(opt = {}) {
       lm.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>\n if (!gl_FrontFacing) diffuseColor.rgb = vec3(${hc.r.toFixed(4)}, ${hc.g.toFixed(4)}, ${hc.b.toFixed(4)});`); };
       lm.customProgramCacheKey = () => 'sideLock-' + hc.getHexString(); }
     for (const s of [-1, 1]) {
-      const NX = 60, NY = 24, pos = [], idx = [];
+      const NX = lodN(60, 16), NY = lodN(24, 8), pos = [], idx = [];
       for (let i = 0; i <= NX; i++) { const u = i / NX;
         const ph = ((u * T.lockTipN + T.lockTipPh) % 1 + 1) % 1, tri = 1 - Math.abs(ph - 0.5) * 2;   // 束の先で 1、束の間で 0
         const yb = T.lockBot + T.lockSlope * u - T.lockTip * tri;
@@ -542,11 +550,11 @@ export function buildELGirl(opt = {}) {
     if (T.armPtsOn && Array.isArray(T.armPts) && T.armPts.length >= 2) {   // 腕の太さを点で決める：[半径, 位置 0＝肩〜1＝手首]。ひじに同じ太さの玉
       const LA = (D.upperArm + D.foreArm) * AL, kE = D.upperArm / (D.upperArm + D.foreArm), AP = T.armPts.slice().sort((a, b) => a[1] - b[1]).map(([r, u]) => [r * AW, u]);
       const rA = (u) => { if (u <= AP[0][1]) return AP[0][0]; for (let i = 0; i < AP.length - 1; i++) { const a = AP[i], b = AP[i + 1]; if (u <= b[1]) { const k = (u - a[1]) / Math.max(1e-6, b[1] - a[1]), e = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e; } } return AP[AP.length - 1][0]; };
-      const aseg = (u0, u1, capTop, capBot, add = 0) => { const pts = []; const N = 24; const rA0 = rA; const rA_ = (u) => rA0(u) + add;
+      const aseg = (u0, u1, capTop, capBot, add = 0) => { const pts = []; const N = lodN(24, 8); const rA0 = rA; const rA_ = (u) => rA0(u) + add;
         if (capTop) { const r = Math.max(1, rA_(u0)); for (let i = 6; i >= 1; i--) { const a = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(a)), r * Math.sin(a))); } }
         for (let i = 0; i <= N; i++) { const u = u0 + (u1 - u0) * i / N; pts.push(new THREE.Vector2(Math.max(1, rA_(u)), -(u - u0) * LA)); }
         if (capBot) { const r = Math.max(1, rA_(u1)), y = -(u1 - u0) * LA; for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(a)), y - r * Math.sin(a))); } }
-        const g = new THREE.LatheGeometry(pts.reverse(), 28); g.scale(1, 1, T.armD ?? 1); return g; };
+        const g = new THREE.LatheGeometry(pts.reverse(), lodN(28, 8)); g.scale(1, 1, T.armD ?? 1); return g; };
       if (T.sleeveOn > 0.5) { const sv = mesh(aseg(0, Math.min(kE, T.sleeveLen ?? 0.2), true, false, T.sleevePuff ?? 3.5), 'suit'); sv.name = 'sleeve'; sv.scale.x = sv.scale.z = 1; ua.add(sv);   // 半袖（服と同じ色）
         const sr = mesh(new THREE.TorusGeometry(rA(Math.min(kE, T.sleeveLen ?? 0.2)) + (T.sleevePuff ?? 3.5), 1.1, 8, 28), 'suit'); sr.rotation.x = Math.PI / 2; sr.scale.y = T.armD ?? 1; sr.position.y = -Math.min(kE, T.sleeveLen ?? 0.2) * LA; ua.add(sr); }
       if (T.armCover > 0.5) {   // アームカバー：上腕の途中（coverTop：0＝肩〜1＝手首）から指先まで。布の厚みぶん少し太く
@@ -555,18 +563,18 @@ export function buildELGirl(opt = {}) {
         const cu = mesh(aseg(uC, kE, false, false, pf), 'cover'); cu.position.y = -uC * LA; ua.add(cu);
         { const ring = mesh(new THREE.TorusGeometry(rA(uC) + pf, (T.coverCuff ?? 1.2), 8, 28), 'cover'); ring.rotation.x = Math.PI / 2; ring.scale.z = 1; ring.scale.y = T.armD ?? 1; ring.position.y = -uC * LA; ring.visible = (T.coverCuff ?? 1.2) > 0.05; ua.add(ring); }   // 上のふち（はき口のゴム）
         el.add(mesh(aseg(kE, 1, false, true, pf), 'cover'));
-        const eb = mesh(new THREE.SphereGeometry(1, 20, 14), 'cover'); eb.scale.set(rA(kE) + pf, rA(kE) + pf, (rA(kE) + pf) * (T.armD ?? 1)); el.add(eb);
+        const eb = mesh(new THREE.SphereGeometry(1, lodN(20, 8), lodN(14, 6)), 'cover'); eb.scale.set(rA(kE) + pf, rA(kE) + pf, (rA(kE) + pf) * (T.armD ?? 1)); el.add(eb);
       } else {
       ua.add(mesh(aseg(0, kE, true, false), armInMat(s))); el.add(mesh(aseg(kE, 1, false, true), 'skin'));
-      const eb = mesh(new THREE.SphereGeometry(1, 20, 14), 'skin'); eb.scale.set(rA(kE), rA(kE), rA(kE) * (T.armD ?? 1)); el.add(eb);
+      const eb = mesh(new THREE.SphereGeometry(1, lodN(20, 8), lodN(14, 6)), 'skin'); eb.scale.set(rA(kE), rA(kE), rA(kE) * (T.armD ?? 1)); el.add(eb);
       }
     } else { const ad = (o) => { o.scale.z = T.armD ?? 1; return o; };
       ua.add(ad(limb((D.armR0 + 0.5) * AW, (D.armR0 - 0.6) * AW, D.upperArm * AL, 'skin'))); el.add(ad(limb((D.armR0 - 0.8) * AW, D.armR1 * AW, D.foreArm * AL, 'skin')));
-      const eb = mesh(new THREE.SphereGeometry(1, 20, 14), 'skin'); eb.scale.set((D.armR0 - 0.7) * AW, (D.armR0 - 0.7) * AW, (D.armR0 - 0.7) * AW * (T.armD ?? 1)); el.add(eb); }   // ひじの玉：曲げても上腕と前腕のつなぎ目に段や穴ができない
+      const eb = mesh(new THREE.SphereGeometry(1, lodN(20, 8), lodN(14, 6)), 'skin'); eb.scale.set((D.armR0 - 0.7) * AW, (D.armR0 - 0.7) * AW, (D.armR0 - 0.7) * AW * (T.armD ?? 1)); el.add(eb); }   // ひじの玉：曲げても上腕と前腕のつなぎ目に段や穴ができない
     const hand = joint(el, 0, -D.foreArm * AL, 0, 'hand' + S); hand.scale.setScalar(T.handS ?? 1);
     const HSK = T.armCover > 0.5 ? 'cover' : 'skin';   // アームカバーは指先まで
-    const hm = mesh(new THREE.SphereGeometry(1, 16, 12), HSK); hm.scale.set(9 * (T.handW ?? 1), 16 * (T.handH ?? 1), 5.5 * (T.handD ?? 1)); hm.position.y = -10 * (T.handH ?? 1); hand.add(hm);
-    const th = mesh(new THREE.SphereGeometry(1, 12, 10), HSK); th.scale.set(3.2 * (T.thumbS ?? 0.9), 8 * (T.thumbS ?? 0.9), 3 * (T.thumbS ?? 0.9)); th.position.set(-s * (T.thumbX ?? 5.5), -(T.thumbY ?? 10), T.thumbZ ?? 3.6); th.rotation.set(-(T.thumbFwd ?? 0.3), 0, s * (T.thumbIn ?? 0.15)); th.name = 'thumb'; th.visible = T.thumbOn !== 0; hand.add(th);   // 親指：手のひらの前側から、前・下向きに
+    const hm = mesh(new THREE.SphereGeometry(1, lodN(16, 8), lodN(12, 6)), HSK); hm.scale.set(9 * (T.handW ?? 1), 16 * (T.handH ?? 1), 5.5 * (T.handD ?? 1)); hm.position.y = -10 * (T.handH ?? 1); hand.add(hm);
+    const th = mesh(new THREE.SphereGeometry(1, lodN(12, 8), lodN(10, 6)), HSK); th.scale.set(3.2 * (T.thumbS ?? 0.9), 8 * (T.thumbS ?? 0.9), 3 * (T.thumbS ?? 0.9)); th.position.set(-s * (T.thumbX ?? 5.5), -(T.thumbY ?? 10), T.thumbZ ?? 3.6); th.rotation.set(-(T.thumbFwd ?? 0.3), 0, s * (T.thumbIn ?? 0.15)); th.name = 'thumb'; th.visible = T.thumbOn !== 0; hand.add(th);   // 親指：手のひらの前側から、前・下向きに
     J['upperArm' + S] = ua; J['elbow' + S] = el; J['hand' + S] = hand;
   }
   const LSK = O.pants && ID.pants != null ? 'pants' : 'skin';   // ズボンの中の脚はズボンの色（すき間から肌が見えない）
@@ -579,53 +587,53 @@ export function buildELGirl(opt = {}) {
     if (T.legPtsOn && Array.isArray(T.legPts) && T.legPts.length >= 2) {   // 脚の太さを点で決める：[半径, 位置 0〜1（股→足首）]。ももとすねを回転体で作り、ひざに同じ太さの玉
       const LT = L1 + L2, SP = T.legPts.slice().sort((a, b) => a[1] - b[1]);
       const rAt = (u) => { if (u <= SP[0][1]) return SP[0][0]; for (let i = 0; i < SP.length - 1; i++) { const a = SP[i], b = SP[i + 1]; if (u <= b[1]) { const k = (u - a[1]) / Math.max(1e-6, b[1] - a[1]), e = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e; } } return SP[SP.length - 1][0]; };
-      const seg = (u0, u1, capTop, capBot) => { const pts = []; const N = 28;
+      const seg = (u0, u1, capTop, capBot) => { const pts = []; const N = lodN(28, 8);
         if (capTop) pts.push(new THREE.Vector2(0.01, 6));
         for (let i = 0; i <= N; i++) { const u = u0 + (u1 - u0) * i / N; pts.push(new THREE.Vector2(Math.max(1, rAt(u)), -(u - u0) * LT)); }
         if (capBot) { const r = Math.max(1, rAt(u1)), y = -(u1 - u0) * LT; for (let i = 1; i <= 6; i++) { const a = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(a)), y - r * Math.sin(a))); } }
-        return new THREE.LatheGeometry(pts.reverse(), 32); };
+        return new THREE.LatheGeometry(pts.reverse(), lodN(32, 8)); };
       th.add(mesh(seg(0, kU, true, false), LSK)); kn.add(mesh(seg(kU, 1, false, true), LSK));
-      const kb = mesh(new THREE.SphereGeometry(1, 24, 16), LSK); kb.scale.setScalar(Math.max(1, rAt(kU))); kb.name = 'kneeBall'; kn.add(kb);
+      const kb = mesh(new THREE.SphereGeometry(1, lodN(24, 8), lodN(16, 6)), LSK); kb.scale.setScalar(Math.max(1, rAt(kU))); kb.name = 'kneeBall'; kn.add(kb);
     } else {
       th.add(limb(D.legR0, D.legR0 - 1.2, L1, LSK));
       kn.add(limb(D.legR0 - 1.2, D.legR1, L2, LSK));
-      { const kb = mesh(new THREE.SphereGeometry(1, 24, 16), LSK); kb.scale.setScalar(D.legR0 - 1.2); kb.name = 'kneeBall'; kn.add(kb); }   // ひざの玉（脚を短くしても丸いまま。曲げても角が欠けない）
+      { const kb = mesh(new THREE.SphereGeometry(1, lodN(24, 8), lodN(16, 6)), LSK); kb.scale.setScalar(D.legR0 - 1.2); kb.name = 'kneeBall'; kn.add(kb); }   // ひざの玉（脚を短くしても丸いまま。曲げても角が欠けない）
     }
     if (O.pants && !O.tights) {   // だぼっとしたズボン：脚の太さと同じ作り方（点 [半径, 位置 0＝股〜1＝足首]）で、ももとすねに分けて付ける。ひざに同じ太さの玉
       const LTp = L1 + L2, PP = (Array.isArray(T.pantsPts) && T.pantsPts.length >= 2 ? T.pantsPts : [[44, -0.06], [48, 0.1], [54, 0.4], [60, 0.7], [64, 0.88], [60, 0.95], [46, 0.985], [40, 1.0]]).slice().sort((a, b) => a[1] - b[1]);
       const pr = (u) => { if (u <= PP[0][1]) return PP[0][0]; for (let i = 0; i < PP.length - 1; i++) { const a = PP[i], b = PP[i + 1]; if (u <= b[1]) { const k = (u - a[1]) / Math.max(1e-6, b[1] - a[1]), e = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e; } } return PP[PP.length - 1][0]; };
       const u0 = PP[0][1], u1 = PP[PP.length - 1][1], pz = T.pantsD ?? 0.85, pm = ID.pants != null ? 'pants' : 'suit';
       const KC = T.pantsKneeCap ?? 0.35;   // ひざの所の丸み（つなぎ目の角を丸めて、曲げたときに角が突き出ないように）
-      const pseg = (a, b, capTop, capKneeTop, capKneeBot) => { const pts = []; const N = 30; if (capTop) pts.push(new THREE.Vector2(0.01, 4));
+      const pseg = (a, b, capTop, capKneeTop, capKneeBot) => { const pts = []; const N = lodN(30, 8); if (capTop) pts.push(new THREE.Vector2(0.01, 4));
         if (capKneeTop) { const r = Math.max(1, pr(a)); for (let i = 6; i >= 1; i--) { const t = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(t)), r * KC * Math.sin(t))); } }
         for (let i = 0; i <= N; i++) { const u = a + (b - a) * i / N; pts.push(new THREE.Vector2(Math.max(1, pr(u)), -(u - a) * LTp)); }
         if (capKneeBot) { const r = Math.max(1, pr(b)), y = -(b - a) * LTp; for (let i = 1; i <= 6; i++) { const t = i / 6 * Math.PI / 2; pts.push(new THREE.Vector2(Math.max(0.01, r * Math.cos(t)), y - r * KC * Math.sin(t))); } }
-        const g = new THREE.LatheGeometry(pts.reverse(), 40); g.scale(1, 1, pz); return g; };
+        const g = new THREE.LatheGeometry(pts.reverse(), lodN(40, 8)); g.scale(1, 1, pz); return g; };
       const pt = mesh(pseg(u0, kU, true, false, true), pm); pt.position.y = -u0 * LTp; pt.name = 'pants'; th.add(pt);
       const pk = mesh(pseg(kU, u1, false, true, false), pm); pk.name = 'pants'; kn.add(pk);
-      const pb = mesh(new THREE.SphereGeometry(1, 24, 16), pm); const kb = pr(kU) * (T.pantsKneeBall ?? 0.86); pb.scale.set(kb, kb, kb * pz); pb.name = 'pantsKnee'; kn.add(pb);
+      const pb = mesh(new THREE.SphereGeometry(1, lodN(24, 8), lodN(16, 6)), pm); const kb = pr(kU) * (T.pantsKneeBall ?? 0.86); pb.scale.set(kb, kb, kb * pz); pb.name = 'pantsKnee'; kn.add(pb);
     }
     if (O.shorts) {   // 短パン：ももの付け根から shortsLen（0＝股〜1＝足首）まで、すそが少し広がる筒
       const LTs = L1 + L2, sl = T.shortsLen ?? 0.28, r0 = D.legR0 + (T.shortsPuff ?? 6), r1 = r0 * (T.shortsFlare ?? 1.12), pts = [];
       for (let i = 0; i <= 14; i++) { const u = i / 14; pts.push(new THREE.Vector2(r0 + (r1 - r0) * u * u, 8 - (8 + sl * LTs) * u)); }
-      const sg = new THREE.LatheGeometry(pts.reverse(), 36); sg.scale(1, 1, T.shortsD ?? 1); const sm = mesh(sg, 'shorts'); sm.name = 'shorts'; th.add(sm);
+      const sg = new THREE.LatheGeometry(pts.reverse(), lodN(36, 8)); sg.scale(1, 1, T.shortsD ?? 1); const sm = mesh(sg, 'shorts'); sm.name = 'shorts'; th.add(sm);
     }
     const ft = joint(kn, 0, -(L1 + L2) * (1 - kU), 0, 'foot' + S);
-    const foot = mesh(new THREE.SphereGeometry(1, 24, 16), O.tights ? LSK : 'skin'); foot.scale.set(16.5 * T.footW, 9 * T.footH, 24 * T.footLen); foot.position.set(0, -4 + T.footY, 9 + T.footZ); foot.rotation.x = T.footTilt; if (!SHIA || O.feet === 'bare') ft.add(foot);
+    const foot = mesh(new THREE.SphereGeometry(1, lodN(24, 8), lodN(16, 6)), O.tights ? LSK : 'skin'); foot.scale.set(16.5 * T.footW, 9 * T.footH, 24 * T.footLen); foot.position.set(0, -4 + T.footY, 9 + T.footZ); foot.rotation.x = T.footTilt; if (!SHIA || O.feet === 'bare') ft.add(foot);
     if (T.undOn) { if (ID.under == null) ID.under = ID.sweaterIn ?? 0x9756f9;   // 紫の下着：太ももの付け根の短いすそ＋またの部分
       // セーターのすその高さより下には出さない（下からのぞいたときだけ見える）
       const hemD = Array.isArray(T.swPts) && T.swPts.length ? -Math.min(...T.swPts.map((p) => p[1])) : 1e9, uLen = Math.max(4, Math.min(T.undLen, hemD - 4)), uCrH = Math.max(4, Math.min(T.undCrH, hemD - 4));
       const LTu = L1 + L2, rU = (y) => { if (T.legPtsOn && Array.isArray(T.legPts) && T.legPts.length >= 2) { const SP = T.legPts.slice().sort((a, b) => a[1] - b[1]), u = y / LTu; if (u <= SP[0][1]) return SP[0][0]; for (let i = 0; i < SP.length - 1; i++) { const a = SP[i], b = SP[i + 1]; if (u <= b[1]) { const k = (u - a[1]) / Math.max(1e-6, b[1] - a[1]), e = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e; } } return SP[SP.length - 1][0]; } return D.legR0 - 1.2 * Math.min(1, y / L1); };   // 脚の実際の太さ（点で決めた脚にも合わせる）
       const ul = limb(Math.max(rU(0), rU(uLen * 0.5)) + T.undW, rU(uLen) + T.undW - 0.5, uLen, 'under'); ul.traverse((o) => { o.userData.noOutline = true; }); th.add(ul);
-      { const ub = mesh(new THREE.SphereGeometry(1, 28, 18), 'under'); ub.scale.setScalar((Math.max(rU(0), rU(uLen * 0.5)) + T.undW - 0.4) * (T.undBallK ?? 1)); ub.visible = (T.undBallK ?? 1) > 0; ub.userData.noOutline = true; ub.name = 'undBall'; th.add(ub); }   // ももの付け根の玉：脚を曲げても付け根の白がおしりから出ない
-      if (s > 0) { const cr = mesh(new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, Math.PI * 0.5 - (T.undTop ?? 0.35), Math.PI * 0.5 + (T.undTop ?? 0.35)), 'under'); cr.scale.set(D.hipX + Math.max(D.legR0, rU(0)) + T.undW, uCrH, T.undCrD * (T.undCrK ?? 0.85)); cr.userData.noOutline = true; /* 下半分だけ（上はセーターの中なので不要。お尻からはみ出さない） */ cr.position.y = T.undCrY; cr.name = 'undCr'; J.hips.add(cr); J.undCr = cr; } }
+      { const ub = mesh(new THREE.SphereGeometry(1, lodN(28, 8), lodN(18, 6)), 'under'); ub.scale.setScalar((Math.max(rU(0), rU(uLen * 0.5)) + T.undW - 0.4) * (T.undBallK ?? 1)); ub.visible = (T.undBallK ?? 1) > 0; ub.userData.noOutline = true; ub.name = 'undBall'; th.add(ub); }   // ももの付け根の玉：脚を曲げても付け根の白がおしりから出ない
+      if (s > 0) { const cr = mesh(new THREE.SphereGeometry(1, lodN(32, 8), lodN(16, 6), 0, Math.PI * 2, Math.PI * 0.5 - (T.undTop ?? 0.35), Math.PI * 0.5 + (T.undTop ?? 0.35)), 'under'); cr.scale.set(D.hipX + Math.max(D.legR0, rU(0)) + T.undW, uCrH, T.undCrD * (T.undCrK ?? 0.85)); cr.userData.noOutline = true; /* 下半分だけ（上はセーターの中なので不要。お尻からはみ出さない） */ cr.position.y = T.undCrY; cr.name = 'undCr'; J.hips.add(cr); J.undCr = cr; } }
     J['thigh' + S] = th; J['knee' + S] = kn; J['foot' + S] = ft;
   }
   if ((O.pants && !O.tights) || O.shorts) {   // ズボン（短パン）の腰まわり：タンクトップのすそ（胴にぴったり）から股の下（脚の筒の太さ）へ広がる
     const top = O.shorts ? (T.shortsTop ?? 12) : T.pantsTop ?? 14, bot = O.shorts ? (T.shortsHipBot ?? -30) : T.pantsHipBot ?? -26, pts = [], legR = O.shorts ? (D.legR0 + (T.shortsPuff ?? 6)) * (T.legW ?? 1) : (Array.isArray(T.pantsPts) && T.pantsPts[0] ? T.pantsPts[0][0] : 44);
     for (let i = 0; i <= 20; i++) { const y = top - (top - bot) * i / 20, k = i / 20, e = k * k * (3 - 2 * k), A = bodyA(Math.max(-14, Math.min(top, y))) || 60;
       pts.push(new THREE.Vector2((A + 2.5) * (1 - e) + (D.hipX + legR * 0.95 + (T.pantsHip ?? 0)) * e, y)); }
-    const g = new THREE.LatheGeometry(pts.reverse(), 48), P = g.attributes.position;
+    const g = new THREE.LatheGeometry(pts.reverse(), lodN(48, 10)), P = g.attributes.position;
     for (let i = 0; i < P.count; i++) { const y = P.getY(i), k = Math.min(1, Math.max(0, (top - y) / (top - bot))), A = bodyA(Math.max(-14, Math.min(top, y))) || 60, zt = (depth(Math.max(-14, Math.min(top, y)), A) + 2.5) / (A + 2.5);
       const rB = D.hipX * (O.shorts ? (T.hipW ?? 1) : 1) + legR * 0.95 + (O.shorts ? (T.shortsHip ?? 0) : (T.pantsHip ?? 0)), zb = (legR * (O.shorts ? (T.shortsD ?? 1) : (T.pantsD ?? 0.85)) + 6) / rB;   // 下は脚の筒の奥行きに合わせる（横から見て後ろに出っぱらない）
       P.setZ(i, P.getZ(i) * (zt * (T.bodyD ?? 1) * (1 - k) + zb * k)); }
@@ -696,7 +704,7 @@ export function buildELGirl(opt = {}) {
     const pony = new THREE.Mesh(g, pm); pony.name = 'pony'; pony.userData.curve = curve; pony.userData.fox = true;
     pony.position.set(HC.x + sd * (T.ponyX ?? 70), HC.y + (T.ponyY ?? 10), HC.z + (T.ponyZ ?? -26)); pony.rotation.set(T.ponyTilt ?? 0, 0, sd * (T.ponyRoll ?? 0.25)); head.add(pony); J.pony = pony;
     // 結び目（ヘアゴム）
-    const tie = mesh(new THREE.SphereGeometry(1, 20, 14), ID.tie != null ? 'tie' : 'line'); tie.scale.set(T.tieR ?? 13, (T.tieR ?? 13) * 1.15, (T.tieR ?? 13) * 1.1); tie.position.copy(pony.position); head.add(tie); J.tie = tie;
+    const tie = mesh(new THREE.SphereGeometry(1, lodN(20, 8), lodN(14, 6)), ID.tie != null ? 'tie' : 'line'); tie.scale.set(T.tieR ?? 13, (T.tieR ?? 13) * 1.15, (T.tieR ?? 13) * 1.1); tie.position.copy(pony.position); head.add(tie); J.tie = tie;
   }
   // --- ワークベンチ製パーツ：元絵のシルエットからふくらませた形。色は元絵から投影したラベル（1 髪, 2 明るい色, 3 濃い色, 4 影）---
   const attachPart = (name, data, parent, light) => {
@@ -723,11 +731,11 @@ export function buildELGirl(opt = {}) {
     // 1) 正面の輪郭（半幅 r, 高さ y：spine 座標、上→下の点列）を Chaikin で丸める
     let P = S.swPts.map(([r, y]) => [r, y]);
     if (T.swHemR != null) P[P.length - 1][0] = T.swHemR; if (T.swHemY) P[P.length - 1][1] += T.swHemY;   // すその内側の開き（下から見たすき間）
-    for (let k = 0; k < S.swSmooth; k++) { const Q = [P[0]];
+    for (let k = 0; k < S.swSmooth - (LOD.k < 0.6 ? 2 : 0); k++) { const Q = [P[0]];
       for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1]; Q.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); }
       Q.push(P[P.length - 1]); P = Q; }
     // 2) 断面：横は r、前は r*swDF、後ろは min(r*swDB, swBackMax)（背中はまっすぐ）。体からはみ出さない。k 倍で縮めた殻も作れる
-    const SEG = 96, top = P[0][1];
+    const SEG = lodN(96, 24), top = P[0][1];
     const ringGeo = (PP, k) => { const pos = [], idx = [];
       for (const [r0, y0] of PP) {
         const A = bodyA(y0), r = r0 <= 0 ? 0 : Math.max(r0, A > 0 ? A + 3 : 0), bz = A > 0 && r0 > 0 ? depth(y0, A) + 3 : 0;
@@ -781,26 +789,26 @@ export function buildELGirl(opt = {}) {
     if (T.swSleeve) {
       const L1 = D.upperArm, L2 = D.foreArm, LT = L1 + L2, SP = (T.slvPts || [[26, 0], [33, 0.3], [40, 0.53], [50, 0.8], [56, 1]]).slice().sort((a, b) => a[1] - b[1]);
       const rAt = (u) => { if (u <= SP[0][1]) return SP[0][0]; for (let i = 0; i < SP.length - 1; i++) { const a = SP[i], b = SP[i + 1]; if (u <= b[1]) { const k = (u - a[1]) / Math.max(1e-6, b[1] - a[1]), e = k * k * (3 - 2 * k); return a[0] + (b[0] - a[0]) * e; } } return SP[SP.length - 1][0]; };
-      const seg = (u0, u1, L) => { const pts = []; for (let i = 0; i <= 24; i++) { const u = u0 + (u1 - u0) * i / 24; pts.push(new THREE.Vector2(Math.max(1, rAt(u)), -(u - u0) * LT)); } return new THREE.LatheGeometry(pts.reverse(), 48); };
+      const seg = (u0, u1, L) => { const pts = [], NS = lodN(24, 8); for (let i = 0; i <= NS; i++) { const u = u0 + (u1 - u0) * i / NS; pts.push(new THREE.Vector2(Math.max(1, rAt(u)), -(u - u0) * LT)); } return new THREE.LatheGeometry(pts.reverse(), lodN(48, 10)); };
       for (const S2 of ['L', 'R']) {
         const ua = J['upperArm' + S2], el = J['elbow' + S2], hd = J['hand' + S2];
         ua.traverse((c) => { if (c.isMesh && c.name !== 'sleeve') c.visible = !!T.swArms; });   // 素肌の腕と手はそでの中
         const kE = L1 / LT, sL = Math.min(1, T.slvLen ?? 1), u0 = (S2 === ((T.swOffSide ?? 1) > 0 ? 'L' : 'R') ? Math.max(0, T.slvDrop ?? 0) : 0);   // 半袖・肩を出す側のそでは少し下から
         if (u0 < Math.min(sL, kE)) { const a = new THREE.Mesh(seg(u0, Math.min(sL, kE), L1), sm); a.name = 'sleeve'; a.position.y = -u0 * LT; ua.add(a); }
         if (sL > kE + 0.01) { const b = new THREE.Mesh(seg(kE, sL, L2), sm); b.name = 'sleeve'; el.add(b);
-          const ej = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), sm); ej.name = 'sleeve'; ej.scale.setScalar(Math.max(1, rAt(kE)) * (T.slvElbow ?? 1)); el.add(ej); }   // ひじの玉：曲げてもそでの切れ目が空洞に見えない
-        if (T.slvCuff > 0 && sL >= 0.99) { const cf = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), new THREE.MeshBasicMaterial({ color: ID.sweater ?? 0xbe80fc })); cf.name = 'sleeve';
+          const ej = new THREE.Mesh(new THREE.SphereGeometry(1, lodN(32, 8), lodN(20, 6)), sm); ej.name = 'sleeve'; ej.scale.setScalar(Math.max(1, rAt(kE)) * (T.slvElbow ?? 1)); el.add(ej); }   // ひじの玉：曲げてもそでの切れ目が空洞に見えない
+        if (T.slvCuff > 0 && sL >= 0.99) { const cf = new THREE.Mesh(new THREE.SphereGeometry(1, lodN(32, 8), lodN(20, 6)), new THREE.MeshBasicMaterial({ color: ID.sweater ?? 0xbe80fc })); cf.name = 'sleeve';
           const hs = hd.scale.x || 1; cf.scale.set(T.slvCuff * hs, T.slvCuff * T.slvCuffH * hs, T.slvCuff * hs); cf.position.set(hd.position.x, hd.position.y + T.slvCuffY * hs, hd.position.z); el.add(cf); }   // そで口の玉は前腕の先に固定（手首を回しても玉だけ動いて、そでの中が見えないように）
       }
     }
     // 4) そで口のふくらみ（正面で裾の左右に出る丸い玉）
     if (!T.swSleeve) {
     const sm1 = new THREE.MeshBasicMaterial({ color: ID.sweater ?? 0xbe80fc });   // 玉は閉じているので表だけ（後ろから見たときの縁のすじを防ぐ）
-    for (const s2 of [-1, 1]) { const b = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), sm1); b.scale.set(S.slR * S.slSX, S.slR * S.slSY, S.slR * S.slSZ);
+    for (const s2 of [-1, 1]) { const b = new THREE.Mesh(new THREE.SphereGeometry(1, lodN(32, 8), lodN(20, 6)), sm1); b.scale.set(S.slR * S.slSX, S.slR * S.slSY, S.slR * S.slSZ);
       b.position.set(s2 * S.slX, S.slY, S.swZ + S.slZ); b.rotation.z = s2 * S.slRot; J.spine.add(b); }
     // 5) 横から見たとき腰の後ろに出る、そでに隠れた手の玉
     }
-    if (S.swHand > 0 && !T.swSleeve) for (const s2 of [-1, 1]) { const b = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: ID.sweaterHand ?? ID.sweater ?? 0xbe80fc })); b.scale.setScalar(S.swHand);
+    if (S.swHand > 0 && !T.swSleeve) for (const s2 of [-1, 1]) { const b = new THREE.Mesh(new THREE.SphereGeometry(1, lodN(24, 8), lodN(16, 6)), new THREE.MeshBasicMaterial({ color: ID.sweaterHand ?? ID.sweater ?? 0xbe80fc })); b.scale.setScalar(S.swHand);
       b.position.set(s2 * S.swHandX, S.swHandY, S.swZ + S.swHandZ); J.spine.add(b); }
     if (T.swArms < 0.5 && !T.swSleeve) for (const S2 of ['L', 'R']) J['upperArm' + S2].visible = false;   // 腕はそでの中
   } else if (BUNNY && O.outfit === 'sweater') {
@@ -814,7 +822,7 @@ export function buildELGirl(opt = {}) {
     const R = T.swRound;   // 裾の丸み
     for (let i = 1; i <= 12; i++) { const a = (i / 12) * Math.PI * 0.75; pr.push([W - R + R * Math.cos(a) * 1.0 - R * (1 - Math.cos(a)) * 0.0, bot - R * Math.sin(a) * 0.55]); }
     pr.push([W * 0.62, bot - R * 0.5]);
-    const g = new THREE.LatheGeometry(pr.reverse().map(([r, y]) => new THREE.Vector2(r, y)), 96);   // 下→上の順（外側が表）
+    const g = new THREE.LatheGeometry(pr.reverse().map(([r, y]) => new THREE.Vector2(r, y)), lodN(96, 16));   // 下→上の順（外側が表）
     g.scale(1, 1, T.swD); g.translate(0, 0, T.swZ); g.computeVertexNormals();
     const sm = new THREE.MeshBasicMaterial({ color: ID.sweater ?? 0xbe80fc, side: THREE.DoubleSide });
     const inC = new THREE.Color(ID.sweaterIn ?? 0x9756f9);
@@ -822,7 +830,7 @@ export function buildELGirl(opt = {}) {
     sm.customProgramCacheKey = () => 'sweater-' + inC.getHexString();
     const sw = new THREE.Mesh(g, sm); sw.name = 'sweater'; J.spine.add(sw); J.sweater = sw;
     // そで口のふくらみ（左右の裾が丸く垂れ下がる）
-    for (const s2 of [-1, 1]) { const b = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), sm); b.scale.set(T.slR * 1.1, T.slR * 0.9, T.slR * 0.95 * T.swD / 0.7);
+    for (const s2 of [-1, 1]) { const b = new THREE.Mesh(new THREE.SphereGeometry(1, lodN(32, 8), lodN(20, 6)), sm); b.scale.set(T.slR * 1.1, T.slR * 0.9, T.slR * 0.95 * T.swD / 0.7);
       b.position.set(s2 * (W - T.slR * 0.95), bot + T.slR * 0.15, T.swZ + 4); J.spine.add(b); }
     if (T.swArms < 0.5) for (const S of ['L', 'R']) J['upperArm' + S].visible = false;   // 腕はそでの中
   }
@@ -830,7 +838,7 @@ export function buildELGirl(opt = {}) {
   if (T.tailOn) {
     const N = Math.max(3, Math.round(T.tailPuffs)), dirs = [];
     for (let i = 0; i < N; i++) { const yy = 1 - 2 * (i + 0.5) / N, rr = Math.sqrt(1 - yy * yy), th = i * 2.399963; dirs.push(new THREE.Vector3(Math.cos(th) * rr, yy, Math.sin(th) * rr)); }
-    const tg = new THREE.SphereGeometry(1, 48, 32), tp = tg.attributes.position, v = new THREE.Vector3(), cs = Math.cos(Math.PI / Math.sqrt(N) * 0.9);
+    const tg = new THREE.SphereGeometry(1, lodN(48, 8), lodN(32, 6)), tp = tg.attributes.position, v = new THREE.Vector3(), cs = Math.cos(Math.PI / Math.sqrt(N) * 0.9);
     for (let i = 0; i < tp.count; i++) { v.fromBufferAttribute(tp, i).normalize(); let m = 0;
       for (const dd of dirs) { const c = v.dot(dd); if (c > cs) m = Math.max(m, Math.pow((c - cs) / (1 - cs), 1 / Math.max(0.2, T.tailSharp))); }
       v.multiplyScalar(1 - T.tailFluff * 0.5 + T.tailFluff * m); tp.setXYZ(i, v.x, v.y, v.z); }
@@ -862,7 +870,7 @@ export function buildELGirl(opt = {}) {
   if (T.skirtLen > 0.5) {
     const top = 70, bot = 70 - T.skirtLen - 12, rT = bodyA(top) + 1.6, rB = (bodyA(-4) + 3) * T.skirtFlare;
     const pr = []; for (let i = 0; i <= 12; i++) { const t = i / 12; pr.push(new THREE.Vector2(rB + (rT - rB) * Math.pow(t, 0.8), bot + (top - bot) * t)); }
-    const sg = new THREE.LatheGeometry(pr, 64); const P = sg.attributes.position;
+    const sg = new THREE.LatheGeometry(pr, lodN(64, 16)); const P = sg.attributes.position;
     for (let i = 0; i < P.count; i++) { const y = P.getY(i), A = bodyA(Math.max(-14, y)) || 1; P.setZ(i, P.getZ(i) * Math.max(0.58, depth(Math.max(-14, y), A) / A) * 1.05); }
     sg.computeVertexNormals(); J.spine.add(mesh(sg, 'suit'));
   }
@@ -995,7 +1003,7 @@ export function buildELGirl(opt = {}) {
       undCol(sg, cwNow);
       // 当たりを見る：脚の当たり（服を押し出す太さ）を赤い玉で表示
       if (T.clothShow) { let vz = root.userData.clothViz; if (!vz) { vz = new THREE.Group(); vz.name = 'clothViz'; root.add(vz); root.userData.clothViz = vz;
-          const vm = new THREE.MeshBasicMaterial({ color: 0xff2a55, transparent: true, opacity: 0.22, depthTest: false }), vg = new THREE.SphereGeometry(1, 16, 10);
+          const vm = new THREE.MeshBasicMaterial({ color: 0xff2a55, transparent: true, opacity: 0.22, depthTest: false }), vg = new THREE.SphereGeometry(1, lodN(16, 8), lodN(10, 6));
           for (let k = 0; k < sg.length * 9; k++) { const m = new THREE.Mesh(vg, vm); m.renderOrder = 50; m.raycast = () => {}; vz.add(m); } }
         const rs = new THREE.Vector3(); root.getWorldScale(rs); let k = 0;
         for (const [A, B, , , key] of sg) for (let j = 0; j < 9; j++) { const t = j / 8 * (key[0] === 's' ? 0.85 : 1), m = vz.children[k++]; if (!m) continue;
@@ -1319,7 +1327,7 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
   g.globalAlpha = 1; g.fillRect(0, 0, 22, 22); g.fillStyle = hx('pure'); g.fillRect(42, 0, 3, 64); g.fillRect(0, 42, 64, 3);
   const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(9, 1.4); tex.magFilter = THREE.NearestFilter; tex.colorSpace = THREE.NoColorSpace;
   const sk = [[-36, 74], [-20, 68], [0, 61], [30, 54], [62, 49], [84, 47.5]].map(([y, r]) => new THREE.Vector2(r, y));
-  const skg = new THREE.LatheGeometry(sk, 96);
+  const skg = new THREE.LatheGeometry(sk, lodN(96, 16));
   { const P = skg.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i), y = P.getY(i);
       const th = Math.atan2(x, z), k = 1 + 0.035 * Math.abs(Math.sin(th * 12)) * Math.min(1, (84 - y) / 60);   // プリーツの山
       P.setX(i, x * k); P.setZ(i, z * k); } skg.computeVertexNormals(); }
@@ -1335,7 +1343,7 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
       float d = 176.0 - y;                                                    // 袖ぐり（ノースリーブ）
       if (d < 15.0 && ax > 38.0 + 6.0 * clamp(d / 15.0, 0.0, 1.0)) discard;`, '', { uNeckW: { value: T.neckW }, uNeckD: { value: T.neckD }, uNeckP: { value: 1 + 5 * T.neckSq } })));
     const dk = [[-100, 86], [-60, 76], [-20, 66.5], [20, 58.5], [50, 52.5], [76, 47.8], [92, 46.6]].map(([y, r]) => { const t = Math.max(0, (60 - y) / 160); return [y < 60 ? 60 + (y - 60) * (60 - T.dressHem) / 160 : y, r + (r - 47) * (T.dressFlare - 1) * t]; }).map(([y, r]) => new THREE.Vector2(r, y));
-    const dg = new THREE.LatheGeometry(dk, 96);
+    const dg = new THREE.LatheGeometry(dk, lodN(96, 16));
     { const P = dg.attributes.position; for (let i = 0; i < P.count; i++) { const x = P.getX(i), z = P.getZ(i), y = P.getY(i);
         const th = Math.atan2(x, z), k = 1 + 0.03 * Math.sin(th * 9) * Math.min(1, (60 - y) / 120) * (y < 60 ? 1 : 0);   // ゆるいドレープ
         P.setX(i, x * k); P.setZ(i, z * k); } dg.computeVertexNormals(); }
@@ -1358,9 +1366,9 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
     const S = s < 0 ? 'R' : 'L';
     const sock = limb(D.legR0 - 0.2, D.legR1 + 0.9, D.knee - 40, 'lav'); sock.position.y = -18; J['knee' + S].add(sock);
     const ft = J['foot' + S];
-    const up = mesh(new THREE.SphereGeometry(1, 20, 14), 'white'); up.scale.set(23, 17, 34); up.position.set(0, 0, 11); ft.add(up);
+    const up = mesh(new THREE.SphereGeometry(1, lodN(20, 8), lodN(14, 6)), 'white'); up.scale.set(23, 17, 34); up.position.set(0, 0, 11); ft.add(up);
     const sole = mesh(new THREE.CylinderGeometry(1, 1, 1, 24), 'sole'); sole.scale.set(24.5, 12, 37); sole.position.set(0, -14, 11); ft.add(sole);
-    const tongue = mesh(new THREE.SphereGeometry(1, 12, 8), 'lav'); tongue.scale.set(10, 6, 8); tongue.position.set(0, 13, 16); ft.add(tongue);
+    const tongue = mesh(new THREE.SphereGeometry(1, lodN(12, 8), lodN(8, 6)), 'lav'); tongue.scale.set(10, 6, 8); tongue.position.set(0, 13, 16); ft.add(tongue);
   }
   }
   if (O.headphones === 'hq') J.spine.add(buildHeadphones());
@@ -1374,7 +1382,7 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
   }
   // --- うさ耳キャップ（白・ラベンダーの帯・つば）---
   const capC = new THREE.Vector3(HC.x, HC.y + 6, HC.z - 2);
-  const crown = mesh(new THREE.SphereGeometry(72, 56, 28, 0, Math.PI * 2, 0, Math.PI * 0.42), 'white'); crown.position.copy(capC); head.add(crown);
+  const crown = mesh(new THREE.SphereGeometry(72, lodN(56, 8), lodN(28, 6), 0, Math.PI * 2, 0, Math.PI * 0.42), 'white'); crown.position.copy(capC); head.add(crown);
   const bandC = mesh(new THREE.CylinderGeometry(68.8, 69.4, 8, 64, 1, true), 'lav'); bandC.position.set(capC.x, capC.y + 26, capC.z); head.add(bandC);
   const brim = mesh(new THREE.CylinderGeometry(86, 86, 3, 48, 1, false, -Math.PI * 0.3, Math.PI * 0.6), 'white'); brim.position.set(capC.x, capC.y + 22, capC.z); brim.rotation.x = 0.16; head.add(brim);
   const brimEdge = mesh(new THREE.CylinderGeometry(86.5, 86.5, 3.4, 48, 1, true, -Math.PI * 0.3, Math.PI * 0.6), 'lav'); brimEdge.position.copy(brim.position); brimEdge.rotation.copy(brim.rotation); head.add(brimEdge);
@@ -1415,7 +1423,7 @@ function dressShia({ J, D, head, HC, fz, fm, loft, mesh, limb, O, T }) {
     // 丸めた耳の殻：外形の左右幅を行ごとに測り、格子で張る。kx=幅の倍率、dz=手前へのずらし、th=厚み（裏面と側面も張る）、inr=内側（白）の層
     // 曲げ：x を半径 R=12/earCup の円弧に沿わせる（内側＝手前 +z がへこむ）。earCurl で先端を前後に反らせる
     const earShell = (shape, kx, dz, th, s, inr) => {
-      const pts = shape.getPoints(32); const ymax = Math.max(...pts.map((p) => p.y)); const NY = 36, NX = 16, R = 12 / T.earCup;
+      const pts = shape.getPoints(32); const ymax = Math.max(...pts.map((p) => p.y)); const NY = lodN(36, 10), NX = lodN(16, 6), R = 12 / T.earCup;
       const span = (y) => { let a = Infinity, b = -Infinity; for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length];
         if ((p.y - y) * (q.y - y) <= 0 && p.y !== q.y) { const x = p.x + (q.x - p.x) * (y - p.y) / (q.y - p.y); a = Math.min(a, x); b = Math.max(b, x); } } return a < b ? [a, b] : [0, 0]; };
       const y0 = inr ? 6 : 0, y1 = inr ? 6 + ymax * T.earInH : ymax;
